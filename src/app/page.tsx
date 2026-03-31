@@ -657,7 +657,7 @@ function Dashboard() {
                           className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-sm text-[#171717] focus:ring-[#0052CC] focus:border-[#0052CC]"
                         >
                           <option value="">Select column...</option>
-                          {((selectedNode.data.config as any)?.availableColumns || getUpstreamColumns(selectedNode.id))?.map((col: string) => (
+                          {getUpstreamColumns(selectedNode.id).map((col: string) => (
                             <option key={col} value={col}>{col}</option>
                           ))}
                         </select>
@@ -704,18 +704,37 @@ function Dashboard() {
                   {selectedNode.data.subtype === 'aggregate' && (
                     <>
                       <div>
-                        <label className="block text-xs font-semibold text-[#6B778C] mb-1">Group By (optional, comma-separated)</label>
-                        <input 
-                          type="text" 
-                          placeholder="e.g. category, region"
-                          value={String((selectedNode.data.config as Record<string, unknown>)?.groupBy || '')} 
-                          onChange={(e) => {
-                            const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), groupBy: e.target.value } } };
-                            setSelectedNode(updatedNode);
-                            setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
-                          }}
-                          className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-sm text-[#171717] focus:ring-[#0052CC] focus:border-[#0052CC]" 
-                        />
+                        <label className="block text-xs font-semibold text-[#6B778C] mb-1">Group By Columns (Multi-select)</label>
+                        <div className="border border-[#DFE1E6] rounded-md p-2 max-h-40 overflow-y-auto space-y-1 bg-[#FAFBFC] shadow-inner">
+                          {getUpstreamColumns(selectedNode.id).map((col: string) => {
+                            const isChecked = String((selectedNode.data.config as any)?.groupBy || '').split(',').map(s => s.trim()).includes(col);
+                            return (
+                              <label key={col} className={`flex items-center space-x-2 cursor-pointer hover:bg-gray-100 p-1.5 rounded transition-colors group ${isChecked ? 'bg-blue-50' : ''}`}>
+                                <input 
+                                  type="checkbox" 
+                                  className="w-4 h-4 rounded border-[#DFE1E6] text-[#0052CC] focus:ring-[#0052CC]"
+                                  checked={isChecked}
+                                  onChange={(e) => {
+                                     const currentList = String((selectedNode.data.config as any)?.groupBy || '').split(',').map(s => s.trim()).filter(s => s);
+                                     let newList;
+                                     if (e.target.checked) {
+                                        newList = [...currentList, col].join(', ');
+                                     } else {
+                                        newList = currentList.filter(s => s !== col).join(', ');
+                                     }
+                                     const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), groupBy: newList } } };
+                                     setSelectedNode(updatedNode);
+                                     setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
+                                  }}
+                                />
+                                <span className={`text-sm ${isChecked ? 'font-bold text-[#0052CC]' : 'text-[#171717]'}`}>{col}</span>
+                              </label>
+                            );
+                          })}
+                          {getUpstreamColumns(selectedNode.id).length === 0 && (
+                            <div className="text-[10px] text-center text-[#6B778C] py-2 italic font-inter">No columns available upstream</div>
+                          )}
+                        </div>
                       </div>
                       <div>
                         <label className="block text-xs font-semibold text-[#6B778C] mb-1">Aggregation Column</label>
@@ -738,7 +757,7 @@ function Dashboard() {
                           className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-sm text-[#171717] focus:ring-[#0052CC] focus:border-[#0052CC]"
                         >
                           <option value="">Select column...</option>
-                          {((selectedNode.data.config as any)?.availableColumns || getUpstreamColumns(selectedNode.id))?.map((col: string) => (
+                          {getUpstreamColumns(selectedNode.id).map((col: string) => (
                             <option key={col} value={col}>{col}</option>
                           ))}
                         </select>
