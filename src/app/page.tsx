@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import WorkspaceCanvas from '@/components/workflow/canvas';
-import { Database, Filter, ArrowRightLeft, Table, Settings, Play, Download, Search, LayoutDashboard, SlidersHorizontal, FileText, FileDown, Save, FolderOpen, Sigma } from 'lucide-react';
+import { Database, Filter, ArrowRightLeft, Table, Settings, Play, Download, Search, LayoutDashboard, SlidersHorizontal, FileText, FileDown, Save, FolderOpen, Sigma, Eye, ChevronDown, ChevronRight } from 'lucide-react';
 import { Node, useReactFlow, ReactFlowProvider } from '@xyflow/react';
 import { executeWorkflow, uploadFile, saveWorkflow, listSavedWorkflows, loadWorkflowGraph } from '@/lib/api';
 
@@ -97,6 +97,8 @@ function Dashboard() {
   const [availableWorkflows, setAvailableWorkflows] = useState<string[]>([]);
   const [executionResult, setExecutionResult] = useState<any>(null);
   const [isExecuting, setIsExecuting] = useState(false);
+  const [nodeSamples, setNodeSamples] = useState<Record<string, any[]>>({});
+  const [previewHeight, setPreviewHeight] = useState(280);
 
   const handleSaveWorkflow = async () => {
     if (!workflowName) return;
@@ -213,6 +215,9 @@ function Dashboard() {
     try {
       const result = await executeWorkflow(getNodes(), getEdges());
       setExecutionResult(result);
+      if (result.node_samples) {
+        setNodeSamples(result.node_samples);
+      }
       
       setNodes((nds) => nds.map(node => ({
         ...node,
@@ -399,6 +404,16 @@ function Dashboard() {
                   <Sigma size={16} />
                 </div>
                 <span className="text-sm font-medium text-gray-700">Aggregate Data</span>
+              </div>
+            </div>
+            
+            <h3 className="text-xs font-semibold text-[#6B778C] uppercase tracking-wider mb-3">Analysis</h3>
+            <div className="space-y-2 mb-6">
+              <div draggable onDragStart={(e) => onDragStart(e, 'default', 'Preview Data', 'preview')} className="flex items-center space-x-3 p-3 bg-white border border-[#DFE1E6] hover:border-[#FF8B00] hover:shadow-sm rounded-md cursor-grab transition-all">
+                <div className="p-1.5 bg-orange-50 text-[#FF8B00] rounded">
+                  <Eye size={16} />
+                </div>
+                <span className="text-sm font-medium text-gray-700">Preview Data</span>
               </div>
             </div>
             
@@ -845,44 +860,88 @@ function Dashboard() {
         )}
       </div>
 
-      {/* Execution Result Preview Panel */}
-      {executionResult && (
-        <div className="h-64 border-t border-[#DFE1E6] bg-white flex flex-col animate-in slide-in-from-bottom duration-300">
-          <div className="flex items-center justify-between px-4 py-2 border-b border-[#DFE1E6] bg-[#FAFBFC]">
-            <div className="flex items-center space-x-4">
-              <h4 className="text-xs font-bold text-[#172B4D] uppercase tracking-wider">Data Preview ({executionResult.row_count} total rows)</h4>
-              <span className="text-[10px] bg-[#EAE6FF] text-[#403294] px-2 py-0.5 rounded-full font-bold">Showing first 50 rows</span>
-            </div>
-            <button 
-              onClick={() => setExecutionResult(null)}
-              className="text-[#6B778C] hover:text-[#172B4D]"
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
-            </button>
+      {/* Resizable Bottom Preview Panel */}
+      {selectedNode && (
+        <div 
+          style={{ height: `${previewHeight}px` }}
+          className="bg-white border-t border-[#DFE1E6] flex flex-col relative z-20 shadow-[0_-4px_12px_rgba(0,0,0,0.05)] transition-all duration-300"
+        >
+          {/* Resize Handle */}
+          <div 
+            className="absolute -top-1.5 left-0 right-0 h-3 cursor-ns-resize hover:bg-[#0052CC]/10 transition-colors z-30 flex items-center justify-center group"
+            onMouseDown={(e) => {
+              const startY = e.clientY;
+              const startHeight = previewHeight;
+              const onMouseMove = (moveEvent: MouseEvent) => {
+                const delta = startY - moveEvent.clientY;
+                setPreviewHeight(Math.max(100, Math.min(800, startHeight + delta)));
+              };
+              const onMouseUp = () => {
+                document.removeEventListener('mousemove', onMouseMove);
+                document.removeEventListener('mouseup', onMouseUp);
+              };
+              document.addEventListener('mousemove', onMouseMove);
+              document.addEventListener('mouseup', onMouseUp);
+            }}
+          >
+            <div className="w-12 h-1 bg-[#DFE1E6] rounded-full group-hover:bg-[#0052CC] transition-colors"></div>
           </div>
-          <div className="flex-1 overflow-auto">
-            <table className="w-full text-left border-collapse min-w-max">
-              <thead className="sticky top-0 bg-white shadow-sm z-10">
-                <tr>
-                  {executionResult.columns?.map((col: string) => (
-                    <th key={col} className="px-4 py-2 text-xs font-bold text-[#6B778C] border-b border-r border-[#DFE1E6] bg-gray-50 uppercase tracking-tight">
-                      {col}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {executionResult.preview?.map((row: any, i: number) => (
-                  <tr key={i} className="hover:bg-[#F4F5F7] transition-colors border-b border-[#DFE1E6]">
-                    {executionResult.columns?.map((col: string) => (
-                      <td key={col} className="px-4 py-2 text-sm text-[#172B4D] border-r border-[#DFE1E6] font-inter">
-                        {String(row[col])}
-                      </td>
+
+          <div className="flex items-center justify-between px-6 py-2 border-b border-[#DFE1E6] bg-[#FAFBFC] shrink-0">
+            <div className="flex items-center space-x-3">
+              <div className="p-1 bg-orange-50 text-[#FF8B00] rounded">
+                <Eye size={16} />
+              </div>
+              <div>
+                <span className="text-xs font-bold uppercase tracking-wider text-[#6B778C]">Dataset Preview</span>
+                <h4 className="text-sm font-bold text-[#171717]">{String(selectedNode.data.label)}</h4>
+              </div>
+            </div>
+            <div className="flex items-center space-x-4">
+              {nodeSamples[selectedNode.id] && (
+                <span className="text-[10px] bg-gray-100 text-[#6B778C] px-2 py-1 rounded font-bold uppercase">
+                  Showing {nodeSamples[selectedNode.id].length} sample rows
+                </span>
+              )}
+              <button 
+                onClick={() => setSelectedNode(null)} 
+                className="p-1.5 text-[#6B778C] hover:bg-gray-200 rounded-md transition-colors"
+                title="Close Preview"
+              >
+                <ChevronDown size={18} />
+              </button>
+            </div>
+          </div>
+
+          <div className="flex-1 overflow-auto bg-white p-0">
+            {nodeSamples[selectedNode.id] && nodeSamples[selectedNode.id].length > 0 ? (
+              <table className="w-full text-left border-collapse min-w-max">
+                <thead className="sticky top-0 bg-[#FAFBFC] z-10 border-b border-[#DFE1E6]">
+                  <tr>
+                    {Object.keys(nodeSamples[selectedNode.id][0]).map((key) => (
+                      <th key={key} className="px-4 py-2.5 text-[11px] font-bold text-[#6B778C] uppercase tracking-wider border-r border-[#DFE1E6] last:border-0">{key}</th>
                     ))}
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-[#DFE1E6]">
+                  {nodeSamples[selectedNode.id].map((row: any, i: number) => (
+                    <tr key={i} className="hover:bg-blue-50/50 transition-colors">
+                      {Object.values(row).map((val: any, j: number) => (
+                        <td key={j} className="px-4 py-2 text-sm text-[#171717] border-r border-[#DFE1E6] last:border-0 max-w-[300px] truncate">
+                          {String(val)}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <div className="h-full flex flex-col items-center justify-center text-[#6B778C] space-y-3 bg-[#FAFBFC]/50">
+                <div className="p-3 bg-gray-100 rounded-full"><Table size={24} className="opacity-40" /></div>
+                <p className="text-sm font-medium">No preview data available for this node.</p>
+                <p className="text-xs">Execute the workflow to generate sample data for all nodes.</p>
+              </div>
+            )}
           </div>
         </div>
       )}
