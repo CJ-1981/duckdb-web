@@ -108,6 +108,28 @@ function buildSql(subtype: string, cfg: any): string {
       return '';
   }
 }
+
+function getConditionSql(col: string, op: string, val: string): string {
+  const column = col ? `"${col}"` : '/* column */';
+  const value = val || '';
+  const opMap: Record<string, string> = {
+    '==': `${column} = '${value}'`, 
+    '!=': `${column} != '${value}'`,
+    '>': `${column} > ${value}`, 
+    '<': `${column} < ${value}`,
+    '>=': `${column} >= ${value}`, 
+    '<=': `${column} <= ${value}`,
+    'contains': `${column} ILIKE '%${value}%'`,
+    'not_contains': `${column} NOT ILIKE '%${value}%'`,
+    'starts_with': `${column} ILIKE '${value}%'`,
+    'ends_with': `${column} ILIKE '%${value}'`,
+    'is_null': `${column} IS NULL`, 
+    'is_not_null': `${column} IS NOT NULL`,
+    'in': `${column} IN (${value})`, 
+    'not_in': `${column} NOT IN (${value})`,
+  };
+  return opMap[op] ?? `${column} ${op} '${value}'`;
+}
 // ─────────────────────────────────────────────────────────────────────────────
 
 function ExecuteButton() {
@@ -1317,24 +1339,121 @@ function Dashboard() {
                        </div>
 
                        {((selectedNode.data.config as any)?.conditions || []).map((c: any, idx: number) => (
-                         <div key={idx} className="p-2 bg-gray-50 border rounded space-y-2 relative">
-                            <button className="absolute top-1 right-1" onClick={() => {
-                               const conds = [...(selectedNode.data.config as any).conditions];
-                               conds.splice(idx, 1);
-                               const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), conditions: conds } } };
-                               setSelectedNode(updatedNode);
-                               setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
-                             }}><Trash2 size={12} className="text-red-400" /></button>
-                            <div>
-                               <label className="text-[9px] uppercase font-bold text-[#6B778C]">When (Condition)</label>
-                               <input value={c.when} onChange={(e) => {
-                                  const conds = [...(selectedNode.data.config as any).conditions];
-                                  conds[idx].when = e.target.value;
-                                  const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), conditions: conds } } };
-                                  setSelectedNode(updatedNode);
-                                  setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
-                               }} className="w-full text-xs p-1 border rounded" placeholder="age > 20" />
+                         <div key={idx} className="p-3 bg-gray-50 border rounded-md space-y-3 relative overflow-hidden">
+                            <div className="flex items-center justify-between border-b border-gray-200 pb-2 mb-1">
+                               <span className="text-[10px] font-bold text-[#6B778C] uppercase tracking-wider">Step {idx + 1}</span>
+                               <div className="flex items-center gap-2">
+                                 <button 
+                                   onClick={() => {
+                                     const conds = [...(selectedNode.data.config as any).conditions];
+                                     conds[idx].isAdvanced = !conds[idx].isAdvanced;
+                                     const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), conditions: conds } } };
+                                     setSelectedNode(updatedNode);
+                                     setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
+                                   }}
+                                   className={`text-[9px] px-1.5 py-0.5 rounded font-bold transition-colors ${c.isAdvanced ? 'bg-[#0052CC] text-white' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'}`}
+                                 >
+                                   {c.isAdvanced ? 'SQL MODE' : 'SIMPLE'}
+                                 </button>
+                                 <button className="p-1 text-red-400 hover:bg-red-50 rounded" onClick={() => {
+                                    const conds = [...(selectedNode.data.config as any).conditions];
+                                    conds.splice(idx, 1);
+                                    const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), conditions: conds } } };
+                                    setSelectedNode(updatedNode);
+                                    setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
+                                  }}><Trash2 size={12} /></button>
+                               </div>
                             </div>
+
+                            {(c.isAdvanced || (c.isAdvanced === undefined && c.when)) ? (
+                              <div>
+                                 <label className="text-[9px] uppercase font-bold text-[#6B778C]">When (SQL Condition)</label>
+                                 <input 
+                                   value={c.when} 
+                                   onChange={(e) => {
+                                      const conds = [...(selectedNode.data.config as any).conditions];
+                                      conds[idx].when = e.target.value;
+                                      const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), conditions: conds } } };
+                                      setSelectedNode(updatedNode);
+                                      setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
+                                   }} 
+                                   className="w-full text-xs p-1.5 border rounded font-mono bg-white" 
+                                   placeholder="age > 20" 
+                                 />
+                              </div>
+                            ) : (
+                              <div className="space-y-2">
+                                <div className="grid grid-cols-2 gap-2">
+                                  <div>
+                                    <label className="text-[9px] uppercase font-bold text-[#6B778C]">Column</label>
+                                    <select
+                                      value={c.column || ''}
+                                      onChange={(e) => {
+                                        const conds = [...(selectedNode.data.config as any).conditions];
+                                        conds[idx].column = e.target.value;
+                                        conds[idx].when = getConditionSql(conds[idx].column, conds[idx].operator || '==', conds[idx].value || '');
+                                        const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), conditions: conds } } };
+                                        setSelectedNode(updatedNode);
+                                        setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
+                                      }}
+                                      className="w-full text-xs p-1 border rounded bg-white"
+                                    >
+                                      <option value="">Select...</option>
+                                      {getUpstreamColumns(selectedNode.id).map(col => <option key={col} value={col}>{col}</option>)}
+                                    </select>
+                                  </div>
+                                  <div>
+                                    <label className="text-[9px] uppercase font-bold text-[#6B778C]">Operator</label>
+                                    <select
+                                      value={c.operator || '=='}
+                                      onChange={(e) => {
+                                        const conds = [...(selectedNode.data.config as any).conditions];
+                                        conds[idx].operator = e.target.value;
+                                        conds[idx].when = getConditionSql(conds[idx].column || '', conds[idx].operator, conds[idx].value || '');
+                                        const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), conditions: conds } } };
+                                        setSelectedNode(updatedNode);
+                                        setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
+                                      }}
+                                      className="w-full text-xs p-1 border rounded bg-white"
+                                    >
+                                      <option value="==">is equal to</option>
+                                      <option value="!=">is not equal to</option>
+                                      <option value=">">is greater than</option>
+                                      <option value="<">is less than</option>
+                                      <option value=">=">is greater or equal</option>
+                                      <option value="<=">is less or equal</option>
+                                      <option value="contains">contains</option>
+                                      <option value="not_contains">does not contain</option>
+                                      <option value="starts_with">starts with</option>
+                                      <option value="ends_with">ends with</option>
+                                      <option value="is_null">is empty / null</option>
+                                      <option value="is_not_null">is not empty</option>
+                                      <option value="in">is in list (a,b,c)</option>
+                                      <option value="not_in">is NOT in list (a,b,c)</option>
+                                    </select>
+                                  </div>
+                                </div>
+                                {!['is_null', 'is_not_null'].includes(c.operator) && (
+                                  <div>
+                                    <label className="text-[9px] uppercase font-bold text-[#6B778C]">Value</label>
+                                    <input 
+                                      value={c.value || ''} 
+                                      onChange={(e) => {
+                                        const conds = [...(selectedNode.data.config as any).conditions];
+                                        conds[idx].value = e.target.value;
+                                        conds[idx].when = getConditionSql(conds[idx].column || '', conds[idx].operator || '==', conds[idx].value);
+                                        const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), conditions: conds } } };
+                                        setSelectedNode(updatedNode);
+                                        setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
+                                      }}
+                                      className="w-full text-xs p-1.5 border rounded bg-white" 
+                                      placeholder="Value..." 
+                                    />
+                                  </div>
+                                )}
+                              </div>
+                            )}
+
                             <div>
                                <label className="text-[9px] uppercase font-bold text-[#6B778C]">Then (Result)</label>
                                <input value={c.then} onChange={(e) => {
@@ -1343,13 +1462,13 @@ function Dashboard() {
                                   const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), conditions: conds } } };
                                   setSelectedNode(updatedNode);
                                   setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
-                               }} className="w-full text-xs p-1 border rounded" placeholder="'Adult'" />
+                               }} className="w-full text-xs p-1.5 border rounded bg-white" placeholder="'Adult' or 100" />
                             </div>
                          </div>
                        ))}
                        <button onClick={() => {
                           const conds = [...((selectedNode.data.config as any)?.conditions || [])];
-                          conds.push({ when: '', then: '' });
+                          conds.push({ when: '', then: '', column: '', operator: '==', value: '', isAdvanced: false });
                           const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), conditions: conds } } };
                           setSelectedNode(updatedNode);
                           setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
