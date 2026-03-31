@@ -2,11 +2,10 @@
 
 import React, { useState } from 'react';
 import WorkspaceCanvas from '@/components/workflow/canvas';
-import { Database, Filter, ArrowRightLeft, Table, Settings, Play, Download, Search, LayoutDashboard, SlidersHorizontal, FileText, FileDown } from 'lucide-react';
-import { Node } from '@xyflow/react';
+import { Database, Filter, ArrowRightLeft, Table, Settings, Play, Download, Search, LayoutDashboard, SlidersHorizontal, FileText, FileDown, Save, FolderOpen } from 'lucide-react';
+import { Node, useReactFlow, ReactFlowProvider } from '@xyflow/react';
+import { executeWorkflow, uploadFile, saveWorkflow, listSavedWorkflows, loadWorkflowGraph } from '@/lib/api';
 
-import { useReactFlow, ReactFlowProvider } from '@xyflow/react';
-import { executeWorkflow, uploadFile } from '@/lib/api';
 
 function ExecuteButton() {
   const { getNodes, getEdges, setNodes } = useReactFlow();
@@ -90,10 +89,80 @@ function ExecuteButton() {
 
 function Dashboard() {
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
-  const { setNodes } = useReactFlow();
+  const { setNodes, setEdges, getNodes, getEdges } = useReactFlow();
+  
+  const [isSaveModalOpen, setIsSaveModalOpen] = useState(false);
+  const [isLoadModalOpen, setIsLoadModalOpen] = useState(false);
+  const [workflowName, setWorkflowName] = useState("");
+  const [availableWorkflows, setAvailableWorkflows] = useState<string[]>([]);
+  const [executionResult, setExecutionResult] = useState<any>(null);
+  const [isExecuting, setIsExecuting] = useState(false);
 
-  const onDragStart = (event: React.DragEvent, nodeType: string, label: string) => {
-    event.dataTransfer.setData('application/reactflow', JSON.stringify({ type: nodeType, label }));
+  const handleSaveWorkflow = async () => {
+    if (!workflowName) return;
+    try {
+      await saveWorkflow(workflowName, getNodes(), getEdges());
+      alert("Pipeline saved!");
+      setIsSaveModalOpen(false);
+      setWorkflowName("");
+    } catch (e) { alert("Save failed."); console.error(e); }
+  };
+
+  const handleLoadWorkflow = async (name: string) => {
+    try {
+      const data = await loadWorkflowGraph(name);
+      // Strip any legacy 'className' that causes double-rendering
+      const sanitizedNodes = (data.nodes || []).map((n: any) => {
+        const { className, ...rest } = n;
+        return rest;
+      });
+      setNodes(sanitizedNodes);
+      setEdges(data.edges || []);
+      setIsLoadModalOpen(false);
+    } catch (e) { alert("Load failed."); console.error(e); }
+  };
+
+  const openLoadModal = async () => {
+    try {
+      const { workflows } = await listSavedWorkflows();
+      setAvailableWorkflows(workflows || []);
+      setIsLoadModalOpen(true);
+    } catch (e) { alert("Error fetching workflows."); }
+  };
+
+  const getUpstreamColumns = (nodeId: string) => {
+    const nodes = getNodes();
+    const edges = getEdges();
+    const visited = new Set<string>();
+    const columns = new Set<string>();
+    
+    const traceUpstream = (currentId: string) => {
+      if (visited.has(currentId)) return;
+      visited.add(currentId);
+      
+      // Get all incoming edges for this node
+      const incoming = edges.filter(e => e.target === currentId);
+      for (const edge of incoming) {
+        const sourceNode = nodes.find(n => n.id === edge.source);
+        if (!sourceNode) continue;
+        
+        // If it's an input node, get its uploaded columns
+        const nodeCols = (sourceNode.data?.config as any)?.availableColumns;
+        if (Array.isArray(nodeCols)) {
+          nodeCols.forEach(c => columns.add(c));
+        }
+        
+        // Recursively trace further upstream (e.g. from previous filters/cleaners)
+        traceUpstream(edge.source);
+      }
+    };
+    
+    traceUpstream(nodeId);
+    return Array.from(columns);
+  };
+
+  const onDragStart = (event: React.DragEvent, nodeType: string, label: string, subtype?: string) => {
+    event.dataTransfer.setData('application/reactflow', JSON.stringify({ type: nodeType, label, subtype }));
     event.dataTransfer.effectAllowed = 'move';
   };
 
@@ -102,18 +171,36 @@ function Dashboard() {
     setNodes((nds) => 
       nds.map((node) => {
         if (node.id === selectedNode.id) {
-          // It's important to merge the new config properly
           node.data = { ...selectedNode.data };
-          if (selectedNode.data.label) {
-            // Also need to reflect label if changed
-            node.data.label = selectedNode.data.label;
-          }
         }
         return node;
       })
     );
   };
 
+  const handleExecute = async () => {
+    setIsExecuting(true);
+    try {
+      const result = await executeWorkflow(getNodes(), getEdges());
+      setExecutionResult(result);
+      
+      setNodes((nds) => nds.map(node => ({
+        ...node,
+        data: {
+          ...node.data,
+          rowCount: result.node_counts?.[node.id] ?? result.row_count
+        }
+      })));
+
+      alert(`Success! Processed ${result.row_count} rows.`);
+    } catch (e) {
+      alert("Execution failed.");
+      console.error(e);
+    } finally {
+      setIsExecuting(false);
+    }
+  };
+   
   return (
     <div className="flex flex-col h-screen bg-[#FAFBFC] overflow-hidden text-[#171717]">
       {/* Top Header */}
@@ -128,10 +215,27 @@ function Dashboard() {
         </div>
         
         <div className="flex items-center space-x-3">
-          <ExecuteButton />
-          <button className="flex items-center space-x-2 px-4 py-2 text-sm font-medium text-[#6B778C] bg-white border border-[#DFE1E6] hover:bg-gray-50 rounded-md transition-colors">
-            <Download size={16} />
-            <span>Export</span>
+          <button 
+            onClick={() => setIsSaveModalOpen(true)}
+            className="flex items-center space-x-2 px-3 py-2 text-sm font-medium text-[#6B778C] bg-white border border-[#DFE1E6] hover:bg-gray-50 rounded-md transition-colors"
+          >
+            <Save size={16} />
+            <span>Save Pipeline</span>
+          </button>
+          <button 
+            onClick={openLoadModal}
+            className="flex items-center space-x-2 px-3 py-2 text-sm font-medium text-[#6B778C] bg-white border border-[#DFE1E6] hover:bg-gray-50 rounded-md transition-colors"
+          >
+            <FolderOpen size={16} />
+            <span>Open</span>
+          </button>
+          <button 
+            onClick={handleExecute}
+            disabled={isExecuting}
+            className={`flex items-center space-x-2 px-4 py-2 text-sm font-medium text-white rounded-md transition-colors shadow-sm ${isExecuting ? 'bg-gray-400' : 'bg-[#0052CC] hover:bg-[#0065FF]'}`}
+          >
+            <Play size={16} fill="currentColor" />
+            <span>{isExecuting ? 'Running...' : 'Execute Workflow'}</span>
           </button>
         </div>
       </header>
@@ -169,19 +273,19 @@ function Dashboard() {
 
             <h3 className="text-xs font-semibold text-[#6B778C] uppercase tracking-wider mb-3">Transformations</h3>
             <div className="space-y-2 mb-6">
-              <div draggable onDragStart={(e) => onDragStart(e, 'default', 'Filter Records')} className="flex items-center space-x-3 p-3 bg-white border border-[#DFE1E6] hover:border-[#6554C0] hover:shadow-sm rounded-md cursor-grab transition-all">
+              <div draggable onDragStart={(e) => onDragStart(e, 'default', 'Filter Records', 'filter')} className="flex items-center space-x-3 p-3 bg-white border border-[#DFE1E6] hover:border-[#6554C0] hover:shadow-sm rounded-md cursor-grab transition-all">
                 <div className="p-1.5 bg-purple-50 text-[#6554C0] rounded">
                   <Filter size={16} />
                 </div>
                 <span className="text-sm font-medium text-gray-700">Filter Records</span>
               </div>
-              <div draggable onDragStart={(e) => onDragStart(e, 'default', 'Combine Datasets')} className="flex items-center space-x-3 p-3 bg-white border border-[#DFE1E6] hover:border-[#6554C0] hover:shadow-sm rounded-md cursor-grab transition-all">
+              <div draggable onDragStart={(e) => onDragStart(e, 'default', 'Combine Datasets', 'combine')} className="flex items-center space-x-3 p-3 bg-white border border-[#DFE1E6] hover:border-[#6554C0] hover:shadow-sm rounded-md cursor-grab transition-all">
                 <div className="p-1.5 bg-purple-50 text-[#6554C0] rounded">
                   <ArrowRightLeft size={16} />
                 </div>
                 <span className="text-sm font-medium text-gray-700">Combine Datasets</span>
               </div>
-              <div draggable onDragStart={(e) => onDragStart(e, 'default', 'Clean & Format')} className="flex items-center space-x-3 p-3 bg-white border border-[#DFE1E6] hover:border-[#6554C0] hover:shadow-sm rounded-md cursor-grab transition-all">
+              <div draggable onDragStart={(e) => onDragStart(e, 'default', 'Clean & Format', 'clean')} className="flex items-center space-x-3 p-3 bg-white border border-[#DFE1E6] hover:border-[#6554C0] hover:shadow-sm rounded-md cursor-grab transition-all">
                 <div className="p-1.5 bg-purple-50 text-[#6554C0] rounded">
                   <Settings size={16} />
                 </div>
@@ -214,17 +318,22 @@ function Dashboard() {
               <h2 className="text-sm font-semibold text-gray-800">Node Properties</h2>
             </div>
             <div className="p-4 flex-1">
-              <h3 className="text-base font-medium text-[#171717] mb-2">
+              <h3 className="text-base font-medium text-[#171717] mb-2 flex items-center justify-between">
                 <input 
                   type="text" 
                   value={String(selectedNode.data?.label || '')} 
                   onChange={(e) => setSelectedNode({ ...selectedNode, data: { ...selectedNode.data, label: e.target.value } })}
-                  className="w-full bg-transparent border-none focus:outline-none focus:ring-0 p-0 font-medium text-lg placeholder-gray-400"
+                  className="flex-1 bg-transparent border-none focus:outline-none focus:ring-0 p-0 font-medium text-lg placeholder-gray-400"
                   placeholder="Node Label"
                 />
+                {selectedNode.data?.rowCount !== undefined && (
+                  <span className="ml-2 text-[10px] bg-[#EAE6FF] text-[#403294] px-2 py-0.5 rounded-full font-bold whitespace-nowrap">
+                    {String(selectedNode.data.rowCount)} rows
+                  </span>
+                )}
               </h3>
               
-              {selectedNode.type === 'input' && typeof selectedNode.data?.config === 'object' && selectedNode.data.config !== null && (
+              {selectedNode && selectedNode.type === 'input' && typeof selectedNode.data?.config === 'object' && selectedNode.data.config !== null && (
                 <div className="space-y-4">
                   <div>
                     <label className="block text-xs font-semibold text-[#6B778C] mb-1">File Upload</label>
@@ -294,70 +403,193 @@ function Dashboard() {
 
               {selectedNode.type === 'default' && typeof selectedNode.data?.config === 'object' && selectedNode.data.config !== null && (
                 <div className="space-y-4">
-                  <div>
-                    <label className="block text-xs font-semibold text-[#6B778C] mb-1">Column to Filter</label>
-                    <select 
-                      value={String((selectedNode.data.config as Record<string, unknown>)?.column || '')} 
-                      onChange={(e) => {
-                        const updatedNode = { 
-                          ...selectedNode, 
-                          data: { 
-                            ...selectedNode.data, 
-                            config: { 
-                              ...(selectedNode.data.config as any), 
-                              column: e.target.value,
-                              operator: (selectedNode.data.config as any)?.operator || '>'
-                            } 
-                          } 
-                        };
-                        setSelectedNode(updatedNode);
-                        setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
-                      }}
-                      className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-sm text-[#171717] focus:ring-[#0052CC] focus:border-[#0052CC]"
-                    >
-                      <option value="">Select column...</option>
-                      {(selectedNode.data.config as any)?.availableColumns?.map((col: string) => (
-                        <option key={col} value={col}>{col}</option>
-                      ))}
-                      {/* Fallbacks if not detected yet */}
-                      {!((selectedNode.data.config as any)?.availableColumns) && (
-                        <>
-                          <option value="Revenue">Revenue (Default)</option>
-                          <option value="Region">Region</option>
-                        </>
+                  {/* Filter Records UI */}
+                  {selectedNode.data.subtype === 'filter' && (
+                    <>
+                      <div>
+                        <label className="block text-xs font-semibold text-[#6B778C] mb-1">Column to Filter</label>
+                        <select 
+                          value={String((selectedNode.data.config as Record<string, unknown>)?.column || '')} 
+                          onChange={(e) => {
+                            const updatedNode = { 
+                              ...selectedNode, 
+                              data: { 
+                                ...selectedNode.data, 
+                                config: { 
+                                  ...(selectedNode.data.config as any), 
+                                  column: e.target.value
+                                } 
+                              } 
+                            };
+                            setSelectedNode(updatedNode);
+                            setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
+                          }}
+                          className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-sm text-[#171717] focus:ring-[#0052CC] focus:border-[#0052CC]"
+                        >
+                          {getUpstreamColumns(selectedNode.id).map((col: string) => (
+                            <option key={col} value={col}>{col}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-[#6B778C] mb-1">Condition</label>
+                        <select 
+                          value={String((selectedNode.data.config as Record<string, unknown>)?.operator || '==')}
+                          onChange={(e) => {
+                            const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), operator: e.target.value } } };
+                            setSelectedNode(updatedNode);
+                            setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
+                          }}
+                          className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-sm text-[#171717] focus:ring-[#0052CC] focus:border-[#0052CC]"
+                        >
+                          <option value="==">is equal to</option>
+                          <option value="!=">is not equal to</option>
+                          <option value=">">is greater than</option>
+                          <option value="<">is less than</option>
+                          <option value=">=">is greater or equal</option>
+                          <option value="<=">is less or equal</option>
+                          <option value="contains">contains</option>
+                          <option value="starts_with">starts with</option>
+                          <option value="ends_with">ends with</option>
+                          <option value="is_null">is empty / null</option>
+                          <option value="is_not_null">is not empty</option>
+                          <option value="in">is in list (a,b,c)</option>
+                        </select>
+                      </div>
+                      {!['is_null', 'is_not_null'].includes(String((selectedNode.data.config as any)?.operator)) && (
+                        <div>
+                          <label className="block text-xs font-semibold text-[#6B778C] mb-1">Value</label>
+                          <input 
+                            type="text" 
+                            value={String((selectedNode.data.config as Record<string, unknown>)?.value || '')} 
+                            onChange={(e) => {
+                              const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), value: e.target.value } } };
+                              setSelectedNode(updatedNode);
+                              setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
+                            }}
+                            className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-sm text-[#171717] focus:ring-[#0052CC] focus:border-[#0052CC]" 
+                          />
+                        </div>
                       )}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-[#6B778C] mb-1">Condition</label>
-                    <select 
-                      value={String((selectedNode.data.config as Record<string, unknown>)?.operator || '>')}
-                      onChange={(e) => {
-                        const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), operator: e.target.value } } };
-                        setSelectedNode(updatedNode);
-                        setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
-                      }}
-                      className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-sm text-[#171717] focus:ring-[#0052CC] focus:border-[#0052CC]"
-                    >
-                      <option value=">">is greater than</option>
-                      <option value="<">is less than</option>
-                      <option value="=">is equal to</option>
-                      <option value="contains">contains</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-[#6B778C] mb-1">Value</label>
-                    <input 
-                      type="text" 
-                      value={String((selectedNode.data.config as Record<string, unknown>)?.value || '')} 
-                      onChange={(e) => {
-                        const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), value: e.target.value } } };
-                        setSelectedNode(updatedNode);
-                        setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
-                      }}
-                      className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-sm text-[#171717] focus:ring-[#0052CC] focus:border-[#0052CC]" 
-                    />
-                  </div>
+                    </>
+                  )}
+
+                  {/* Combine Datasets UI */}
+                  {selectedNode.data.subtype === 'combine' && (
+                    <>
+                      <div>
+                        <label className="block text-xs font-semibold text-[#6B778C] mb-1">Join Type</label>
+                        <select 
+                          value={String((selectedNode.data.config as Record<string, unknown>)?.joinType || 'inner')}
+                          onChange={(e) => {
+                            const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), joinType: e.target.value } } };
+                            setSelectedNode(updatedNode);
+                            setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
+                          }}
+                          className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-sm text-[#171717] focus:ring-[#0052CC] focus:border-[#0052CC]"
+                        >
+                          <option value="inner">Inner Join</option>
+                          <option value="left">Left Join</option>
+                          <option value="right">Right Join</option>
+                          <option value="full">Full Outer Join</option>
+                          <option value="union">Union (Append)</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-[#6B778C] mb-1">Join Column</label>
+                        <select 
+                          value={String((selectedNode.data.config as Record<string, unknown>)?.column || '')} 
+                          onChange={(e) => {
+                            const updatedNode = { 
+                              ...selectedNode, 
+                              data: { 
+                                ...selectedNode.data, 
+                                config: { 
+                                  ...(selectedNode.data.config as any), 
+                                  column: e.target.value
+                                } 
+                              } 
+                            };
+                            setSelectedNode(updatedNode);
+                            setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
+                          }}
+                          className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-sm text-[#171717] focus:ring-[#0052CC] focus:border-[#0052CC]"
+                        >
+                          <option value="">Select column...</option>
+                          {getUpstreamColumns(selectedNode.id).map((col: string) => (
+                            <option key={col} value={col}>{col}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </>
+                  )}
+
+                  {/* Clean & Format UI */}
+                  {selectedNode.data.subtype === 'clean' && (
+                    <>
+                      <div>
+                        <label className="block text-xs font-semibold text-[#6B778C] mb-1">Target Column</label>
+                        <select 
+                          value={String((selectedNode.data.config as Record<string, unknown>)?.column || '')} 
+                          onChange={(e) => {
+                            const updatedNode = { 
+                              ...selectedNode, 
+                              data: { 
+                                ...selectedNode.data, 
+                                config: { 
+                                  ...(selectedNode.data.config as any), 
+                                  column: e.target.value
+                                } 
+                              } 
+                            };
+                            setSelectedNode(updatedNode);
+                            setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
+                          }}
+                          className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-sm text-[#171717] focus:ring-[#0052CC] focus:border-[#0052CC]"
+                        >
+                          <option value="">Select column...</option>
+                          {((selectedNode.data.config as any)?.availableColumns || getUpstreamColumns(selectedNode.id))?.map((col: string) => (
+                            <option key={col} value={col}>{col}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-[#6B778C] mb-1">Operation</label>
+                        <select 
+                          value={String((selectedNode.data.config as Record<string, unknown>)?.operation || 'trim')}
+                          onChange={(e) => {
+                            const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), operation: e.target.value } } };
+                            setSelectedNode(updatedNode);
+                            setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
+                          }}
+                          className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-sm text-[#171717] focus:ring-[#0052CC] focus:border-[#0052CC]"
+                        >
+                          <option value="trim">Trim Whitespace</option>
+                          <option value="upper">Uppercase</option>
+                          <option value="lower">Lowercase</option>
+                          <option value="numeric">Remove non-numeric characters</option>
+                          <option value="replace_null">Replace empty with value</option>
+                          <option value="to_date">Convert to Date</option>
+                        </select>
+                      </div>
+                      {String((selectedNode.data.config as any)?.operation) === 'replace_null' && (
+                        <div>
+                          <label className="block text-xs font-semibold text-[#6B778C] mb-1">New Value</label>
+                          <input 
+                            type="text" 
+                            placeholder="Replacement text"
+                            value={String((selectedNode.data.config as Record<string, unknown>)?.newValue || '')} 
+                            onChange={(e) => {
+                              const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), newValue: e.target.value } } };
+                              setSelectedNode(updatedNode);
+                              setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
+                            }}
+                            className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-sm text-[#171717] focus:ring-[#0052CC] focus:border-[#0052CC]" 
+                          />
+                        </div>
+                      )}
+                    </>
+                  )}
                 </div>
               )}
 
@@ -406,6 +638,110 @@ function Dashboard() {
           </aside>
         )}
       </div>
+
+      {/* Execution Result Preview Panel */}
+      {executionResult && (
+        <div className="h-64 border-t border-[#DFE1E6] bg-white flex flex-col animate-in slide-in-from-bottom duration-300">
+          <div className="flex items-center justify-between px-4 py-2 border-b border-[#DFE1E6] bg-[#FAFBFC]">
+            <div className="flex items-center space-x-4">
+              <h4 className="text-xs font-bold text-[#172B4D] uppercase tracking-wider">Data Preview ({executionResult.row_count} total rows)</h4>
+              <span className="text-[10px] bg-[#EAE6FF] text-[#403294] px-2 py-0.5 rounded-full font-bold">Showing first 50 rows</span>
+            </div>
+            <button 
+              onClick={() => setExecutionResult(null)}
+              className="text-[#6B778C] hover:text-[#172B4D]"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+            </button>
+          </div>
+          <div className="flex-1 overflow-auto">
+            <table className="w-full text-left border-collapse min-w-max">
+              <thead className="sticky top-0 bg-white shadow-sm z-10">
+                <tr>
+                  {executionResult.columns?.map((col: string) => (
+                    <th key={col} className="px-4 py-2 text-xs font-bold text-[#6B778C] border-b border-r border-[#DFE1E6] bg-gray-50 uppercase tracking-tight">
+                      {col}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {executionResult.preview?.map((row: any, i: number) => (
+                  <tr key={i} className="hover:bg-[#F4F5F7] transition-colors border-b border-[#DFE1E6]">
+                    {executionResult.columns?.map((col: string) => (
+                      <td key={col} className="px-4 py-2 text-sm text-[#172B4D] border-r border-[#DFE1E6] font-inter">
+                        {String(row[col])}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Save Modal */}
+      {isSaveModalOpen && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-6 border border-[#DFE1E6] animate-in fade-in zoom-in duration-200">
+            <h3 className="text-lg font-bold text-[#172B4D] mb-4">Save Pipeline</h3>
+            <p className="text-sm text-[#6B778C] mb-4">Enter a name for your data processing pipeline.</p>
+            <input
+              autoFocus
+              type="text"
+              className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-sm text-[#171717] focus:ring-[#0052CC] focus:border-[#0052CC] mb-6 outline-none"
+              placeholder="e.g., Weekly Sales Stats"
+              value={workflowName}
+              onChange={(e) => setWorkflowName(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') handleSaveWorkflow(); }}
+            />
+            <div className="flex justify-end space-x-3">
+              <button onClick={() => setIsSaveModalOpen(false)} className="px-4 py-2 text-sm text-[#6B778C] hover:bg-gray-100 rounded-md transition-colors">Cancel</button>
+              <button 
+                onClick={handleSaveWorkflow}
+                disabled={!workflowName}
+                className="px-4 py-2 text-sm bg-[#0052CC] text-white font-medium rounded-md hover:bg-[#0065FF] disabled:opacity-50 transition-colors shadow-sm"
+              >
+                Save Pipeline
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Load Modal */}
+      {isLoadModalOpen && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-lg p-6 border border-[#DFE1E6] animate-in fade-in zoom-in duration-200">
+            <h3 className="text-lg font-bold text-[#172B4D] mb-4 font-inter">Open Pipeline</h3>
+            {availableWorkflows.length === 0 ? (
+              <p className="text-sm text-[#6B778C] mb-6">No saved pipelines found on server.</p>
+            ) : (
+              <div className="space-y-2 mb-6 max-h-[350px] overflow-y-auto px-1">
+                {availableWorkflows.map(name => (
+                  <button
+                    key={name}
+                    onClick={() => handleLoadWorkflow(name)}
+                    className="w-full text-left px-4 py-3 text-sm text-[#172B4D] hover:bg-[#F4F5F7] border border-[#DFE1E6] rounded-md transition-all flex items-center justify-between group hover:border-[#0052CC]"
+                  >
+                    <span className="font-medium">{name}</span>
+                    <FolderOpen size={14} className="text-[#6B778C] opacity-0 group-hover:opacity-100 transition-opacity" />
+                  </button>
+                ))}
+              </div>
+            )}
+            <div className="flex justify-end">
+              <button 
+                onClick={() => setIsLoadModalOpen(false)} 
+                className="px-4 py-2 text-sm text-[#6B778C] hover:bg-gray-100 rounded-md transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

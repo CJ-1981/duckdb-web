@@ -15,9 +15,57 @@ import {
   Node,
   OnSelectionChangeParams,
   useReactFlow,
-  ReactFlowProvider
+  ReactFlowProvider,
+  Handle,
+  Position
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
+
+const CustomNode = ({ data, type, selected }: any) => {
+  let borderColor = '#6554C0';
+  if (type === 'input') borderColor = '#0052CC';
+  if (type === 'output') borderColor = '#36B37E';
+
+  return (
+    <div 
+      className={`bg-white border-2 rounded-md p-3 shadow-lg font-medium text-gray-800 text-sm text-center w-[220px] transition-all duration-200 ${selected ? 'ring-2 ring-offset-2 ring-blue-400 scale-[1.02] shadow-xl' : ''}`} 
+      style={{ borderColor }}
+    >
+      <style>{`
+        .react-flow__node {
+          background: none !important;
+          border: none !important;
+          box-shadow: none !important;
+          padding: 0 !important;
+        }
+        .react-flow__handle {
+          background: #DFE1E6 !important;
+        }
+      `}</style>
+      <Handle type="target" position={Position.Top} className="!w-2.5 !h-2.5 !bg-gray-300 border-2 border-white rounded-full -top-1.5" />
+      <div className="flex flex-col items-center space-y-1.5">
+        <div className="flex items-center space-x-2">
+          {type === 'input' && <span className="w-1.5 h-6 bg-[#0052CC] rounded-full"></span>}
+          {type === 'output' && <span className="w-1.5 h-6 bg-[#36B37E] rounded-full"></span>}
+          <span className="text-sm font-bold tracking-tight">{data.label}</span>
+        </div>
+        {data.rowCount !== undefined && (
+          <div className="flex items-center space-x-1.5 bg-[#EAE6FF] text-[#403294] px-3 py-1 rounded-full font-bold shadow-sm border border-[#D1CAFF]">
+            <span className="text-[10px] uppercase opacity-60">Rows</span>
+            <span className="text-xs">{data.rowCount.toLocaleString()}</span>
+          </div>
+        )}
+      </div>
+      <Handle type="source" position={Position.Bottom} className="!w-2.5 !h-2.5 !bg-gray-300 border-2 border-white rounded-full -bottom-1.5" />
+    </div>
+  );
+};
+
+const nodeTypes = {
+  input: CustomNode,
+  default: CustomNode,
+  output: CustomNode,
+};
 
 const initialNodes: Node[] = [];
 
@@ -64,24 +112,18 @@ function WorkspaceCanvas({ onNodeSelect }: WorkspaceCanvasProps) {
         return;
       }
 
-      const { type, label } = JSON.parse(payload);
+      const { type, label, subtype } = JSON.parse(payload);
 
       const position = screenToFlowPosition({
         x: event.clientX,
         y: event.clientY,
       });
 
-      let className = 'bg-white border-2 rounded-md p-3 shadow-md font-medium text-gray-800 text-sm text-center w-[180px] transition-all';
-      if (type === 'input') className += ' border-[#0052CC]';
-      else if (type === 'output') className += ' border-[#36B37E]';
-      else className += ' border-[#6554C0]';
-
       const newNode: Node = {
         id: `${type}-${Date.now()}`,
         type,
         position,
-        data: { label, config: {} },
-        className,
+        data: { label, subtype, config: {} },
       };
 
       setNodes((nds) => nds.concat(newNode));
@@ -100,6 +142,7 @@ function WorkspaceCanvas({ onNodeSelect }: WorkspaceCanvasProps) {
         onSelectionChange={onSelectionChange}
         onDrop={onDrop}
         onDragOver={onDragOver}
+        nodeTypes={nodeTypes}
         fitView
         className="bg-[#FAFBFC]"
       >

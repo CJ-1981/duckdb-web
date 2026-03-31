@@ -1,4 +1,4 @@
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000/api/v1';
 
 export async function executeWorkflow(nodes: any[], edges: any[]) {
   try {
@@ -50,4 +50,26 @@ export async function uploadFile(file: File) {
     console.error('Failed to upload file:', error);
     throw error;
   }
+}
+
+export async function saveWorkflow(name: string, nodes: any[], edges: any[]) {
+  const response = await fetch(`${API_BASE_URL}/workflows/save?name=${encodeURIComponent(name)}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ nodes, edges }),
+  });
+  if (!response.ok) throw new Error("Save failed");
+  return await response.json();
+}
+
+export async function listSavedWorkflows() {
+  const responseArr = await fetch(`${API_BASE_URL}/workflows/list`);
+  if (!responseArr.ok) throw new Error("List failed");
+  return await responseArr.json();
+}
+
+export async function loadWorkflowGraph(name: string) {
+  const response = await fetch(`${API_BASE_URL}/workflows/load/${name}`);
+  if (!response.ok) throw new Error("Load failed");
+  return await response.json();
 }
