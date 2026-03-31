@@ -24,6 +24,9 @@ function buildSql(subtype: string, cfg: any): string {
   const T = '<prev_table>';
   switch (subtype) {
     case 'filter': {
+      if (cfg?.isAdvanced && cfg?.customWhere) {
+        return `SELECT *\nFROM ${T}\nWHERE ${cfg.customWhere}`;
+      }
       const col = cfg?.column ? `"${cfg.column}"` : '/* column */';
       const op = cfg?.operator || '==';
       const val = String(cfg?.value || '');
@@ -42,6 +45,9 @@ function buildSql(subtype: string, cfg: any): string {
     }
     case 'combine': {
       const jt = (cfg?.joinType || 'inner').toUpperCase();
+      if (['UNION', 'UNION ALL', 'APPEND'].includes(jt)) {
+        return `SELECT * FROM <left_table>\nUNION ALL\nSELECT * FROM <right_table>`;
+      }
       const lc = cfg?.leftColumn ? `"${cfg.leftColumn}"` : '/* left_key */';
       const rc = cfg?.rightColumn ? `"${cfg.rightColumn}"` : '/* right_key */';
       return `SELECT *\nFROM <left_table>\n${jt} JOIN <right_table>\n  ON <left_table>.${lc} = <right_table>.${rc}`;
@@ -821,136 +827,124 @@ function Dashboard() {
 
               {selectedNode.type === 'default' && typeof selectedNode.data?.config === 'object' && selectedNode.data.config !== null && (
                 <div className="space-y-4">
-                  {/* Filter Records UI */}
-                  {selectedNode.data.subtype === 'filter' && (
-                    <>
-                      <div>
-                        <label className="block text-xs font-semibold text-[#6B778C] mb-1">Column to Filter</label>
-                        <select 
-                          value={String((selectedNode.data.config as Record<string, unknown>)?.column || '')} 
-                          onChange={(e) => {
-                            const updatedNode = { 
-                              ...selectedNode, 
-                              data: { 
-                                ...selectedNode.data, 
-                                config: { 
-                                  ...(selectedNode.data.config as any), 
-                                  column: e.target.value
-                                } 
-                              } 
-                            };
-                            setSelectedNode(updatedNode);
-                            setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
-                          }}
-                          className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-sm text-[#171717] focus:ring-[#0052CC] focus:border-[#0052CC]"
-                        >
-                          {getUpstreamColumns(selectedNode.id).map((col: string) => (
-                            <option key={col} value={col}>{col}</option>
-                          ))}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-xs font-semibold text-[#6B778C] mb-1">Condition</label>
-                        <select 
-                          value={String((selectedNode.data.config as Record<string, unknown>)?.operator || '==')}
-                          onChange={(e) => {
-                            const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), operator: e.target.value } } };
-                            setSelectedNode(updatedNode);
-                            setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
-                          }}
-                          className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-sm text-[#171717] focus:ring-[#0052CC] focus:border-[#0052CC]"
-                        >
-                          <option value="==">is equal to</option>
-                          <option value="!=">is not equal to</option>
-                          <option value=">">is greater than</option>
-                          <option value="<">is less than</option>
-                          <option value=">=">is greater or equal</option>
-                          <option value="<=">is less or equal</option>
-                          <option value="contains">contains</option>
-                          <option value="not_contains">does not contain</option>
-                          <option value="starts_with">starts with</option>
-                          <option value="ends_with">ends with</option>
-                          <option value="is_null">is empty / null</option>
-                          <option value="is_not_null">is not empty</option>
-                          <option value="in">is in list (a,b,c)</option>
-                          <option value="not_in">is NOT in list (a,b,c)</option>
-                        </select>
-                      </div>
-                      {!['is_null', 'is_not_null'].includes(String((selectedNode.data.config as any)?.operator)) && (
-                        <div>
-                          <label className="block text-xs font-semibold text-[#6B778C] mb-1">Value</label>
-                          <input 
-                            type="text" 
-                            value={String((selectedNode.data.config as Record<string, unknown>)?.value || '')} 
-                            onChange={(e) => {
-                              const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), value: e.target.value } } };
-                              setSelectedNode(updatedNode);
-                              setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
-                            }}
-                            className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-sm text-[#171717] focus:ring-[#0052CC] focus:border-[#0052CC]" 
-                          />
+                   {/* Filter Records UI */}
+                   {selectedNode.data.subtype === 'filter' && (
+                     <div className="space-y-4">
+                        <div className="flex items-center justify-between border-b border-gray-100 pb-2">
+                           <label className="text-[10px] uppercase font-bold text-[#6B778C]">Filter Configuration</label>
+                           <button 
+                             onClick={() => {
+                               const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), isAdvanced: !(selectedNode.data.config as any)?.isAdvanced } } };
+                               setSelectedNode(updatedNode);
+                               setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
+                             }}
+                             className={`text-[9px] px-2 py-0.5 rounded font-bold transition-all border shadow-sm flex items-center gap-1 ${
+                               (selectedNode.data.config as any)?.isAdvanced 
+                                 ? 'bg-[#0052CC] text-white border-[#0052CC] hover:bg-[#0065FF] hover:border-[#0065FF]' 
+                                 : 'bg-white text-[#6B778C] border-[#DFE1E6] hover:bg-gray-50 hover:text-[#171717] hover:border-[#C1C7D0]'
+                             }`}
+                           >
+                             <SlidersHorizontal size={8} />
+                             {(selectedNode.data.config as any)?.isAdvanced ? 'SQL MODE' : 'SIMPLE'}
+                           </button>
                         </div>
-                      )}
-                    <SqlPreview sql={buildSql('filter', selectedNode.data.config as any)} />
-                    </>
-                  )}
+
+                        {(selectedNode.data.config as any)?.isAdvanced ? (
+                           <div>
+                             <label className="block text-xs font-semibold text-[#6B778C] mb-1">Raw WHERE Clause</label>
+                             <textarea 
+                               rows={3}
+                               placeholder="e.g. status = 'active' OR priority = 'high'"
+                               value={String((selectedNode.data.config as any)?.customWhere || '')}
+                               onChange={(e) => {
+                                  const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), customWhere: e.target.value } } };
+                                  setSelectedNode(updatedNode);
+                                  setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
+                               }}
+                               className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-xs font-mono outline-none focus:ring-1 focus:ring-[#0052CC]"
+                             />
+                             <p className="text-[10px] text-[#6B778C] mt-1 italic">Write the condition after the WHERE keyword.</p>
+                           </div>
+                        ) : (
+                          <>
+                           <div>
+                             <label className="block text-xs font-semibold text-[#6B778C] mb-1">Column to Filter</label>
+                             <select 
+                               value={String((selectedNode.data.config as Record<string, unknown>)?.column || '')} 
+                               onChange={(e) => {
+                                 const updatedNode = { 
+                                   ...selectedNode, 
+                                   data: { 
+                                     ...selectedNode.data, 
+                                     config: { 
+                                       ...(selectedNode.data.config as any), 
+                                       column: e.target.value
+                                     } 
+                                   } 
+                                 };
+                                 setSelectedNode(updatedNode);
+                                 setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
+                               }}
+                               className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-sm text-[#171717] focus:ring-[#0052CC] focus:border-[#0052CC]"
+                             >
+                               {getUpstreamColumns(selectedNode.id).map((col: string) => (
+                                 <option key={col} value={col}>{col}</option>
+                               ))}
+                             </select>
+                           </div>
+                           <div>
+                             <label className="block text-xs font-semibold text-[#6B778C] mb-1">Condition</label>
+                             <select 
+                               value={String((selectedNode.data.config as Record<string, unknown>)?.operator || '==')}
+                               onChange={(e) => {
+                                 const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), operator: e.target.value } } };
+                                 setSelectedNode(updatedNode);
+                                 setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
+                               }}
+                               className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-sm text-[#171717] focus:ring-[#0052CC] focus:border-[#0052CC]"
+                             >
+                               <option value="==">is equal to</option>
+                               <option value="!=">is not equal to</option>
+                               <option value=">">is greater than</option>
+                               <option value="<">is less than</option>
+                               <option value=">=">is greater or equal</option>
+                               <option value="<=">is less or equal</option>
+                               <option value="contains">contains</option>
+                               <option value="not_contains">does not contain</option>
+                               <option value="starts_with">starts with</option>
+                               <option value="ends_with">ends with</option>
+                               <option value="is_null">is empty / null</option>
+                               <option value="is_not_null">is not empty</option>
+                               <option value="in">is in list (a,b,c)</option>
+                               <option value="not_in">is NOT in list (a,b,c)</option>
+                             </select>
+                           </div>
+                           {!['is_null', 'is_not_null'].includes(String((selectedNode.data.config as any)?.operator)) && (
+                             <div>
+                               <label className="block text-xs font-semibold text-[#6B778C] mb-1">Value</label>
+                               <input 
+                                 type="text" 
+                                 value={String((selectedNode.data.config as Record<string, unknown>)?.value || '')} 
+                                 onChange={(e) => {
+                                   const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), value: e.target.value } } };
+                                   setSelectedNode(updatedNode);
+                                   setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
+                                 }}
+                                 className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-sm text-[#171717] focus:ring-[#0052CC] focus:border-[#0052CC]" 
+                               />
+                             </div>
+                           )}
+                          </>
+                        )}
+                        <SqlPreview sql={buildSql('filter', selectedNode.data.config as any)} />
+                     </div>
+                   )}
 
                   {/* Combine Datasets UI */}
                   {selectedNode.data.subtype === 'combine' && (
-                    <>
-                      <div>
-                        <label className="block text-xs font-semibold text-[#6B778C] mb-1">Join Type</label>
-                        <select 
-                          value={String((selectedNode.data.config as Record<string, unknown>)?.joinType || 'inner')}
-                          onChange={(e) => {
-                            const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), joinType: e.target.value } } };
-                            setSelectedNode(updatedNode);
-                            setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
-                          }}
-                          className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-sm text-[#171717] focus:ring-[#0052CC] focus:border-[#0052CC]"
-                        >
-                          <option value="inner">Inner Join</option>
-                          <option value="left">Left Join</option>
-                          <option value="right">Right Join</option>
-                          <option value="full">Full Outer Join</option>
-                          <option value="union">Union (Append)</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-xs font-semibold text-[#6B778C] mb-1">Join Column</label>
-                        <select 
-                          value={String((selectedNode.data.config as Record<string, unknown>)?.column || '')} 
-                          onChange={(e) => {
-                            const updatedNode = { 
-                              ...selectedNode, 
-                              data: { 
-                                ...selectedNode.data, 
-                                config: { 
-                                  ...(selectedNode.data.config as any), 
-                                  column: e.target.value
-                                } 
-                              } 
-                            };
-                            setSelectedNode(updatedNode);
-                            setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
-                          }}
-                          className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-sm text-[#171717] focus:ring-[#0052CC] focus:border-[#0052CC]"
-                        >
-                          <option value="">Select column...</option>
-                          {getUpstreamColumns(selectedNode.id).map((col: string) => (
-                            <option key={col} value={col}>{col}</option>
-                          ))}
-                        </select>
-                      </div>
-                    <SqlPreview sql={buildSql('combine', selectedNode.data.config as any)} />
-                    </>
-                  )}
-
-                  {/* Combine / Join Datasets UI */}
-                  {selectedNode.data.subtype === 'combine' && (
                     <div className="space-y-4">
                       <div>
-                        <label className="block text-xs font-semibold text-[#6B778C] mb-1">Join Type</label>
+                        <label className="block text-xs font-semibold text-[#6B778C] mb-1">Merge Type</label>
                         <select 
                           value={String((selectedNode.data.config as Record<string, unknown>)?.joinType || 'inner')}
                           onChange={(e) => {
@@ -960,56 +954,66 @@ function Dashboard() {
                           }}
                           className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-sm text-[#171717] focus:ring-[#0052CC] focus:border-[#0052CC]"
                         >
-                          <option value="inner">Inner Join (Matching rows only)</option>
-                          <option value="left">Left Join (All rows from first input)</option>
-                          <option value="right">Right Join (All rows from second input)</option>
-                          <option value="full">Full Outer Join (All rows from both)</option>
+                          <optgroup label="Join (Combine Columns)">
+                            <option value="inner">Inner Join (Matched rows only)</option>
+                            <option value="left">Left Join (All from first input)</option>
+                            <option value="right">Right Join (All from second input)</option>
+                            <option value="full">Full Outer Join (All rows)</option>
+                          </optgroup>
+                          <optgroup label="Append (Combine Rows)">
+                            <option value="union">Union (Merge unique rows)</option>
+                            <option value="union_all">Union All (Merge all rows)</option>
+                          </optgroup>
                         </select>
                       </div>
-                      
-                      <div className="bg-[#F4F5F7] p-3 rounded-md space-y-3">
-                        <h4 className="text-[10px] font-bold text-[#6B778C] uppercase tracking-wider">Join Conditions</h4>
-                        <div className="grid grid-cols-2 gap-3 items-center">
-                          <div>
-                            <label className="block text-[9px] font-bold text-[#6B778C] mb-1 tracking-tighter uppercase">Left Input Key</label>
-                            <select 
-                              value={String((selectedNode.data.config as any)?.leftColumn || '')}
-                              onChange={(e) => {
-                                const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), leftColumn: e.target.value } } };
-                                setSelectedNode(updatedNode);
-                                setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
-                              }}
-                              className="w-full border border-[#DFE1E6] rounded-md px-2 py-1.5 text-xs text-[#171717]"
-                            >
-                              <option value="">Select col...</option>
-                              {getUpstreamColumns(selectedNode.id).map((col: string) => (
-                                <option key={col} value={col}>{col}</option>
-                              ))}
-                            </select>
-                          </div>
-                          <div className="relative pt-4 text-center">
-                            <span className="text-sm font-bold text-[#6B778C]">=</span>
-                          </div>
-                          <div>
-                            <label className="block text-[9px] font-bold text-[#6B778C] mb-1 tracking-tighter uppercase">Right Input Key</label>
-                            <select 
-                              value={String((selectedNode.data.config as any)?.rightColumn || '')}
-                              onChange={(e) => {
-                                const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), rightColumn: e.target.value } } };
-                                setSelectedNode(updatedNode);
-                                setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
-                              }}
-                              className="w-full border border-[#DFE1E6] rounded-md px-2 py-1.5 text-xs text-[#171717]"
-                            >
-                              <option value="">Select col...</option>
-                              {getUpstreamColumns(selectedNode.id).map((col: string) => (
-                                <option key={col} value={col}>{col}</option>
-                              ))}
-                            </select>
+
+                      {/* Columns settings ONLY shown for Joins, not Unions */}
+                      {!['union', 'union_all', 'append'].includes(String((selectedNode.data.config as any)?.joinType || 'inner')) && (
+                        <div className="bg-[#F4F5F7] p-3 rounded-md space-y-3">
+                          <h4 className="text-[10px] font-bold text-[#6B778C] uppercase tracking-wider">Join Conditions</h4>
+                          <div className="grid grid-cols-2 gap-3 items-center">
+                            <div>
+                              <label className="block text-[9px] font-bold text-[#6B778C] mb-1 tracking-tighter uppercase">Left Input Key</label>
+                              <select 
+                                value={String((selectedNode.data.config as any)?.leftColumn || '')}
+                                onChange={(e) => {
+                                  const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), leftColumn: e.target.value } } };
+                                  setSelectedNode(updatedNode);
+                                  setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
+                                }}
+                                className="w-full border border-[#DFE1E6] rounded-md px-2 py-1.5 text-xs text-[#171717]"
+                              >
+                                <option value="">Select col...</option>
+                                {getUpstreamColumns(getEdges().filter(e => e.target === selectedNode.id)[0]?.source).map((col: string) => (
+                                  <option key={col} value={col}>{col}</option>
+                                ))}
+                              </select>
+                            </div>
+                            <div className="relative pt-4 text-center">
+                              <span className="text-sm font-bold text-[#6B778C]">=</span>
+                            </div>
+                            <div>
+                              <label className="block text-[9px] font-bold text-[#6B778C] mb-1 tracking-tighter uppercase">Right Input Key</label>
+                              <select 
+                                value={String((selectedNode.data.config as any)?.rightColumn || '')}
+                                onChange={(e) => {
+                                  const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), rightColumn: e.target.value } } };
+                                  setSelectedNode(updatedNode);
+                                  setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
+                                }}
+                                className="w-full border border-[#DFE1E6] rounded-md px-2 py-1.5 text-xs text-[#171717]"
+                              >
+                                <option value="">Select col...</option>
+                                {getUpstreamColumns(getEdges().filter(e => e.target === selectedNode.id)[1]?.source).map((col: string) => (
+                                  <option key={col} value={col}>{col}</option>
+                                ))}
+                              </select>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    <SqlPreview sql={buildSql('combine', selectedNode.data.config as any)} />
+                      )}
+                      
+                      <SqlPreview sql={buildSql('combine', selectedNode.data.config as any)} />
                     </div>
                   )}
 
@@ -1351,8 +1355,13 @@ function Dashboard() {
                                      setSelectedNode(updatedNode);
                                      setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
                                    }}
-                                   className={`text-[9px] px-1.5 py-0.5 rounded font-bold transition-colors ${c.isAdvanced ? 'bg-[#0052CC] text-white' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'}`}
+                                   className={`text-[9px] px-2 py-0.5 rounded font-bold transition-all border shadow-sm flex items-center gap-1 ${
+                                     c.isAdvanced 
+                                       ? 'bg-[#0052CC] text-white border-[#0052CC] hover:bg-[#0065FF] hover:border-[#0065FF]' 
+                                       : 'bg-white text-[#6B778C] border-[#DFE1E6] hover:bg-gray-50 hover:text-[#171717] hover:border-[#C1C7D0]'
+                                   }`}
                                  >
+                                   <SlidersHorizontal size={8} />
                                    {c.isAdvanced ? 'SQL MODE' : 'SIMPLE'}
                                  </button>
                                  <button className="p-1 text-red-400 hover:bg-red-50 rounded" onClick={() => {
