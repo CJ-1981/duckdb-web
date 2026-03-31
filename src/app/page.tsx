@@ -431,16 +431,6 @@ function Dashboard() {
               </div>
             </div>
             
-            <h3 className="text-xs font-semibold text-[#6B778C] uppercase tracking-wider mb-3">Analysis</h3>
-            <div className="space-y-2 mb-6">
-              <div draggable onDragStart={(e) => onDragStart(e, 'default', 'Preview Data', 'preview')} className="flex items-center space-x-3 p-3 bg-white border border-[#DFE1E6] hover:border-[#FF8B00] hover:shadow-sm rounded-md cursor-grab transition-all">
-                <div className="p-1.5 bg-orange-50 text-[#FF8B00] rounded">
-                  <Eye size={16} />
-                </div>
-                <span className="text-sm font-medium text-gray-700">Preview Data</span>
-              </div>
-            </div>
-            
             <h3 className="text-xs font-semibold text-[#6B778C] uppercase tracking-wider mb-3">Outputs</h3>
             <div className="space-y-2 mb-6">
               <div draggable onDragStart={(e) => onDragStart(e, 'output', 'Export File')} className="flex items-center space-x-3 p-3 bg-white border border-[#DFE1E6] hover:border-[#36B37E] hover:shadow-sm rounded-md cursor-grab transition-all">
