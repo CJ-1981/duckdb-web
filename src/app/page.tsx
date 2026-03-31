@@ -200,6 +200,7 @@ function Dashboard() {
   const [availableWorkflows, setAvailableWorkflows] = useState<string[]>([]);
   const [executionResult, setExecutionResult] = useState<any>(null);
   const [isExecuting, setIsExecuting] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState(false);
   const [previewHeight, setPreviewHeight] = useState(280);
   const [previewLimit, setPreviewLimit] = useState(50);
   const [nodeSamples, setNodeSamples] = useState<Record<string, any[]>>({});
@@ -408,11 +409,17 @@ function Dashboard() {
     setNodes((nds) => 
       nds.map((node) => {
         if (node.id === selectedNode.id) {
-          node.data = { ...selectedNode.data };
+          // Return a brand new object to ensure React Flow triggers a re-render
+          return { 
+            ...node, 
+            data: { ...selectedNode.data } 
+          };
         }
         return node;
       })
     );
+    setSaveSuccess(true);
+    setTimeout(() => setSaveSuccess(false), 2000);
   };
 
   const handleExecute = async () => {
@@ -1203,6 +1210,7 @@ function Dashboard() {
                                maps[idx].old = e.target.value;
                                const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), mappings: maps } } };
                                setSelectedNode(updatedNode);
+                               setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
                              }}
                              className="flex-1 text-xs border rounded p-1"
                            >
@@ -1217,6 +1225,7 @@ function Dashboard() {
                                maps[idx].new = e.target.value;
                                const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), mappings: maps } } };
                                setSelectedNode(updatedNode);
+                               setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
                              }}
                              className="flex-1 text-xs border rounded p-1"
                            />
@@ -1314,13 +1323,16 @@ function Dashboard() {
                                conds.splice(idx, 1);
                                const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), conditions: conds } } };
                                setSelectedNode(updatedNode);
-                            }}><Trash2 size={12} className="text-red-400" /></button>
+                               setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
+                             }}><Trash2 size={12} className="text-red-400" /></button>
                             <div>
                                <label className="text-[9px] uppercase font-bold text-[#6B778C]">When (Condition)</label>
                                <input value={c.when} onChange={(e) => {
                                   const conds = [...(selectedNode.data.config as any).conditions];
                                   conds[idx].when = e.target.value;
-                                  setSelectedNode({ ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), conditions: conds } } });
+                                  const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), conditions: conds } } };
+                                  setSelectedNode(updatedNode);
+                                  setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
                                }} className="w-full text-xs p-1 border rounded" placeholder="age > 20" />
                             </div>
                             <div>
@@ -1328,7 +1340,9 @@ function Dashboard() {
                                <input value={c.then} onChange={(e) => {
                                   const conds = [...(selectedNode.data.config as any).conditions];
                                   conds[idx].then = e.target.value;
-                                  setSelectedNode({ ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), conditions: conds } } });
+                                  const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), conditions: conds } } };
+                                  setSelectedNode(updatedNode);
+                                  setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
                                }} className="w-full text-xs p-1 border rounded" placeholder="'Adult'" />
                             </div>
                          </div>
@@ -1336,7 +1350,9 @@ function Dashboard() {
                        <button onClick={() => {
                           const conds = [...((selectedNode.data.config as any)?.conditions || [])];
                           conds.push({ when: '', then: '' });
-                          setSelectedNode({ ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), conditions: conds } } });
+                          const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), conditions: conds } } };
+                          setSelectedNode(updatedNode);
+                          setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
                        }} className="w-full py-1.5 border border-dashed text-xs text-[#0052CC] font-bold rounded">+ Add Case</button>
                        <div className="pt-2 border-t mt-2">
                           <label className="block text-xs font-semibold text-[#6B778C] mb-1">Else / Default Result</label>
@@ -1641,9 +1657,17 @@ function Dashboard() {
             <div className="p-4 border-t border-[#DFE1E6]">
               <button 
                 onClick={saveNodeChanges}
-                className="w-full px-4 py-2 bg-[#0052CC] hover:bg-[#0065FF] text-white text-sm font-medium rounded-md transition-colors shadow-sm"
+                disabled={saveSuccess}
+                className={`w-full px-4 py-2 text-white text-sm font-medium rounded-md transition-all shadow-sm flex items-center justify-center space-x-2 ${saveSuccess ? 'bg-[#36B37E]' : 'bg-[#0052CC] hover:bg-[#0065FF]'}`}
               >
-                Save Changes
+                {saveSuccess ? (
+                  <>
+                    <Fingerprint size={16} />
+                    <span>Saved to Canvas!</span>
+                  </>
+                ) : (
+                  <span>Save Changes</span>
+                )}
               </button>
             </div>
           </aside>
