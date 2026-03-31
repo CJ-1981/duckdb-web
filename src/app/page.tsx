@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import WorkspaceCanvas from '@/components/workflow/canvas';
-import { Database, Filter, ArrowRightLeft, Table, Settings, Play, Download, Search, LayoutDashboard, SlidersHorizontal, FileText, FileDown, Save, FolderOpen } from 'lucide-react';
+import { Database, Filter, ArrowRightLeft, Table, Settings, Play, Download, Search, LayoutDashboard, SlidersHorizontal, FileText, FileDown, Save, FolderOpen, Sigma } from 'lucide-react';
 import { Node, useReactFlow, ReactFlowProvider } from '@xyflow/react';
 import { executeWorkflow, uploadFile, saveWorkflow, listSavedWorkflows, loadWorkflowGraph } from '@/lib/api';
 
@@ -133,31 +133,61 @@ function Dashboard() {
   const getUpstreamColumns = (nodeId: string) => {
     const nodes = getNodes();
     const edges = getEdges();
-    const visited = new Set<string>();
-    const columns = new Set<string>();
     
-    const traceUpstream = (currentId: string) => {
-      if (visited.has(currentId)) return;
-      visited.add(currentId);
+    const getNodeOutputColumns = (nId: string, visited = new Set<string>()): string[] => {
+      if (visited.has(nId)) return [];
+      visited.add(nId);
       
-      // Get all incoming edges for this node
-      const incoming = edges.filter(e => e.target === currentId);
-      for (const edge of incoming) {
-        const sourceNode = nodes.find(n => n.id === edge.source);
-        if (!sourceNode) continue;
+      const node = nodes.find(n => n.id === nId);
+      if (!node) return [];
+
+      const config = node.data?.config as any;
+      const subtype = node.data?.subtype;
+
+      // 1. If it's an aggregate node, it creates a new schema
+      if (subtype === 'aggregate') {
+        const predictedCols = new Set<string>();
+        const groupBy = (config?.groupBy || "").split(',').map((c: string) => c.trim()).filter((c: string) => c);
+        const op = config?.operation || 'sum';
+        const col = config?.column || '';
+        const alias = config?.alias || (col ? `${op}_${col}` : (config?.groupBy ? '' : 'count_all'));
         
-        // If it's an input node, get its uploaded columns
-        const nodeCols = (sourceNode.data?.config as any)?.availableColumns;
-        if (Array.isArray(nodeCols)) {
-          nodeCols.forEach(c => columns.add(c));
+        groupBy.forEach((c: string) => predictedCols.add(c));
+        if (alias) predictedCols.add(alias);
+        
+        // If we have actual columns from execution, use those instead as they are more accurate
+        if (Array.isArray(config?.availableColumns) && config.availableColumns.length > 0) {
+           return config.availableColumns;
         }
         
-        // Recursively trace further upstream (e.g. from previous filters/cleaners)
-        traceUpstream(edge.source);
+        return Array.from(predictedCols);
       }
+
+      // 2. If it's an input node, use its columns
+      if (node.type === 'input') {
+        return config?.availableColumns || [];
+      }
+
+      // 3. Otherwise (Filter, Clean, etc.), trace upstream
+      const incoming = edges.filter(e => e.target === nId);
+      const upstreamCols = new Set<string>();
+      for (const edge of incoming) {
+        getNodeOutputColumns(edge.source, visited).forEach(c => upstreamCols.add(c));
+      }
+      
+      // If we have real columns from execution, they are most accurate
+      if (Array.isArray(config?.availableColumns) && config.availableColumns.length > 0) {
+        return config.availableColumns;
+      }
+      
+      return Array.from(upstreamCols);
     };
-    
-    traceUpstream(nodeId);
+
+    const incoming = edges.filter(e => e.target === nodeId);
+    const columns = new Set<string>();
+    for (const edge of incoming) {
+      getNodeOutputColumns(edge.source).forEach(c => columns.add(c));
+    }
     return Array.from(columns);
   };
 
@@ -187,8 +217,12 @@ function Dashboard() {
       setNodes((nds) => nds.map(node => ({
         ...node,
         data: {
-          ...node.data,
-          rowCount: result.node_counts?.[node.id] ?? result.row_count
+            ...node.data,
+            rowCount: result.node_counts?.[node.id] ?? result.row_count,
+            config: {
+              ...(node.data.config as any || {}),
+              availableColumns: result.node_columns?.[node.id] ?? (node.data.config as any)?.availableColumns
+            }
         }
       })));
 
@@ -199,6 +233,68 @@ function Dashboard() {
     } finally {
       setIsExecuting(false);
     }
+  };
+
+  const handleBeautify = () => {
+     const nodes = getNodes();
+     const edges = getEdges();
+     
+     if (nodes.length === 0) return;
+
+     // 1. Calculate node depths (layered DAG approach)
+     const depths: Record<string, number> = {};
+     const incoming = (nodeId: string) => edges.filter(e => e.target === nodeId);
+     
+     // Initialize depths
+     nodes.forEach(n => depths[n.id] = 0);
+
+     // Iteratively assign depths (multi-pass to handle multi-step dependencies)
+     let changed = true;
+     for (let i = 0; i < nodes.length && changed; i++) {
+        changed = false;
+        nodes.forEach(node => {
+           const predecessors = incoming(node.id);
+           if (predecessors.length > 0) {
+              const maxPrevDepth = Math.max(...predecessors.map(e => depths[e.source]));
+              if (depths[node.id] !== maxPrevDepth + 1) {
+                 depths[node.id] = maxPrevDepth + 1;
+                 changed = true;
+              }
+           }
+        });
+     }
+
+     // 2. Group nodes by depth for horizontal centering
+     const depthGroups: Record<number, string[]> = {};
+     Object.entries(depths).forEach(([id, depth]) => {
+        if (!depthGroups[depth]) depthGroups[depth] = [];
+        depthGroups[depth].push(id);
+     });
+
+     // 3. Update node positions
+     const HORIZONTAL_GAP = 280;
+     const VERTICAL_GAP = 180;
+     const CANVAS_CENTER_X = 400; // Arbitrary center
+
+     const newNodes = nodes.map(node => {
+        const depth = depths[node.id];
+        const group = depthGroups[depth];
+        const indexInGroup = group.indexOf(node.id);
+        const totalInGroup = group.length;
+
+        // Spread nodes horizontally within each depth level
+        const xOffset = (indexInGroup - (totalInGroup - 1) / 2) * HORIZONTAL_GAP;
+        
+        return {
+           ...node,
+           position: {
+              x: CANVAS_CENTER_X + xOffset,
+              y: 50 + depth * VERTICAL_GAP
+           }
+        };
+     });
+
+     setNodes(newNodes);
   };
    
   return (
@@ -215,6 +311,13 @@ function Dashboard() {
         </div>
         
         <div className="flex items-center space-x-3">
+          <button 
+            onClick={handleBeautify}
+            className="flex items-center space-x-2 px-3 py-2 text-sm font-medium text-[#0052CC] bg-white border border-[#0052CC]/30 hover:bg-blue-50 rounded-md transition-colors"
+          >
+            <SlidersHorizontal size={16} />
+            <span>Beautify Layout</span>
+          </button>
           <button 
             onClick={() => setIsSaveModalOpen(true)}
             className="flex items-center space-x-2 px-3 py-2 text-sm font-medium text-[#6B778C] bg-white border border-[#DFE1E6] hover:bg-gray-50 rounded-md transition-colors"
@@ -290,6 +393,12 @@ function Dashboard() {
                   <Settings size={16} />
                 </div>
                 <span className="text-sm font-medium text-gray-700">Clean & Format</span>
+              </div>
+              <div draggable onDragStart={(e) => onDragStart(e, 'default', 'Aggregate Data', 'aggregate')} className="flex items-center space-x-3 p-3 bg-white border border-[#DFE1E6] hover:border-[#6554C0] hover:shadow-sm rounded-md cursor-grab transition-all">
+                <div className="p-1.5 bg-purple-50 text-[#6554C0] rounded">
+                  <Sigma size={16} />
+                </div>
+                <span className="text-sm font-medium text-gray-700">Aggregate Data</span>
               </div>
             </div>
             
@@ -588,6 +697,84 @@ function Dashboard() {
                           />
                         </div>
                       )}
+                    </>
+                  )}
+
+                  {/* Aggregate Data UI */}
+                  {selectedNode.data.subtype === 'aggregate' && (
+                    <>
+                      <div>
+                        <label className="block text-xs font-semibold text-[#6B778C] mb-1">Group By (optional, comma-separated)</label>
+                        <input 
+                          type="text" 
+                          placeholder="e.g. category, region"
+                          value={String((selectedNode.data.config as Record<string, unknown>)?.groupBy || '')} 
+                          onChange={(e) => {
+                            const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), groupBy: e.target.value } } };
+                            setSelectedNode(updatedNode);
+                            setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
+                          }}
+                          className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-sm text-[#171717] focus:ring-[#0052CC] focus:border-[#0052CC]" 
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-[#6B778C] mb-1">Aggregation Column</label>
+                        <select 
+                          value={String((selectedNode.data.config as Record<string, unknown>)?.column || '')} 
+                          onChange={(e) => {
+                            const updatedNode = { 
+                              ...selectedNode, 
+                              data: { 
+                                ...selectedNode.data, 
+                                config: { 
+                                  ...(selectedNode.data.config as any), 
+                                  column: e.target.value
+                                } 
+                              } 
+                            };
+                            setSelectedNode(updatedNode);
+                            setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
+                          }}
+                          className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-sm text-[#171717] focus:ring-[#0052CC] focus:border-[#0052CC]"
+                        >
+                          <option value="">Select column...</option>
+                          {((selectedNode.data.config as any)?.availableColumns || getUpstreamColumns(selectedNode.id))?.map((col: string) => (
+                            <option key={col} value={col}>{col}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-[#6B778C] mb-1">Function</label>
+                        <select 
+                          value={String((selectedNode.data.config as Record<string, unknown>)?.operation || 'sum')}
+                          onChange={(e) => {
+                            const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), operation: e.target.value } } };
+                            setSelectedNode(updatedNode);
+                            setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
+                          }}
+                          className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-sm text-[#171717] focus:ring-[#0052CC] focus:border-[#0052CC]"
+                        >
+                          <option value="sum">Sum (Total)</option>
+                          <option value="avg">Average (Mean)</option>
+                          <option value="count">Count (Frequency)</option>
+                          <option value="min">Minimum</option>
+                          <option value="max">Maximum</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-[#6B778C] mb-1">Output Alias</label>
+                        <input 
+                          type="text" 
+                          placeholder="e.g. total_sales"
+                          value={String((selectedNode.data.config as Record<string, unknown>)?.alias || '')} 
+                          onChange={(e) => {
+                            const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), alias: e.target.value } } };
+                            setSelectedNode(updatedNode);
+                            setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
+                          }}
+                          className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-sm text-[#171717] focus:ring-[#0052CC] focus:border-[#0052CC]" 
+                        />
+                      </div>
                     </>
                   )}
                 </div>
