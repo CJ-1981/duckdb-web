@@ -6,6 +6,109 @@ import { Database, Filter, ArrowRightLeft, Table, Settings, Play, Download, Sear
 import { Node, useReactFlow, ReactFlowProvider } from '@xyflow/react';
 import { executeWorkflow, uploadFile, saveWorkflow, listSavedWorkflows, loadWorkflowGraph } from '@/lib/api';
 
+// ─── SQL Preview helpers ──────────────────────────────────────────────────────
+function SqlPreview({ sql }: { sql: string }) {
+  if (!sql) return null;
+  return (
+    <div className="mt-3">
+      <label className="flex items-center gap-1.5 text-xs font-semibold text-[#6B778C] mb-1">
+        <span className="inline-block w-2 h-2 rounded-full bg-green-400" />
+        Generated SQL Preview
+      </label>
+      <pre className="bg-[#1E1E2E] text-[#CDD6F4] text-[11px] rounded-md p-3 font-mono overflow-x-auto whitespace-pre-wrap leading-relaxed">{sql}</pre>
+    </div>
+  );
+}
+
+function buildSql(subtype: string, cfg: any): string {
+  const T = '<prev_table>';
+  switch (subtype) {
+    case 'filter': {
+      const col = cfg?.column ? `"${cfg.column}"` : '/* column */';
+      const op = cfg?.operator || '==';
+      const val = String(cfg?.value || '');
+      const opMap: Record<string, string> = {
+        '==': `${col} = '${val}'`, '!=': `${col} != '${val}'`,
+        '>': `${col} > ${val}`, '<': `${col} < ${val}`,
+        '>=': `${col} >= ${val}`, '<=': `${col} <= ${val}`,
+        'contains': `${col} ILIKE '%${val}%'`,
+        'not_contains': `${col} NOT ILIKE '%${val}%'`,
+        'starts_with': `${col} ILIKE '${val}%'`,
+        'ends_with': `${col} ILIKE '%${val}'`,
+        'is_null': `${col} IS NULL`, 'is_not_null': `${col} IS NOT NULL`,
+        'in': `${col} IN (${val})`, 'not_in': `${col} NOT IN (${val})`,
+      };
+      return `SELECT *\nFROM ${T}\nWHERE ${opMap[op] ?? `${col} ${op} '${val}'`}`;
+    }
+    case 'combine': {
+      const jt = (cfg?.joinType || 'inner').toUpperCase();
+      const lc = cfg?.leftColumn ? `"${cfg.leftColumn}"` : '/* left_key */';
+      const rc = cfg?.rightColumn ? `"${cfg.rightColumn}"` : '/* right_key */';
+      return `SELECT *\nFROM <left_table>\n${jt} JOIN <right_table>\n  ON <left_table>.${lc} = <right_table>.${rc}`;
+    }
+    case 'clean': {
+      const col = cfg?.column || '/* column */';
+      const op = cfg?.operation || 'trim';
+      const exprMap: Record<string, string> = {
+        trim: `TRIM(CAST("${col}" AS VARCHAR))`,
+        upper: `UPPER(CAST("${col}" AS VARCHAR))`,
+        lower: `LOWER(CAST("${col}" AS VARCHAR))`,
+        numeric: `REGEXP_REPLACE(CAST("${col}" AS VARCHAR), '[^0-9.]', '', 'g')`,
+        replace_null: `COALESCE(NULLIF(CAST("${col}" AS VARCHAR), ''), '${cfg?.newValue || ''}')`,
+        to_date: `TRY_CAST("${col}" AS DATE)`,
+      };
+      return `SELECT * REPLACE (\n  ${exprMap[op] ?? `"${col}"`} AS "${col}"\n)\nFROM ${T}`;
+    }
+    case 'aggregate': {
+      const groups = (cfg?.groupBy || '').split(',').map((c: string) => c.trim()).filter(Boolean);
+      const aggs: any[] = cfg?.aggregations || [];
+      const aggParts = aggs.length
+        ? aggs.map((a: any) => `${(a.operation || 'COUNT').toUpperCase()}("${a.column || '*'}") AS "${a.alias || 'agg'}"`)
+        : ['COUNT(*) AS count_all'];
+      const sel = [...groups.map((c: string) => `"${c}"`), ...aggParts].join(',\n  ');
+      const gb = groups.length ? `\nGROUP BY ${groups.map((c: string) => `"${c}"`).join(', ')}` : '';
+      return `SELECT\n  ${sel}\nFROM ${T}${gb}`;
+    }
+    case 'sort': {
+      const col = cfg?.column ? `"${cfg.column}"` : '/* column */';
+      const dir = (cfg?.direction || 'asc').toUpperCase();
+      return `SELECT *\nFROM ${T}\nORDER BY ${col} ${dir}`;
+    }
+    case 'limit':
+      return `SELECT *\nFROM ${T}\nLIMIT ${cfg?.count || 100}`;
+    case 'select': {
+      const cols = (cfg?.columns || '').split(',').map((c: string) => `"${c.trim()}"`).filter((c: string) => c !== '""');
+      return `SELECT ${cols.length ? cols.join(', ') : '*'}\nFROM ${T}`;
+    }
+    case 'computed': {
+      const expr = cfg?.expression || '/* expression */';
+      const alias = cfg?.alias || 'new_column';
+      return `SELECT *,\n  ${expr} AS "${alias}"\nFROM ${T}`;
+    }
+    case 'rename': {
+      const maps: any[] = cfg?.mappings || [];
+      const items = maps.filter((m: any) => m.old && m.new).map((m: any) => `"${m.old}" AS "${m.new}"`);
+      return `SELECT * REPLACE (\n  ${items.length ? items.join(',\n  ') : '/* add mappings */'}\n)\nFROM ${T}`;
+    }
+    case 'distinct': {
+      const cols = (cfg?.columns || '').split(',').map((c: string) => `"${c.trim()}"`).filter((c: string) => c !== '""');
+      return `SELECT DISTINCT ${cols.length ? cols.join(', ') : '*'}\nFROM ${T}`;
+    }
+    case 'case_when': {
+      const conds: any[] = cfg?.conditions || [];
+      const alias = cfg?.alias || 'case_result';
+      const elsePart = cfg?.elseValue || 'NULL';
+      const whenLines = conds.filter((c: any) => c.when && c.then)
+        .map((c: any) => `  WHEN ${c.when} THEN '${c.then}'`).join('\n') || '  WHEN /* condition */ THEN /* value */';
+      return `SELECT *,\n  CASE\n${whenLines}\n  ELSE ${elsePart}\n  END AS "${alias}"\nFROM ${T}`;
+    }
+    case 'raw_sql':
+      return cfg?.sql ? cfg.sql.replace(/\{\{input\}\}/g, T) : `SELECT * FROM ${T}`;
+    default:
+      return '';
+  }
+}
+// ─────────────────────────────────────────────────────────────────────────────
 
 function ExecuteButton() {
   const { getNodes, getEdges, setNodes } = useReactFlow();
@@ -759,6 +862,7 @@ function Dashboard() {
                           />
                         </div>
                       )}
+                    <SqlPreview sql={buildSql('filter', selectedNode.data.config as any)} />
                     </>
                   )}
 
@@ -809,6 +913,7 @@ function Dashboard() {
                           ))}
                         </select>
                       </div>
+                    <SqlPreview sql={buildSql('combine', selectedNode.data.config as any)} />
                     </>
                   )}
 
@@ -875,6 +980,7 @@ function Dashboard() {
                           </div>
                         </div>
                       </div>
+                    <SqlPreview sql={buildSql('combine', selectedNode.data.config as any)} />
                     </div>
                   )}
 
@@ -942,6 +1048,7 @@ function Dashboard() {
                           />
                         </div>
                       )}
+                    <SqlPreview sql={buildSql('clean', selectedNode.data.config as any)} />
                     </>
                   )}
 
@@ -1045,6 +1152,7 @@ function Dashboard() {
                           <Plus size={12} /> <span>Add Aggregation</span>
                         </button>
                       </div>
+                    <SqlPreview sql={buildSql('aggregate', selectedNode.data.config as any)} />
                     </div>
                   )}
 
@@ -1078,6 +1186,7 @@ function Dashboard() {
                           className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-sm"
                         />
                       </div>
+                    <SqlPreview sql={buildSql('computed', selectedNode.data.config as any)} />
                     </div>
                   )}
 
@@ -1130,6 +1239,7 @@ function Dashboard() {
                         }}
                         className="w-full py-1.5 border border-dashed text-xs text-[#0052CC] font-bold rounded"
                       >+ Add Mapping</button>
+                    <SqlPreview sql={buildSql('rename', selectedNode.data.config as any)} />
                     </div>
                   )}
 
@@ -1160,6 +1270,7 @@ function Dashboard() {
                           );
                         })}
                       </div>
+                    <SqlPreview sql={buildSql('distinct', selectedNode.data.config as any)} />
                     </div>
                   )}
 
@@ -1183,6 +1294,7 @@ function Dashboard() {
                           className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-xs font-mono outline-none focus:ring-1 focus:ring-[#0052CC]"
                         />
                       </div>
+                    <SqlPreview sql={buildSql('raw_sql', selectedNode.data.config as any)} />
                     </div>
                   )}
 
@@ -1242,56 +1354,156 @@ function Dashboard() {
                             className="w-full text-xs border rounded p-2" placeholder="my_status" 
                           />
                        </div>
+                    <SqlPreview sql={buildSql('case_when', selectedNode.data.config as any)} />
                     </div>
                   )}
 
                   {/* Window Function UI */}
                   {selectedNode.data.subtype === 'window' && (
                     <div className="space-y-4">
-                       <div>
-                          <label className="block text-xs font-semibold text-[#6B778C] mb-1">Function</label>
-                          <select 
-                            value={String((selectedNode.data.config as any)?.function || 'ROW_NUMBER')}
-                            onChange={(e) => setSelectedNode({ ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), function: e.target.value } } })}
-                            className="w-full border rounded p-2 text-xs"
+                      {/* Function */}
+                      <div>
+                        <label className="block text-xs font-semibold text-[#6B778C] mb-1">Window Function</label>
+                        <select
+                          value={String((selectedNode.data.config as any)?.function || 'ROW_NUMBER')}
+                          onChange={(e) => {
+                            const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), function: e.target.value } } };
+                            setSelectedNode(updatedNode);
+                            setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
+                          }}
+                          className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-sm text-[#171717] focus:ring-[#0052CC] focus:border-[#0052CC]"
+                        >
+                          <option value="ROW_NUMBER">ROW_NUMBER — Sequential number (1…N)</option>
+                          <option value="RANK">RANK — Rank with gaps on ties</option>
+                          <option value="DENSE_RANK">DENSE_RANK — Rank without gaps</option>
+                          <option value="LAG">LAG — Previous row value</option>
+                          <option value="LEAD">LEAD — Next row value</option>
+                          <option value="SUM">SUM — Running total</option>
+                          <option value="AVG">AVG — Running average</option>
+                          <option value="MIN">MIN — Running minimum</option>
+                          <option value="MAX">MAX — Running maximum</option>
+                          <option value="COUNT">COUNT — Running count</option>
+                        </select>
+                      </div>
+
+                      {/* Value Column — required for LAG/LEAD/SUM/AVG/MIN/MAX/COUNT */}
+                      {['LAG', 'LEAD', 'SUM', 'AVG', 'MIN', 'MAX', 'COUNT'].includes(String((selectedNode.data.config as any)?.function || 'ROW_NUMBER')) && (
+                        <div>
+                          <label className="block text-xs font-semibold text-[#6B778C] mb-1">
+                            Value Column
+                            <span className="ml-1 text-red-400">*</span>
+                          </label>
+                          <select
+                            value={String((selectedNode.data.config as any)?.valueColumn || '')}
+                            onChange={(e) => {
+                              const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), valueColumn: e.target.value } } };
+                              setSelectedNode(updatedNode);
+                              setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
+                            }}
+                            className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-sm text-[#171717] focus:ring-[#0052CC] focus:border-[#0052CC]"
                           >
-                             <option value="ROW_NUMBER">Row Number (1...N)</option>
-                             <option value="RANK">Rank (Gaps on ties)</option>
-                             <option value="DENSE_RANK">Dense Rank (No gaps)</option>
-                             <option value="LAG">Lag (Previous Value)</option>
-                             <option value="LEAD">Lead (Next Value)</option>
+                            <option value="">Select column…</option>
+                            {getUpstreamColumns(selectedNode.id).map(c => <option key={c} value={c}>{c}</option>)}
                           </select>
-                       </div>
-                       <div>
-                          <label className="block text-xs font-semibold text-[#6B778C] mb-1">Partition By (Groups)</label>
-                           <select 
-                             value={String((selectedNode.data.config as any)?.partitionBy || '')}
-                             onChange={(e) => setSelectedNode({ ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), partitionBy: e.target.value } } })}
-                             className="w-full border rounded p-2 text-xs"
-                           >
-                              <option value="">Whole Table</option>
-                              {getUpstreamColumns(selectedNode.id).map(c => <option key={c} value={c}>{c}</option>)}
-                           </select>
-                       </div>
-                       <div>
-                          <label className="block text-xs font-semibold text-[#6B778C] mb-1">Order By</label>
-                           <select 
-                             value={String((selectedNode.data.config as any)?.orderBy || '')}
-                             onChange={(e) => setSelectedNode({ ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), orderBy: e.target.value } } })}
-                             className="w-full border rounded p-2 text-xs"
-                           >
-                              <option value="">No Order</option>
-                              {getUpstreamColumns(selectedNode.id).map(c => <option key={c} value={c}>{c}</option>)}
-                           </select>
-                       </div>
-                       <div>
-                          <label className="block text-xs font-semibold text-[#6B778C] mb-1">New Column Alias</label>
-                          <input 
-                            value={String((selectedNode.data.config as any)?.alias || '')} 
-                            onChange={(e) => setSelectedNode({ ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), alias: e.target.value } } })}
-                            className="w-full text-xs border rounded p-2" placeholder="row_idx" 
-                          />
-                       </div>
+                          <p className="text-[11px] text-[#6B778C] mt-1">Column passed as argument to the function</p>
+                        </div>
+                      )}
+
+                      {/* Partition By */}
+                      <div>
+                        <label className="block text-xs font-semibold text-[#6B778C] mb-1">Partition By <span className="font-normal text-[#6B778C]">(Groups)</span></label>
+                        <select
+                          value={String((selectedNode.data.config as any)?.partitionBy || '')}
+                          onChange={(e) => {
+                            const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), partitionBy: e.target.value } } };
+                            setSelectedNode(updatedNode);
+                            setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
+                          }}
+                          className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-sm text-[#171717] focus:ring-[#0052CC] focus:border-[#0052CC]"
+                        >
+                          <option value="">Whole Table (no partition)</option>
+                          {getUpstreamColumns(selectedNode.id).map(c => <option key={c} value={c}>{c}</option>)}
+                        </select>
+                        <p className="text-[11px] text-[#6B778C] mt-1">Reset counter per group. Leave blank for a global window.</p>
+                      </div>
+
+                      {/* Order By + Direction */}
+                      <div>
+                        <label className="block text-xs font-semibold text-[#6B778C] mb-1">Order By</label>
+                        <div className="flex gap-2">
+                          <select
+                            value={String((selectedNode.data.config as any)?.orderBy || '')}
+                            onChange={(e) => {
+                              const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), orderBy: e.target.value } } };
+                              setSelectedNode(updatedNode);
+                              setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
+                            }}
+                            className="flex-1 border border-[#DFE1E6] rounded-md px-3 py-2 text-sm text-[#171717] focus:ring-[#0052CC] focus:border-[#0052CC]"
+                          >
+                            <option value="">No ordering</option>
+                            {getUpstreamColumns(selectedNode.id).map(c => <option key={c} value={c}>{c}</option>)}
+                          </select>
+                          {/* ASC / DESC toggle buttons */}
+                          <div className="flex rounded-md border border-[#DFE1E6] overflow-hidden shrink-0">
+                            {(['ASC', 'DESC'] as const).map((dir) => {
+                              const current = String((selectedNode.data.config as any)?.direction || 'ASC');
+                              const isActive = current === dir;
+                              return (
+                                <button
+                                  key={dir}
+                                  type="button"
+                                  onClick={() => {
+                                    const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), direction: dir } } };
+                                    setSelectedNode(updatedNode);
+                                    setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
+                                  }}
+                                  className={`px-3 py-2 text-xs font-bold transition-colors ${
+                                    isActive
+                                      ? 'bg-[#0052CC] text-white'
+                                      : 'bg-white text-[#6B778C] hover:bg-gray-50'
+                                  }`}
+                                >
+                                  {dir === 'ASC' ? '↑ ASC' : '↓ DESC'}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                        <p className="text-[11px] text-[#6B778C] mt-1">
+                          Current: <span className="font-bold text-[#0052CC]">{String((selectedNode.data.config as any)?.direction || 'ASC')}</span>
+                          {' '}— default is ASC (smallest first)
+                        </p>
+                      </div>
+
+                      {/* Alias */}
+                      <div>
+                        <label className="block text-xs font-semibold text-[#6B778C] mb-1">Output Column Name</label>
+                        <input
+                          value={String((selectedNode.data.config as any)?.alias || '')}
+                          onChange={(e) => {
+                            const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), alias: e.target.value } } };
+                            setSelectedNode(updatedNode);
+                            setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
+                          }}
+                          className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-sm text-[#171717] focus:ring-[#0052CC] focus:border-[#0052CC]"
+                          placeholder="e.g. row_idx, rank, running_total"
+                        />
+                      </div>
+
+                      {/* Live SQL Preview (window uses its own builder) */}
+                      {(() => {
+                        const cfg = selectedNode.data.config as any;
+                        const fn = cfg?.function || 'ROW_NUMBER';
+                        const needsCol = ['LAG', 'LEAD', 'SUM', 'AVG', 'MIN', 'MAX', 'COUNT'].includes(fn);
+                        const colArg = needsCol && cfg?.valueColumn ? `"${cfg.valueColumn}"` : needsCol ? '/* column */' : '';
+                        const fnSQL = `${fn}(${colArg})`;
+                        const overParts: string[] = [];
+                        if (cfg?.partitionBy) overParts.push(`PARTITION BY "${cfg.partitionBy}"`);
+                        if (cfg?.orderBy) overParts.push(`ORDER BY "${cfg.orderBy}" ${cfg?.direction || 'ASC'}`);
+                        const alias = cfg?.alias || 'window_result';
+                        const sql = `SELECT *,\n  ${fnSQL} OVER (${overParts.join(' ')})\n  AS "${alias}"\nFROM <prev_table>`;
+                        return <SqlPreview sql={sql} />;
+                      })()}
                     </div>
                   )}
 
@@ -1329,6 +1541,7 @@ function Dashboard() {
                           <div className="text-xs text-center text-[#6B778C] py-4 italic">Connect an input node first</div>
                         )}
                       </div>
+                    <SqlPreview sql={buildSql('select', selectedNode.data.config as any)} />
                     </div>
                   )}
 
@@ -1367,6 +1580,7 @@ function Dashboard() {
                           <option value="desc">Descending (Z-A, 9-0)</option>
                         </select>
                       </div>
+                    <SqlPreview sql={buildSql('sort', selectedNode.data.config as any)} />
                     </>
                   )}
 
@@ -1384,6 +1598,7 @@ function Dashboard() {
                         }}
                         className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-sm text-[#171717] focus:ring-[#0052CC] focus:border-[#0052CC]" 
                       />
+                    <SqlPreview sql={buildSql('limit', selectedNode.data.config as any)} />
                     </div>
                   )}
                 </div>
