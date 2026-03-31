@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import WorkspaceCanvas from '@/components/workflow/canvas';
-import { Database, Filter, ArrowRightLeft, Table, Settings, Play, Download, Search, LayoutDashboard, SlidersHorizontal, FileText, FileDown, Save, FolderOpen, Sigma, Eye, ChevronDown, ChevronRight, SortAsc, ListOrdered } from 'lucide-react';
+import { Database, Filter, ArrowRightLeft, Table, Settings, Play, Download, Search, LayoutDashboard, SlidersHorizontal, FileText, FileDown, Save, FolderOpen, Sigma, Eye, ChevronDown, ChevronRight, SortAsc, ListOrdered, Calculator, Code, Fingerprint, PenLine, GitBranch, BarChart3, Plus, Trash2 } from 'lucide-react';
 import { Node, useReactFlow, ReactFlowProvider } from '@xyflow/react';
 import { executeWorkflow, uploadFile, saveWorkflow, listSavedWorkflows, loadWorkflowGraph } from '@/lib/api';
 
@@ -156,6 +156,14 @@ function Dashboard() {
           };
         }
 
+        // Handle computed, window, case_when defaults
+        if (subtype === 'computed' && !config?.alias) {
+          updatedConfig = { ...(config || {}), alias: 'new_column' };
+        }
+        if (subtype === 'window' && !config?.alias) {
+          updatedConfig = { ...(config || {}), function: 'ROW_NUMBER', alias: 'row_idx' };
+        }
+
         if (updatedConfig) {
           const updatedNode = { 
             ...selectedNode, 
@@ -218,19 +226,39 @@ function Dashboard() {
       if (subtype === 'aggregate') {
         const predictedCols = new Set<string>();
         const groupBy = (config?.groupBy || "").split(',').map((c: string) => c.trim()).filter((c: string) => c);
-        const op = config?.operation || 'sum';
-        const col = config?.column || '';
-        const alias = config?.alias || (col ? `${op}_${col}` : (config?.groupBy ? '' : 'count_all'));
-        
         groupBy.forEach((c: string) => predictedCols.add(c));
-        if (alias) predictedCols.add(alias);
+
+        const aggs = config?.aggregations || [];
+        if (aggs.length > 0) {
+          aggs.forEach((a: any) => { if (a.alias) predictedCols.add(a.alias); });
+        } else {
+          const op = config?.operation || 'sum';
+          const col = config?.column || '';
+          const alias = config?.alias || (col ? `${op}_${col}` : (config?.groupBy ? '' : 'count_all'));
+          if (alias) predictedCols.add(alias);
+        }
         
-        // If we have actual columns from execution, use those instead as they are more accurate
         if (Array.isArray(config?.availableColumns) && config.availableColumns.length > 0) {
            return config.availableColumns;
         }
-        
         return Array.from(predictedCols) as string[];
+      }
+
+      // 1b. Schema modifiers
+      if (['computed', 'window', 'case_when'].includes(subtype as string)) {
+        const upstream = edges.filter(e => e.target === nId).map(e => getNodeOutputColumns(e.source, visited)).flat();
+        const predicted = new Set(upstream);
+        if (config?.alias) predicted.add(config.alias);
+        return Array.from(predicted);
+      }
+
+      if (subtype === 'rename') {
+        const upstream = edges.filter(e => e.target === nId).map(e => getNodeOutputColumns(e.source, visited)).flat();
+        const mapped = new Set<string>();
+        const renames = config?.mappings || [];
+        const oldToNew = Object.fromEntries(renames.map((r: any) => [r.old, r.new]));
+        upstream.forEach(c => mapped.add(oldToNew[c] || c));
+        return Array.from(mapped);
       }
 
       // 2. Select node reduction
@@ -512,6 +540,42 @@ function Dashboard() {
                   <Table size={16} />
                 </div>
                 <span className="text-sm font-medium text-gray-700">Select Columns</span>
+              </div>
+              <div draggable onDragStart={(e) => onDragStart(e, 'default', 'Add Column', 'computed')} className="flex items-center space-x-3 p-3 bg-white border border-[#DFE1E6] hover:border-[#6554C0] hover:shadow-sm rounded-md cursor-grab transition-all">
+                <div className="p-1.5 bg-purple-50 text-[#6554C0] rounded">
+                  <Calculator size={16} />
+                </div>
+                <span className="text-sm font-medium text-gray-700">Add Column</span>
+              </div>
+              <div draggable onDragStart={(e) => onDragStart(e, 'default', 'Rename Columns', 'rename')} className="flex items-center space-x-3 p-3 bg-white border border-[#DFE1E6] hover:border-[#6554C0] hover:shadow-sm rounded-md cursor-grab transition-all">
+                <div className="p-1.5 bg-purple-50 text-[#6554C0] rounded">
+                  <PenLine size={16} />
+                </div>
+                <span className="text-sm font-medium text-gray-700">Rename Columns</span>
+              </div>
+              <div draggable onDragStart={(e) => onDragStart(e, 'default', 'Remove Duplicates', 'distinct')} className="flex items-center space-x-3 p-3 bg-white border border-[#DFE1E6] hover:border-[#6554C0] hover:shadow-sm rounded-md cursor-grab transition-all">
+                <div className="p-1.5 bg-purple-50 text-[#6554C0] rounded">
+                  <Fingerprint size={16} />
+                </div>
+                <span className="text-sm font-medium text-gray-700">Remove Duplicates</span>
+              </div>
+              <div draggable onDragStart={(e) => onDragStart(e, 'default', 'Conditional Logic', 'case_when')} className="flex items-center space-x-3 p-3 bg-white border border-[#DFE1E6] hover:border-[#6554C0] hover:shadow-sm rounded-md cursor-grab transition-all">
+                <div className="p-1.5 bg-purple-50 text-[#6554C0] rounded">
+                  <GitBranch size={16} />
+                </div>
+                <span className="text-sm font-medium text-gray-700">Conditional Logic</span>
+              </div>
+              <div draggable onDragStart={(e) => onDragStart(e, 'default', 'Window Function', 'window')} className="flex items-center space-x-3 p-3 bg-white border border-[#DFE1E6] hover:border-[#6554C0] hover:shadow-sm rounded-md cursor-grab transition-all">
+                <div className="p-1.5 bg-purple-50 text-[#6554C0] rounded">
+                  <BarChart3 size={16} />
+                </div>
+                <span className="text-sm font-medium text-gray-700">Window Function</span>
+              </div>
+              <div draggable onDragStart={(e) => onDragStart(e, 'default', 'Custom SQL', 'raw_sql')} className="flex items-center space-x-3 p-3 bg-white border border-[#DFE1E6] hover:border-[#6554C0] hover:shadow-sm rounded-md cursor-grab transition-all">
+                <div className="p-1.5 bg-purple-50 text-[#6554C0] rounded">
+                  <Code size={16} />
+                </div>
+                <span className="text-sm font-medium text-gray-700">Custom SQL</span>
               </div>
             </div>
             
@@ -883,99 +947,347 @@ function Dashboard() {
 
                   {/* Aggregate Data UI */}
                   {selectedNode.data.subtype === 'aggregate' && (
-                    <>
+                    <div className="space-y-4">
                       <div>
-                        <label className="block text-xs font-semibold text-[#6B778C] mb-1">Group By Columns (Multi-select)</label>
-                        <div className="border border-[#DFE1E6] rounded-md p-2 max-h-40 overflow-y-auto space-y-1 bg-[#FAFBFC] shadow-inner">
+                        <label className="block text-xs font-semibold text-[#6B778C] mb-2">Group By Columns</label>
+                        <div className="border border-[#DFE1E6] rounded-md p-2 max-h-40 overflow-y-auto space-y-1 bg-[#FAFBFC]">
                           {getUpstreamColumns(selectedNode.id).map((col: string) => {
                             const isChecked = String((selectedNode.data.config as any)?.groupBy || '').split(',').map(s => s.trim()).includes(col);
                             return (
-                              <label key={col} className={`flex items-center space-x-2 cursor-pointer hover:bg-gray-100 p-1.5 rounded transition-colors group ${isChecked ? 'bg-blue-50' : ''}`}>
+                              <label key={col} className={`flex items-center space-x-2 cursor-pointer hover:bg-gray-100 p-1.5 rounded transition-colors ${isChecked ? 'bg-blue-50' : ''}`}>
                                 <input 
                                   type="checkbox" 
-                                  className="w-4 h-4 rounded border-[#DFE1E6] text-[#0052CC] focus:ring-[#0052CC]"
+                                  className="w-4 h-4 rounded border-[#DFE1E6] text-[#0052CC]"
                                   checked={isChecked}
                                   onChange={(e) => {
                                      const currentList = String((selectedNode.data.config as any)?.groupBy || '').split(',').map(s => s.trim()).filter(s => s);
-                                     let newList;
-                                     if (e.target.checked) {
-                                        newList = [...currentList, col].join(', ');
-                                     } else {
-                                        newList = currentList.filter(s => s !== col).join(', ');
-                                     }
-                                     const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), groupBy: newList } } };
+                                     let newList = e.target.checked ? [...currentList, col] : currentList.filter(s => s !== col);
+                                     const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), groupBy: newList.join(', ') } } };
                                      setSelectedNode(updatedNode);
                                      setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
                                   }}
                                 />
-                                <span className={`text-sm ${isChecked ? 'font-bold text-[#0052CC]' : 'text-[#171717]'}`}>{col}</span>
+                                <span className={`text-sm ${isChecked ? 'font-bold' : ''}`}>{col}</span>
                               </label>
                             );
                           })}
-                          {getUpstreamColumns(selectedNode.id).length === 0 && (
-                            <div className="text-[10px] text-center text-[#6B778C] py-2 italic font-inter">No columns available upstream</div>
-                          )}
                         </div>
                       </div>
-                      <div>
-                        <label className="block text-xs font-semibold text-[#6B778C] mb-1">Aggregation Column</label>
-                        <select 
-                          value={String((selectedNode.data.config as Record<string, unknown>)?.column || '')} 
-                          onChange={(e) => {
-                            const updatedNode = { 
-                              ...selectedNode, 
-                              data: { 
-                                ...selectedNode.data, 
-                                config: { 
-                                  ...(selectedNode.data.config as any), 
-                                  column: e.target.value
-                                } 
-                              } 
-                            };
+
+                      <div className="space-y-3">
+                        <label className="block text-xs font-semibold text-[#6B778C]">Aggregations</label>
+                        {((selectedNode.data.config as any)?.aggregations || []).map((agg: any, idx: number) => (
+                           <div key={idx} className="p-3 bg-gray-50 border border-[#DFE1E6] rounded-md space-y-2 relative group">
+                              <button 
+                                className="absolute top-1 right-1 p-1 text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                                onClick={() => {
+                                  const aggs = [...(selectedNode.data.config as any).aggregations];
+                                  aggs.splice(idx, 1);
+                                  const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), aggregations: aggs } } };
+                                  setSelectedNode(updatedNode);
+                                  setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
+                                }}
+                              ><Trash2 size={12} /></button>
+                              <select 
+                                value={agg.column} 
+                                onChange={(e) => {
+                                   const aggs = [...(selectedNode.data.config as any).aggregations];
+                                   aggs[idx].column = e.target.value;
+                                   const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), aggregations: aggs } } };
+                                   setSelectedNode(updatedNode);
+                                }}
+                                className="w-full text-xs border rounded p-1"
+                              >
+                                <option value="">Count (*)</option>
+                                {getUpstreamColumns(selectedNode.id).map(c => <option key={c} value={c}>{c}</option>)}
+                              </select>
+                              <div className="flex space-x-1">
+                                <select 
+                                  value={agg.operation} 
+                                  onChange={(e) => {
+                                     const aggs = [...(selectedNode.data.config as any).aggregations];
+                                     aggs[idx].operation = e.target.value;
+                                     const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), aggregations: aggs } } };
+                                     setSelectedNode(updatedNode);
+                                  }}
+                                  className="flex-1 text-xs border rounded p-1"
+                                >
+                                  <option value="sum">Sum</option>
+                                  <option value="avg">Avg</option>
+                                  <option value="count">Count</option>
+                                  <option value="min">Min</option>
+                                  <option value="max">Max</option>
+                                </select>
+                                <input 
+                                  placeholder="Alias"
+                                  value={agg.alias}
+                                  onChange={(e) => {
+                                     const aggs = [...(selectedNode.data.config as any).aggregations];
+                                     aggs[idx].alias = e.target.value;
+                                     const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), aggregations: aggs } } };
+                                     setSelectedNode(updatedNode);
+                                  }}
+                                  className="flex-1 text-xs border rounded p-1"
+                                />
+                              </div>
+                           </div>
+                        ))}
+                        <button 
+                          onClick={() => {
+                            const aggs = [...((selectedNode.data.config as any)?.aggregations || [])];
+                            aggs.push({ column: '', operation: 'count', alias: `count_${aggs.length}` });
+                            const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), aggregations: aggs } } };
                             setSelectedNode(updatedNode);
                             setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
                           }}
-                          className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-sm text-[#171717] focus:ring-[#0052CC] focus:border-[#0052CC]"
+                          className="w-full py-1.5 border border-dashed border-[#0052CC] text-[#0052CC] text-xs font-bold rounded flex items-center justify-center space-x-1 hover:bg-blue-50"
                         >
-                          <option value="">Select column...</option>
-                          {getUpstreamColumns(selectedNode.id).map((col: string) => (
-                            <option key={col} value={col}>{col}</option>
-                          ))}
-                        </select>
+                          <Plus size={12} /> <span>Add Aggregation</span>
+                        </button>
                       </div>
+                    </div>
+                  )}
+
+                  {/* Computed Column UI */}
+                  {selectedNode.data.subtype === 'computed' && (
+                    <div className="space-y-4">
                       <div>
-                        <label className="block text-xs font-semibold text-[#6B778C] mb-1">Function</label>
-                        <select 
-                          value={String((selectedNode.data.config as Record<string, unknown>)?.operation || 'sum')}
+                        <label className="block text-xs font-semibold text-[#6B778C] mb-1">SQL Expression</label>
+                        <textarea 
+                          rows={3}
+                          placeholder="e.g. price * quantity"
+                          value={String((selectedNode.data.config as any)?.expression || '')}
                           onChange={(e) => {
-                            const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), operation: e.target.value } } };
-                            setSelectedNode(updatedNode);
-                            setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
+                             const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), expression: e.target.value } } };
+                             setSelectedNode(updatedNode);
+                             setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
                           }}
-                          className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-sm text-[#171717] focus:ring-[#0052CC] focus:border-[#0052CC]"
-                        >
-                          <option value="sum">Sum (Total)</option>
-                          <option value="avg">Average (Mean)</option>
-                          <option value="count">Count (Frequency)</option>
-                          <option value="min">Minimum</option>
-                          <option value="max">Maximum</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-xs font-semibold text-[#6B778C] mb-1">Output Alias</label>
-                        <input 
-                          type="text" 
-                          placeholder="e.g. total_sales"
-                          value={String((selectedNode.data.config as Record<string, unknown>)?.alias || '')} 
-                          onChange={(e) => {
-                            const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), alias: e.target.value } } };
-                            setSelectedNode(updatedNode);
-                            setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
-                          }}
-                          className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-sm text-[#171717] focus:ring-[#0052CC] focus:border-[#0052CC]" 
+                          className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-xs font-mono"
                         />
                       </div>
-                    </>
+                      <div>
+                        <label className="block text-xs font-semibold text-[#6B778C] mb-1">New Column Header</label>
+                        <input 
+                          type="text"
+                          value={String((selectedNode.data.config as any)?.alias || '')}
+                          onChange={(e) => {
+                             const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), alias: e.target.value } } };
+                             setSelectedNode(updatedNode);
+                             setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
+                          }}
+                          className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-sm"
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Rename Columns UI */}
+                  {selectedNode.data.subtype === 'rename' && (
+                    <div className="space-y-4">
+                      <label className="block text-xs font-semibold text-[#6B778C]">Mappings</label>
+                      {((selectedNode.data.config as any)?.mappings || []).map((m: any, idx: number) => (
+                        <div key={idx} className="flex items-center space-x-2">
+                           <select 
+                             value={m.old} 
+                             onChange={(e) => {
+                               const maps = [...(selectedNode.data.config as any).mappings];
+                               maps[idx].old = e.target.value;
+                               const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), mappings: maps } } };
+                               setSelectedNode(updatedNode);
+                             }}
+                             className="flex-1 text-xs border rounded p-1"
+                           >
+                              <option value="">Select...</option>
+                              {getUpstreamColumns(selectedNode.id).map(c => <option key={c} value={c}>{c}</option>)}
+                           </select>
+                           <ArrowRightLeft size={12} className="text-[#6B778C]" />
+                           <input 
+                             value={m.new}
+                             onChange={(e) => {
+                               const maps = [...(selectedNode.data.config as any).mappings];
+                               maps[idx].new = e.target.value;
+                               const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), mappings: maps } } };
+                               setSelectedNode(updatedNode);
+                             }}
+                             className="flex-1 text-xs border rounded p-1"
+                           />
+                           <button onClick={() => {
+                             const maps = [...(selectedNode.data.config as any).mappings];
+                             maps.splice(idx, 1);
+                             const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), mappings: maps } } };
+                             setSelectedNode(updatedNode);
+                             setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
+                           }}><Trash2 size={12} className="text-red-400" /></button>
+                        </div>
+                      ))}
+                      <button 
+                        onClick={() => {
+                          const maps = [...((selectedNode.data.config as any)?.mappings || [])];
+                          maps.push({ old: '', new: '' });
+                          const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), mappings: maps } } };
+                          setSelectedNode(updatedNode);
+                          setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
+                        }}
+                        className="w-full py-1.5 border border-dashed text-xs text-[#0052CC] font-bold rounded"
+                      >+ Add Mapping</button>
+                    </div>
+                  )}
+
+                  {/* Remove Duplicates UI */}
+                  {selectedNode.data.subtype === 'distinct' && (
+                    <div>
+                      <label className="block text-xs font-semibold text-[#6B778C] mb-2">Deduplicate based on:</label>
+                      <div className="text-[10px] text-gray-500 mb-2 italic">Select columns to check for uniqueness. Leave empty to check entire row.</div>
+                      <div className="border border-[#DFE1E6] rounded-md p-2 max-h-60 overflow-y-auto space-y-1 bg-[#FAFBFC]">
+                        {getUpstreamColumns(selectedNode.id).map((col: string) => {
+                          const isChecked = String((selectedNode.data.config as any)?.columns || '').split(',').map(s => s.trim()).includes(col);
+                          return (
+                            <label key={col} className={`flex items-center space-x-2 cursor-pointer hover:bg-gray-100 p-1.5 rounded transition-colors ${isChecked ? 'bg-blue-50' : ''}`}>
+                              <input 
+                                type="checkbox" 
+                                className="w-4 h-4 rounded border-[#DFE1E6] text-[#0052CC]"
+                                checked={isChecked}
+                                onChange={(e) => {
+                                   const currentList = String((selectedNode.data.config as any)?.columns || '').split(',').map(s => s.trim()).filter(s => s);
+                                   let newList = e.target.checked ? [...currentList, col] : currentList.filter(s => s !== col);
+                                   const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), columns: newList.join(', ') } } };
+                                   setSelectedNode(updatedNode);
+                                   setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
+                                }}
+                              />
+                              <span className="text-sm font-inter">{col}</span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Custom SQL UI */}
+                  {selectedNode.data.subtype === 'raw_sql' && (
+                    <div className="space-y-4">
+                      <div>
+                        <label className="block text-xs font-semibold text-[#6B778C] mb-1">Direct DuckDB SQL</label>
+                        <div className="p-2 mb-2 bg-blue-50 text-[10px] text-[#0052CC] rounded leading-relaxed border border-blue-100">
+                          Use <b>{"{{input}}"}</b> to reference the incoming dataset table name.
+                        </div>
+                        <textarea 
+                          rows={6}
+                          placeholder="SELECT * FROM {{input}} WHERE row_num > 10"
+                          value={String((selectedNode.data.config as any)?.sql || '')}
+                          onChange={(e) => {
+                             const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), sql: e.target.value } } };
+                             setSelectedNode(updatedNode);
+                             setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
+                          }}
+                          className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-xs font-mono outline-none focus:ring-1 focus:ring-[#0052CC]"
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* CASE/WHEN Logic UI */}
+                  {selectedNode.data.subtype === 'case_when' && (
+                    <div className="space-y-4">
+                       <label className="block text-xs font-semibold text-[#6B778C]">Logic Steps</label>
+                       {((selectedNode.data.config as any)?.conditions || []).map((c: any, idx: number) => (
+                         <div key={idx} className="p-2 bg-gray-50 border rounded space-y-2 relative">
+                            <button className="absolute top-1 right-1" onClick={() => {
+                               const conds = [...(selectedNode.data.config as any).conditions];
+                               conds.splice(idx, 1);
+                               const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), conditions: conds } } };
+                               setSelectedNode(updatedNode);
+                            }}><Trash2 size={12} className="text-red-400" /></button>
+                            <div>
+                               <label className="text-[9px] uppercase font-bold text-[#6B778C]">When (Condition)</label>
+                               <input value={c.when} onChange={(e) => {
+                                  const conds = [...(selectedNode.data.config as any).conditions];
+                                  conds[idx].when = e.target.value;
+                                  setSelectedNode({ ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), conditions: conds } } });
+                               }} className="w-full text-xs p-1 border rounded" placeholder="age > 20" />
+                            </div>
+                            <div>
+                               <label className="text-[9px] uppercase font-bold text-[#6B778C]">Then (Result)</label>
+                               <input value={c.then} onChange={(e) => {
+                                  const conds = [...(selectedNode.data.config as any).conditions];
+                                  conds[idx].then = e.target.value;
+                                  setSelectedNode({ ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), conditions: conds } } });
+                               }} className="w-full text-xs p-1 border rounded" placeholder="'Adult'" />
+                            </div>
+                         </div>
+                       ))}
+                       <button onClick={() => {
+                          const conds = [...((selectedNode.data.config as any)?.conditions || [])];
+                          conds.push({ when: '', then: '' });
+                          setSelectedNode({ ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), conditions: conds } } });
+                       }} className="w-full py-1.5 border border-dashed text-xs text-[#0052CC] font-bold rounded">+ Add Case</button>
+                       <div className="pt-2 border-t mt-2">
+                          <label className="block text-xs font-semibold text-[#6B778C] mb-1">Else / Default Result</label>
+                          <input 
+                            value={String((selectedNode.data.config as any)?.elseValue || '')} 
+                            onChange={(e) => setSelectedNode({ ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), elseValue: e.target.value } } })}
+                            className="w-full text-xs border rounded p-2" placeholder="'Unknown'" 
+                          />
+                       </div>
+                       <div>
+                          <label className="block text-xs font-semibold text-[#6B778C] mb-1">Output Alias</label>
+                          <input 
+                            value={String((selectedNode.data.config as any)?.alias || '')} 
+                            onChange={(e) => setSelectedNode({ ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), alias: e.target.value } } })}
+                            className="w-full text-xs border rounded p-2" placeholder="my_status" 
+                          />
+                       </div>
+                    </div>
+                  )}
+
+                  {/* Window Function UI */}
+                  {selectedNode.data.subtype === 'window' && (
+                    <div className="space-y-4">
+                       <div>
+                          <label className="block text-xs font-semibold text-[#6B778C] mb-1">Function</label>
+                          <select 
+                            value={String((selectedNode.data.config as any)?.function || 'ROW_NUMBER')}
+                            onChange={(e) => setSelectedNode({ ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), function: e.target.value } } })}
+                            className="w-full border rounded p-2 text-xs"
+                          >
+                             <option value="ROW_NUMBER">Row Number (1...N)</option>
+                             <option value="RANK">Rank (Gaps on ties)</option>
+                             <option value="DENSE_RANK">Dense Rank (No gaps)</option>
+                             <option value="LAG">Lag (Previous Value)</option>
+                             <option value="LEAD">Lead (Next Value)</option>
+                          </select>
+                       </div>
+                       <div>
+                          <label className="block text-xs font-semibold text-[#6B778C] mb-1">Partition By (Groups)</label>
+                           <select 
+                             value={String((selectedNode.data.config as any)?.partitionBy || '')}
+                             onChange={(e) => setSelectedNode({ ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), partitionBy: e.target.value } } })}
+                             className="w-full border rounded p-2 text-xs"
+                           >
+                              <option value="">Whole Table</option>
+                              {getUpstreamColumns(selectedNode.id).map(c => <option key={c} value={c}>{c}</option>)}
+                           </select>
+                       </div>
+                       <div>
+                          <label className="block text-xs font-semibold text-[#6B778C] mb-1">Order By</label>
+                           <select 
+                             value={String((selectedNode.data.config as any)?.orderBy || '')}
+                             onChange={(e) => setSelectedNode({ ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), orderBy: e.target.value } } })}
+                             className="w-full border rounded p-2 text-xs"
+                           >
+                              <option value="">No Order</option>
+                              {getUpstreamColumns(selectedNode.id).map(c => <option key={c} value={c}>{c}</option>)}
+                           </select>
+                       </div>
+                       <div>
+                          <label className="block text-xs font-semibold text-[#6B778C] mb-1">New Column Alias</label>
+                          <input 
+                            value={String((selectedNode.data.config as any)?.alias || '')} 
+                            onChange={(e) => setSelectedNode({ ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), alias: e.target.value } } })}
+                            className="w-full text-xs border rounded p-2" placeholder="row_idx" 
+                          />
+                       </div>
+                    </div>
                   )}
 
                   {/* Select Columns UI */}
