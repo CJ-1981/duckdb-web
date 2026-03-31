@@ -39,35 +39,39 @@ const CustomNode = ({ data, type, selected }: any) => {
           padding: 0 !important;
         }
         .react-flow__handle {
-          width: 8px !important;
-          height: 8px !important;
+          width: 14px !important;
+          height: 14px !important;
           background: #B1B1B7 !important;
-          border: 2px solid white !important;
-          transition: all 0.2s;
+          border: 3px solid white !important;
+          box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+          transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+          z-index: 10;
         }
         .react-flow__handle:hover {
           background: #0052CC !important;
-          transform: scale(1.2);
+          transform: scale(1.3);
+          box-shadow: 0 0 8px rgba(0, 82, 204, 0.4);
         }
         .react-flow__edge-path {
            stroke: #B1B1B7 !important;
-           stroke-width: 2;
+           stroke-width: 2.5;
            transition: stroke 0.2s, stroke-width 0.2s;
         }
         .react-flow__edge.selected .react-flow__edge-path {
            stroke: #0052CC !important;
-           stroke-width: 4 !important;
+           stroke-width: 5 !important;
         }
         .react-flow__edge:hover .react-flow__edge-path {
            stroke: #0052CC !important;
            stroke-opacity: 0.6;
+           stroke-width: 3.5;
         }
         .react-flow__edge.animated .react-flow__edge-path {
-           stroke-dasharray: 5;
+           stroke-dasharray: 6;
            animation: react-flow__dashdraw 0.5s linear infinite;
         }
       `}</style>
-      <Handle type="target" position={Position.Top} className="!-top-1" />
+      <Handle type="target" position={Position.Top} className="!-top-2" />
       <div className="flex flex-col items-center space-y-1.5 p-1 w-full">
         <div className="flex items-center space-x-2">
           {type === 'input' && <span className="w-1.5 h-6 bg-[#0052CC] rounded-full"></span>}
@@ -81,7 +85,7 @@ const CustomNode = ({ data, type, selected }: any) => {
           </div>
         )}
       </div>
-      <Handle type="source" position={Position.Bottom} className="!-bottom-1" />
+      <Handle type="source" position={Position.Bottom} className="!-bottom-2" />
     </div>
   );
 };

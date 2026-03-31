@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import WorkspaceCanvas from '@/components/workflow/canvas';
-import { Database, Filter, ArrowRightLeft, Table, Settings, Play, Download, Search, LayoutDashboard, SlidersHorizontal, FileText, FileDown, Save, FolderOpen, Sigma, Eye, ChevronDown, ChevronRight } from 'lucide-react';
+import { Database, Filter, ArrowRightLeft, Table, Settings, Play, Download, Search, LayoutDashboard, SlidersHorizontal, FileText, FileDown, Save, FolderOpen, Sigma, Eye, ChevronDown, ChevronRight, SortAsc, ListOrdered } from 'lucide-react';
 import { Node, useReactFlow, ReactFlowProvider } from '@xyflow/react';
 import { executeWorkflow, uploadFile, saveWorkflow, listSavedWorkflows, loadWorkflowGraph } from '@/lib/api';
 
@@ -162,7 +162,13 @@ function Dashboard() {
            return config.availableColumns;
         }
         
-        return Array.from(predictedCols);
+        return Array.from(predictedCols) as string[];
+      }
+
+      // 2. Select node reduction
+      if (subtype === 'select') {
+         const cols = (config?.columns || "").split(',').map((c: string) => c.trim()).filter((c: string) => c);
+         if (cols.length > 0) return cols;
       }
 
       // 2. If it's an input node, use its columns
@@ -405,6 +411,24 @@ function Dashboard() {
                 </div>
                 <span className="text-sm font-medium text-gray-700">Aggregate Data</span>
               </div>
+              <div draggable onDragStart={(e) => onDragStart(e, 'default', 'Sort Data', 'sort')} className="flex items-center space-x-3 p-3 bg-white border border-[#DFE1E6] hover:border-[#6554C0] hover:shadow-sm rounded-md cursor-grab transition-all">
+                <div className="p-1.5 bg-purple-50 text-[#6554C0] rounded">
+                  <SortAsc size={16} />
+                </div>
+                <span className="text-sm font-medium text-gray-700">Sort Data</span>
+              </div>
+              <div draggable onDragStart={(e) => onDragStart(e, 'default', 'Limit Data', 'limit')} className="flex items-center space-x-3 p-3 bg-white border border-[#DFE1E6] hover:border-[#6554C0] hover:shadow-sm rounded-md cursor-grab transition-all">
+                <div className="p-1.5 bg-purple-50 text-[#6554C0] rounded">
+                  <ListOrdered size={16} />
+                </div>
+                <span className="text-sm font-medium text-gray-700">Limit Data</span>
+              </div>
+              <div draggable onDragStart={(e) => onDragStart(e, 'default', 'Select Columns', 'select')} className="flex items-center space-x-3 p-3 bg-white border border-[#DFE1E6] hover:border-[#6554C0] hover:shadow-sm rounded-md cursor-grab transition-all">
+                <div className="p-1.5 bg-purple-50 text-[#6554C0] rounded">
+                  <Table size={16} />
+                </div>
+                <span className="text-sm font-medium text-gray-700">Select Columns</span>
+              </div>
             </div>
             
             <h3 className="text-xs font-semibold text-[#6B778C] uppercase tracking-wider mb-3">Analysis</h3>
@@ -573,11 +597,13 @@ function Dashboard() {
                           <option value=">=">is greater or equal</option>
                           <option value="<=">is less or equal</option>
                           <option value="contains">contains</option>
+                          <option value="not_contains">does not contain</option>
                           <option value="starts_with">starts with</option>
                           <option value="ends_with">ends with</option>
                           <option value="is_null">is empty / null</option>
                           <option value="is_not_null">is not empty</option>
                           <option value="in">is in list (a,b,c)</option>
+                          <option value="not_in">is NOT in list (a,b,c)</option>
                         </select>
                       </div>
                       {!['is_null', 'is_not_null'].includes(String((selectedNode.data.config as any)?.operator)) && (
@@ -646,6 +672,72 @@ function Dashboard() {
                         </select>
                       </div>
                     </>
+                  )}
+
+                  {/* Combine / Join Datasets UI */}
+                  {selectedNode.data.subtype === 'combine' && (
+                    <div className="space-y-4">
+                      <div>
+                        <label className="block text-xs font-semibold text-[#6B778C] mb-1">Join Type</label>
+                        <select 
+                          value={String((selectedNode.data.config as Record<string, unknown>)?.joinType || 'inner')}
+                          onChange={(e) => {
+                            const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), joinType: e.target.value } } };
+                            setSelectedNode(updatedNode);
+                            setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
+                          }}
+                          className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-sm text-[#171717] focus:ring-[#0052CC] focus:border-[#0052CC]"
+                        >
+                          <option value="inner">Inner Join (Matching rows only)</option>
+                          <option value="left">Left Join (All rows from first input)</option>
+                          <option value="right">Right Join (All rows from second input)</option>
+                          <option value="full">Full Outer Join (All rows from both)</option>
+                        </select>
+                      </div>
+                      
+                      <div className="bg-[#F4F5F7] p-3 rounded-md space-y-3">
+                        <h4 className="text-[10px] font-bold text-[#6B778C] uppercase tracking-wider">Join Conditions</h4>
+                        <div className="grid grid-cols-2 gap-3 items-center">
+                          <div>
+                            <label className="block text-[9px] font-bold text-[#6B778C] mb-1 tracking-tighter uppercase">Left Input Key</label>
+                            <select 
+                              value={String((selectedNode.data.config as any)?.leftColumn || '')}
+                              onChange={(e) => {
+                                const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), leftColumn: e.target.value } } };
+                                setSelectedNode(updatedNode);
+                                setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
+                              }}
+                              className="w-full border border-[#DFE1E6] rounded-md px-2 py-1.5 text-xs text-[#171717]"
+                            >
+                              <option value="">Select col...</option>
+                              {getUpstreamColumns(selectedNode.id).map((col: string) => (
+                                <option key={col} value={col}>{col}</option>
+                              ))}
+                            </select>
+                          </div>
+                          <div className="relative pt-4 text-center">
+                            <span className="text-sm font-bold text-[#6B778C]">=</span>
+                          </div>
+                          <div>
+                            <label className="block text-[9px] font-bold text-[#6B778C] mb-1 tracking-tighter uppercase">Right Input Key</label>
+                            <select 
+                              value={String((selectedNode.data.config as any)?.rightColumn || '')}
+                              onChange={(e) => {
+                                const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), rightColumn: e.target.value } } };
+                                setSelectedNode(updatedNode);
+                                setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
+                              }}
+                              className="w-full border border-[#DFE1E6] rounded-md px-2 py-1.5 text-xs text-[#171717]"
+                            >
+                              <option value="">Select col...</option>
+                              {getUpstreamColumns(selectedNode.id).map((col: string) => (
+                                <option key={col} value={col}>{col}</option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
                   )}
 
                   {/* Clean & Format UI */}
@@ -810,6 +902,98 @@ function Dashboard() {
                         />
                       </div>
                     </>
+                  )}
+
+                  {/* Select Columns UI */}
+                  {selectedNode.data.subtype === 'select' && (
+                    <div>
+                      <label className="block text-xs font-semibold text-[#6B778C] mb-2">Columns to Keep</label>
+                      <div className="border border-[#DFE1E6] rounded-md p-2 max-h-60 overflow-y-auto space-y-1 bg-[#FAFBFC] shadow-inner">
+                        {getUpstreamColumns(selectedNode.id).map((col: string) => {
+                          const isChecked = String((selectedNode.data.config as any)?.columns || '').split(',').map(s => s.trim()).includes(col);
+                          return (
+                            <label key={col} className={`flex items-center space-x-2 cursor-pointer hover:bg-gray-100 p-1.5 rounded transition-colors group ${isChecked ? 'bg-blue-50' : ''}`}>
+                              <input 
+                                type="checkbox" 
+                                className="w-4 h-4 rounded border-[#DFE1E6] text-[#0052CC] focus:ring-[#0052CC]"
+                                checked={isChecked}
+                                onChange={(e) => {
+                                   const currentList = String((selectedNode.data.config as any)?.columns || '').split(',').map(s => s.trim()).filter(s => s);
+                                   let newList;
+                                   if (e.target.checked) {
+                                      newList = [...currentList, col].join(', ');
+                                   } else {
+                                      newList = currentList.filter(s => s !== col).join(', ');
+                                   }
+                                   const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), columns: newList } } };
+                                   setSelectedNode(updatedNode);
+                                   setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
+                                }}
+                              />
+                              <span className={`text-sm ${isChecked ? 'font-bold text-[#0052CC]' : 'text-[#171717]'}`}>{col}</span>
+                            </label>
+                          );
+                        })}
+                        {getUpstreamColumns(selectedNode.id).length === 0 && (
+                          <div className="text-xs text-center text-[#6B778C] py-4 italic">Connect an input node first</div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Sort Data UI */}
+                  {selectedNode.data.subtype === 'sort' && (
+                    <>
+                      <div>
+                        <label className="block text-xs font-semibold text-[#6B778C] mb-1">Sort Column</label>
+                        <select 
+                          value={String((selectedNode.data.config as any)?.column || '')} 
+                          onChange={(e) => {
+                            const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), column: e.target.value } } };
+                            setSelectedNode(updatedNode);
+                            setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
+                          }}
+                          className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-sm text-[#171717] focus:ring-[#0052CC] focus:border-[#0052CC]"
+                        >
+                          <option value="">Select column...</option>
+                          {getUpstreamColumns(selectedNode.id).map((col: string) => (
+                            <option key={col} value={col}>{col}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-[#6B778C] mb-1">Direction</label>
+                        <select 
+                          value={String((selectedNode.data.config as any)?.direction || 'asc')} 
+                          onChange={(e) => {
+                            const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), direction: e.target.value } } };
+                            setSelectedNode(updatedNode);
+                            setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
+                          }}
+                          className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-sm text-[#171717] focus:ring-[#0052CC] focus:border-[#0052CC]"
+                        >
+                          <option value="asc">Ascending (A-Z, 0-9)</option>
+                          <option value="desc">Descending (Z-A, 9-0)</option>
+                        </select>
+                      </div>
+                    </>
+                  )}
+
+                  {/* Limit Data UI */}
+                  {selectedNode.data.subtype === 'limit' && (
+                    <div>
+                      <label className="block text-xs font-semibold text-[#6B778C] mb-1">Row Limit</label>
+                      <input 
+                        type="number" 
+                        value={Number((selectedNode.data.config as any)?.count || 100)} 
+                        onChange={(e) => {
+                          const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), count: parseInt(e.target.value) } } };
+                          setSelectedNode(updatedNode);
+                          setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
+                        }}
+                        className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-sm text-[#171717] focus:ring-[#0052CC] focus:border-[#0052CC]" 
+                      />
+                    </div>
                   )}
                 </div>
               )}
