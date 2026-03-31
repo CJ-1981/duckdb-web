@@ -1190,6 +1190,11 @@ function Dashboard() {
                   {selectedNode.data.subtype === 'case_when' && (
                     <div className="space-y-4">
                        <label className="block text-xs font-semibold text-[#6B778C]">Logic Steps</label>
+                       
+                       <div className="p-2 mb-2 bg-blue-50 text-[10px] text-[#0052CC] rounded leading-relaxed border border-blue-100">
+                         <b>Tip:</b> Text values (like <i>Gold</i> or <i>VIP</i>) are <b>automatically quoted</b>. No need to add single quotes manually.
+                       </div>
+
                        {((selectedNode.data.config as any)?.conditions || []).map((c: any, idx: number) => (
                          <div key={idx} className="p-2 bg-gray-50 border rounded space-y-2 relative">
                             <button className="absolute top-1 right-1" onClick={() => {
