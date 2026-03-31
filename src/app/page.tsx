@@ -232,6 +232,30 @@ function Dashboard() {
   const [previewHeight, setPreviewHeight] = useState(280);
   const [previewLimit, setPreviewLimit] = useState(50);
   const [nodeSamples, setNodeSamples] = useState<Record<string, any[]>>({});
+  const [tooltip, setTooltip] = useState<{ label: string; text: string; x: number; y: number } | null>(null);
+
+  const showTooltip = (e: React.MouseEvent, label: string, text: string) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    setTooltip({
+      label,
+      text,
+      x: rect.right + 10,
+      y: rect.top + rect.height / 2
+    });
+  };
+
+  const showHeaderTooltip = (e: React.MouseEvent, label: string, text: string) => {
+     const rect = e.currentTarget.getBoundingClientRect();
+     setTooltip({
+       label,
+       text,
+       x: rect.left + rect.width / 2,
+       y: rect.bottom + 10,
+       isHeader: true
+     } as any);
+  };
+
+  const hideTooltip = () => setTooltip(null);
 
   // Auto-initialize column selections if empty to avoid [SKIP] in backend
   React.useEffect(() => {
@@ -574,20 +598,26 @@ function Dashboard() {
 
           <button 
             onClick={handleBeautify}
+            onMouseEnter={(e) => showHeaderTooltip(e, 'Beautify Layout', 'Automatically organize nodes into a clean, hierarchical structure.')}
+            onMouseLeave={hideTooltip}
             className="flex items-center space-x-2 px-3 py-2 text-sm font-medium text-[#0052CC] bg-white border border-[#0052CC]/30 hover:bg-blue-50 rounded-md transition-colors"
           >
             <SlidersHorizontal size={16} />
-            <span>Beautify Layout</span>
+            <span>Beautify</span>
           </button>
           <button 
             onClick={() => setIsSaveModalOpen(true)}
+            onMouseEnter={(e) => showHeaderTooltip(e, 'Save Pipeline', 'Save your current workflow configuration to the server.')}
+            onMouseLeave={hideTooltip}
             className="flex items-center space-x-2 px-3 py-2 text-sm font-medium text-[#6B778C] bg-white border border-[#DFE1E6] hover:bg-gray-50 rounded-md transition-colors"
           >
             <Save size={16} />
-            <span>Save Pipeline</span>
+            <span>Save</span>
           </button>
           <button 
             onClick={openLoadModal}
+            onMouseEnter={(e) => showHeaderTooltip(e, 'Open Pipeline', 'Load a previously saved workflow from your library.')}
+            onMouseLeave={hideTooltip}
             className="flex items-center space-x-2 px-3 py-2 text-sm font-medium text-[#6B778C] bg-white border border-[#DFE1E6] hover:bg-gray-50 rounded-md transition-colors"
           >
             <FolderOpen size={16} />
@@ -595,11 +625,13 @@ function Dashboard() {
           </button>
           <button 
             onClick={handleExecute}
+            onMouseEnter={(e) => showHeaderTooltip(e, 'Execute Workflow', 'Run the entire pipeline processing logic and generate results.')}
+            onMouseLeave={hideTooltip}
             disabled={isExecuting}
             className={`flex items-center space-x-2 px-4 py-2 text-sm font-medium text-white rounded-md transition-colors shadow-sm ${isExecuting ? 'bg-gray-400' : 'bg-[#0052CC] hover:bg-[#0065FF]'}`}
           >
             <Play size={16} fill="currentColor" />
-            <span>{isExecuting ? 'Running...' : 'Execute Workflow'}</span>
+            <span>{isExecuting ? 'Running...' : 'Run'}</span>
           </button>
         </div>
       </header>
@@ -621,13 +653,25 @@ function Dashboard() {
           <div className="flex-1 p-4">
             <h3 className="text-xs font-semibold text-[#6B778C] uppercase tracking-wider mb-3">Data Sources</h3>
             <div className="space-y-2 mb-6">
-              <div draggable onDragStart={(e) => onDragStart(e, 'input', 'Database Table')} className="flex items-center space-x-3 p-3 bg-white border border-[#DFE1E6] hover:border-[#0052CC] hover:shadow-sm rounded-md cursor-grab transition-all">
+              <div 
+                draggable 
+                onDragStart={(e) => onDragStart(e, 'input', 'Database Table')}
+                onMouseEnter={(e) => showTooltip(e, 'Database Table', 'Source data directly from project-level DuckDB tables.')}
+                onMouseLeave={hideTooltip}
+                className="flex items-center space-x-3 p-3 bg-white border border-[#DFE1E6] hover:border-[#0052CC] hover:shadow-sm rounded-md cursor-grab transition-all"
+              >
                 <div className="p-1.5 bg-blue-50 text-[#0052CC] rounded">
                   <Database size={16} />
                 </div>
                 <span className="text-sm font-medium text-gray-700">Database Table</span>
               </div>
-              <div draggable onDragStart={(e) => onDragStart(e, 'input', 'CSV/Excel File')} className="flex items-center space-x-3 p-3 bg-white border border-[#DFE1E6] hover:border-[#0052CC] hover:shadow-sm rounded-md cursor-grab transition-all">
+              <div 
+                draggable 
+                onDragStart={(e) => onDragStart(e, 'input', 'CSV/Excel File')}
+                onMouseEnter={(e) => showTooltip(e, 'CSV/Excel File', 'Upload or select local data files (CSV, XLSX) to analyze.')}
+                onMouseLeave={hideTooltip}
+                className="flex items-center space-x-3 p-3 bg-white border border-[#DFE1E6] hover:border-[#0052CC] hover:shadow-sm rounded-md cursor-grab transition-all"
+              >
                 <div className="p-1.5 bg-blue-50 text-[#0052CC] rounded">
                   <Table size={16} />
                 </div>
@@ -637,79 +681,157 @@ function Dashboard() {
 
             <h3 className="text-xs font-semibold text-[#6B778C] uppercase tracking-wider mb-3">Transformations</h3>
             <div className="space-y-2 mb-6">
-              <div draggable onDragStart={(e) => onDragStart(e, 'default', 'Filter Records', 'filter')} className="flex items-center space-x-3 p-3 bg-white border border-[#DFE1E6] hover:border-[#6554C0] hover:shadow-sm rounded-md cursor-grab transition-all">
+              <div 
+                draggable 
+                onDragStart={(e) => onDragStart(e, 'default', 'Filter Records', 'filter')}
+                onMouseEnter={(e) => showTooltip(e, 'Filter Records', 'Keep only records that match specific conditions (e.g. amount > 1000).')}
+                onMouseLeave={hideTooltip}
+                className="flex items-center space-x-3 p-3 bg-white border border-[#DFE1E6] hover:border-[#6554C0] hover:shadow-sm rounded-md cursor-grab transition-all"
+              >
                 <div className="p-1.5 bg-purple-50 text-[#6554C0] rounded">
                   <Filter size={16} />
                 </div>
                 <span className="text-sm font-medium text-gray-700">Filter Records</span>
               </div>
-              <div draggable onDragStart={(e) => onDragStart(e, 'default', 'Combine Datasets', 'combine')} className="flex items-center space-x-3 p-3 bg-white border border-[#DFE1E6] hover:border-[#6554C0] hover:shadow-sm rounded-md cursor-grab transition-all">
+              <div 
+                draggable 
+                onDragStart={(e) => onDragStart(e, 'default', 'Combine Datasets', 'combine')}
+                onMouseEnter={(e) => showTooltip(e, 'Combine Datasets', 'Join two separate tables together using common keys (Inner, Left, UNION, etc).')}
+                onMouseLeave={hideTooltip}
+                className="flex items-center space-x-3 p-3 bg-white border border-[#DFE1E6] hover:border-[#6554C0] hover:shadow-sm rounded-md cursor-grab transition-all"
+              >
                 <div className="p-1.5 bg-purple-50 text-[#6554C0] rounded">
                   <ArrowRightLeft size={16} />
                 </div>
                 <span className="text-sm font-medium text-gray-700">Combine Datasets</span>
               </div>
-              <div draggable onDragStart={(e) => onDragStart(e, 'default', 'Clean & Format', 'clean')} className="flex items-center space-x-3 p-3 bg-white border border-[#DFE1E6] hover:border-[#6554C0] hover:shadow-sm rounded-md cursor-grab transition-all">
+              <div 
+                draggable 
+                onDragStart={(e) => onDragStart(e, 'default', 'Clean & Format', 'clean')}
+                onMouseEnter={(e) => showTooltip(e, 'Clean & Format', 'Standardize data quality: trim spaces, change case, or fix null values.')}
+                onMouseLeave={hideTooltip}
+                className="flex items-center space-x-3 p-3 bg-white border border-[#DFE1E6] hover:border-[#6554C0] hover:shadow-sm rounded-md cursor-grab transition-all"
+              >
                 <div className="p-1.5 bg-purple-50 text-[#6554C0] rounded">
                   <Settings size={16} />
                 </div>
                 <span className="text-sm font-medium text-gray-700">Clean & Format</span>
               </div>
-              <div draggable onDragStart={(e) => onDragStart(e, 'default', 'Aggregate Data', 'aggregate')} className="flex items-center space-x-3 p-3 bg-white border border-[#DFE1E6] hover:border-[#6554C0] hover:shadow-sm rounded-md cursor-grab transition-all">
+              <div 
+                draggable 
+                onDragStart={(e) => onDragStart(e, 'default', 'Aggregate Data', 'aggregate')}
+                onMouseEnter={(e) => showTooltip(e, 'Aggregate Data', 'Summarize your data: calculate counts, averages, or totals grouped by categories.')}
+                onMouseLeave={hideTooltip}
+                className="flex items-center space-x-3 p-3 bg-white border border-[#DFE1E6] hover:border-[#6554C0] hover:shadow-sm rounded-md cursor-grab transition-all"
+              >
                 <div className="p-1.5 bg-purple-50 text-[#6554C0] rounded">
                   <Sigma size={16} />
                 </div>
                 <span className="text-sm font-medium text-gray-700">Aggregate Data</span>
               </div>
-              <div draggable onDragStart={(e) => onDragStart(e, 'default', 'Sort Data', 'sort')} className="flex items-center space-x-3 p-3 bg-white border border-[#DFE1E6] hover:border-[#6554C0] hover:shadow-sm rounded-md cursor-grab transition-all">
+              <div 
+                draggable 
+                onDragStart={(e) => onDragStart(e, 'default', 'Sort Data', 'sort')}
+                onMouseEnter={(e) => showTooltip(e, 'Sort Data', 'Reorder your records based on one or more column values.')}
+                onMouseLeave={hideTooltip}
+                className="flex items-center space-x-3 p-3 bg-white border border-[#DFE1E6] hover:border-[#6554C0] hover:shadow-sm rounded-md cursor-grab transition-all"
+              >
                 <div className="p-1.5 bg-purple-50 text-[#6554C0] rounded">
                   <SortAsc size={16} />
                 </div>
                 <span className="text-sm font-medium text-gray-700">Sort Data</span>
               </div>
-              <div draggable onDragStart={(e) => onDragStart(e, 'default', 'Limit Data', 'limit')} className="flex items-center space-x-3 p-3 bg-white border border-[#DFE1E6] hover:border-[#6554C0] hover:shadow-sm rounded-md cursor-grab transition-all">
+              <div 
+                draggable 
+                onDragStart={(e) => onDragStart(e, 'default', 'Limit Data', 'limit')}
+                onMouseEnter={(e) => showTooltip(e, 'Limit Data', 'Restrict the output to the first N rows of your dataset.')}
+                onMouseLeave={hideTooltip}
+                className="flex items-center space-x-3 p-3 bg-white border border-[#DFE1E6] hover:border-[#6554C0] hover:shadow-sm rounded-md cursor-grab transition-all"
+              >
                 <div className="p-1.5 bg-purple-50 text-[#6554C0] rounded">
                   <ListOrdered size={16} />
                 </div>
                 <span className="text-sm font-medium text-gray-700">Limit Data</span>
               </div>
-              <div draggable onDragStart={(e) => onDragStart(e, 'default', 'Select Columns', 'select')} className="flex items-center space-x-3 p-3 bg-white border border-[#DFE1E6] hover:border-[#6554C0] hover:shadow-sm rounded-md cursor-grab transition-all">
+              <div 
+                draggable 
+                onDragStart={(e) => onDragStart(e, 'default', 'Select Columns', 'select')}
+                onMouseEnter={(e) => showTooltip(e, 'Select Columns', 'Choose which columns to keep and which to discard from the dataset.')}
+                onMouseLeave={hideTooltip}
+                className="flex items-center space-x-3 p-3 bg-white border border-[#DFE1E6] hover:border-[#6554C0] hover:shadow-sm rounded-md cursor-grab transition-all"
+              >
                 <div className="p-1.5 bg-purple-50 text-[#6554C0] rounded">
                   <Table size={16} />
                 </div>
                 <span className="text-sm font-medium text-gray-700">Select Columns</span>
               </div>
-              <div draggable onDragStart={(e) => onDragStart(e, 'default', 'Add Column', 'computed')} className="flex items-center space-x-3 p-3 bg-white border border-[#DFE1E6] hover:border-[#6554C0] hover:shadow-sm rounded-md cursor-grab transition-all">
+              <div 
+                draggable 
+                onDragStart={(e) => onDragStart(e, 'default', 'Add Column', 'computed')}
+                onMouseEnter={(e) => showTooltip(e, 'Add Column', 'Create new columns using arithmetic or SQL expressions (e.g. price * 1.1).')}
+                onMouseLeave={hideTooltip}
+                className="flex items-center space-x-3 p-3 bg-white border border-[#DFE1E6] hover:border-[#6554C0] hover:shadow-sm rounded-md cursor-grab transition-all"
+              >
                 <div className="p-1.5 bg-purple-50 text-[#6554C0] rounded">
                   <Calculator size={16} />
                 </div>
                 <span className="text-sm font-medium text-gray-700">Add Column</span>
               </div>
-              <div draggable onDragStart={(e) => onDragStart(e, 'default', 'Rename Columns', 'rename')} className="flex items-center space-x-3 p-3 bg-white border border-[#DFE1E6] hover:border-[#6554C0] hover:shadow-sm rounded-md cursor-grab transition-all">
+              <div 
+                draggable 
+                onDragStart={(e) => onDragStart(e, 'default', 'Rename Columns', 'rename')}
+                onMouseEnter={(e) => showTooltip(e, 'Rename Columns', 'Modify column headers to make them more descriptive and readable.')}
+                onMouseLeave={hideTooltip}
+                className="flex items-center space-x-3 p-3 bg-white border border-[#DFE1E6] hover:border-[#6554C0] hover:shadow-sm rounded-md cursor-grab transition-all"
+              >
                 <div className="p-1.5 bg-purple-50 text-[#6554C0] rounded">
                   <PenLine size={16} />
                 </div>
                 <span className="text-sm font-medium text-gray-700">Rename Columns</span>
               </div>
-              <div draggable onDragStart={(e) => onDragStart(e, 'default', 'Remove Duplicates', 'distinct')} className="flex items-center space-x-3 p-3 bg-white border border-[#DFE1E6] hover:border-[#6554C0] hover:shadow-sm rounded-md cursor-grab transition-all">
+              <div 
+                draggable 
+                onDragStart={(e) => onDragStart(e, 'default', 'Remove Duplicates', 'distinct')}
+                onMouseEnter={(e) => showTooltip(e, 'Remove Duplicates', 'Filter out identical rows to ensure data uniqueness.')}
+                onMouseLeave={hideTooltip}
+                className="flex items-center space-x-3 p-3 bg-white border border-[#DFE1E6] hover:border-[#6554C0] hover:shadow-sm rounded-md cursor-grab transition-all"
+              >
                 <div className="p-1.5 bg-purple-50 text-[#6554C0] rounded">
                   <Fingerprint size={16} />
                 </div>
                 <span className="text-sm font-medium text-gray-700">Remove Duplicates</span>
               </div>
-              <div draggable onDragStart={(e) => onDragStart(e, 'default', 'Conditional Logic', 'case_when')} className="flex items-center space-x-3 p-3 bg-white border border-[#DFE1E6] hover:border-[#6554C0] hover:shadow-sm rounded-md cursor-grab transition-all">
+              <div 
+                draggable 
+                onDragStart={(e) => onDragStart(e, 'default', 'Conditional Logic', 'case_when')}
+                onMouseEnter={(e) => showTooltip(e, 'Conditional Logic', 'Apply CASE-WHEN logic to create sophisticated branching rules.')}
+                onMouseLeave={hideTooltip}
+                className="flex items-center space-x-3 p-3 bg-white border border-[#DFE1E6] hover:border-[#6554C0] hover:shadow-sm rounded-md cursor-grab transition-all"
+              >
                 <div className="p-1.5 bg-purple-50 text-[#6554C0] rounded">
                   <GitBranch size={16} />
                 </div>
                 <span className="text-sm font-medium text-gray-700">Conditional Logic</span>
               </div>
-              <div draggable onDragStart={(e) => onDragStart(e, 'default', 'Window Function', 'window')} className="flex items-center space-x-3 p-3 bg-white border border-[#DFE1E6] hover:border-[#6554C0] hover:shadow-sm rounded-md cursor-grab transition-all">
+              <div 
+                draggable 
+                onDragStart={(e) => onDragStart(e, 'default', 'Window Function', 'window')}
+                onMouseEnter={(e) => showTooltip(e, 'Window Function', 'Perform calculations across related rows (ranks, moving averages).')}
+                onMouseLeave={hideTooltip}
+                className="flex items-center space-x-3 p-3 bg-white border border-[#DFE1E6] hover:border-[#6554C0] hover:shadow-sm rounded-md cursor-grab transition-all"
+              >
                 <div className="p-1.5 bg-purple-50 text-[#6554C0] rounded">
                   <BarChart3 size={16} />
                 </div>
                 <span className="text-sm font-medium text-gray-700">Window Function</span>
               </div>
-              <div draggable onDragStart={(e) => onDragStart(e, 'default', 'Custom SQL', 'raw_sql')} className="flex items-center space-x-3 p-3 bg-white border border-[#DFE1E6] hover:border-[#6554C0] hover:shadow-sm rounded-md cursor-grab transition-all">
+              <div 
+                draggable 
+                onDragStart={(e) => onDragStart(e, 'default', 'Custom SQL', 'raw_sql')}
+                onMouseEnter={(e) => showTooltip(e, 'Custom SQL', 'Maximum power: write your own DuckDB SQL to transform data.')}
+                onMouseLeave={hideTooltip}
+                className="flex items-center space-x-3 p-3 bg-white border border-[#DFE1E6] hover:border-[#6554C0] hover:shadow-sm rounded-md cursor-grab transition-all"
+              >
                 <div className="p-1.5 bg-purple-50 text-[#6554C0] rounded">
                   <Code size={16} />
                 </div>
@@ -719,7 +841,13 @@ function Dashboard() {
             
             <h3 className="text-xs font-semibold text-[#6B778C] uppercase tracking-wider mb-3">Outputs</h3>
             <div className="space-y-2 mb-6">
-              <div draggable onDragStart={(e) => onDragStart(e, 'output', 'Export File')} className="flex items-center space-x-3 p-3 bg-white border border-[#DFE1E6] hover:border-[#36B37E] hover:shadow-sm rounded-md cursor-grab transition-all">
+              <div 
+                draggable 
+                onDragStart={(e) => onDragStart(e, 'output', 'Export File')}
+                onMouseEnter={(e) => showTooltip(e, 'Export File', 'Save your processed data to a CSV or Excel file for external use.')}
+                onMouseLeave={hideTooltip}
+                className="flex items-center space-x-3 p-3 bg-white border border-[#DFE1E6] hover:border-[#36B37E] hover:shadow-sm rounded-md cursor-grab transition-all"
+              >
                 <div className="p-1.5 bg-green-50 text-[#36B37E] rounded">
                   <FileDown size={16} />
                 </div>
@@ -1946,6 +2074,29 @@ function Dashboard() {
                 Close
               </button>
             </div>
+          </div>
+        </div>
+      )}
+      {/* Global Tooltip */}
+      {tooltip && (
+        <div 
+          className="fixed z-[9999] pointer-events-none tooltip-animate"
+          style={{ 
+            left: tooltip.x, 
+            top: tooltip.y,
+            transform: (tooltip as any).isHeader ? 'translate(-50%, 0)' : 'translate(0, -50%)'
+          }}
+        >
+          <div className="relative bg-[#1E1E2E] text-white p-3 rounded-lg shadow-2xl border border-[#313244] w-64 font-inter">
+             {/* Arrow */}
+             <div className={`absolute border-[8px] border-transparent ${
+               (tooltip as any).isHeader 
+               ? 'border-b-[#1E1E2E] -top-[16px] left-1/2 -translate-x-1/2' 
+               : 'border-r-[#1E1E2E] -left-[16px] top-1/2 -translate-y-1/2'
+             }`} />
+             
+             <div className="text-[10px] font-bold text-[#89DCEB] mb-1 uppercase tracking-wider">{tooltip.label}</div>
+             <div className="text-[11px] leading-relaxed text-[#CDD6F4]">{tooltip.text}</div>
           </div>
         </div>
       )}

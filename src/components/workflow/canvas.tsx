@@ -39,18 +39,19 @@ const CustomNode = ({ data, type, selected }: any) => {
           padding: 0 !important;
         }
         .react-flow__handle {
-          width: 14px !important;
-          height: 14px !important;
+          width: 28px !important;
+          height: 28px !important;
           background: #B1B1B7 !important;
-          border: 3px solid white !important;
-          box-shadow: 0 1px 4px rgba(0,0,0,0.1);
-          transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+          border: 4px solid white !important;
+          box-shadow: 0 1px 4px rgba(0,0,0,0.15);
+          transition: background 0.2s, box-shadow 0.2s, border-color 0.2s;
           z-index: 10;
         }
         .react-flow__handle:hover {
           background: #0052CC !important;
-          transform: scale(1.3);
-          box-shadow: 0 0 8px rgba(0, 82, 204, 0.4);
+          border-color: #E6EEFF !important;
+          box-shadow: 0 0 10px rgba(0, 82, 204, 0.4);
+          cursor: crosshair;
         }
         .react-flow__edge-path {
            stroke: #B1B1B7 !important;
@@ -71,7 +72,7 @@ const CustomNode = ({ data, type, selected }: any) => {
            animation: react-flow__dashdraw 0.5s linear infinite;
         }
       `}</style>
-      <Handle type="target" position={Position.Top} className="!-top-2" />
+      <Handle type="target" position={Position.Top} style={{ top: '-14px' }} />
       <div className="flex flex-col items-center space-y-1.5 p-1 w-full">
         <div className="flex items-center space-x-2">
           {type === 'input' && <span className="w-1.5 h-6 bg-[#0052CC] rounded-full"></span>}
@@ -85,7 +86,7 @@ const CustomNode = ({ data, type, selected }: any) => {
           </div>
         )}
       </div>
-      <Handle type="source" position={Position.Bottom} className="!-bottom-2" />
+      <Handle type="source" position={Position.Bottom} style={{ bottom: '-14px' }} />
     </div>
   );
 };
@@ -172,6 +173,11 @@ function WorkspaceCanvas({ onNodeSelect }: WorkspaceCanvasProps) {
         onDrop={onDrop}
         onDragOver={onDragOver}
         nodeTypes={nodeTypes}
+        connectionRadius={40}
+        defaultEdgeOptions={{ 
+          animated: true, 
+          style: { strokeWidth: 3, stroke: '#B1B1B7' } 
+        }}
         fitView
         className="bg-[#FAFBFC]"
       >
