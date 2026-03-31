@@ -73,3 +73,24 @@ export async function loadWorkflowGraph(name: string) {
   if (!response.ok) throw new Error("Load failed");
   return await response.json();
 }
+
+export async function generateReport(nodes: any[], edges: any[], reportConfig: any) {
+  try {
+    const response = await fetch(`${API_BASE_URL}/workflows/report`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ nodes, edges, report_config: reportConfig }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Report generation failed: ${response.statusText}`);
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Failed to generate report:', error);
+    throw error;
+  }
+}

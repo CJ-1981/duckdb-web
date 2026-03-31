@@ -4,7 +4,9 @@ import React, { useState } from 'react';
 import WorkspaceCanvas from '@/components/workflow/canvas';
 import { Database, Filter, ArrowRightLeft, Table, Settings, Play, Download, Search, LayoutDashboard, SlidersHorizontal, FileText, FileDown, Save, FolderOpen, Sigma, Eye, ChevronDown, ChevronRight, SortAsc, ListOrdered, Calculator, Code, Fingerprint, PenLine, GitBranch, BarChart3, Plus, Trash2 } from 'lucide-react';
 import { Node, useReactFlow, ReactFlowProvider } from '@xyflow/react';
-import { executeWorkflow, uploadFile, saveWorkflow, listSavedWorkflows, loadWorkflowGraph } from '@/lib/api';
+import { executeWorkflow, uploadFile, saveWorkflow, listSavedWorkflows, loadWorkflowGraph, generateReport } from '@/lib/api';
+
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000/api/v1';
 
 // ─── SQL Preview helpers ──────────────────────────────────────────────────────
 function SqlPreview({ sql }: { sql: string }) {
@@ -841,6 +843,18 @@ function Dashboard() {
             
             <h3 className="text-xs font-semibold text-[#6B778C] uppercase tracking-wider mb-3">Outputs</h3>
             <div className="space-y-2 mb-6">
+              <div 
+                draggable 
+                onDragStart={(e) => onDragStart(e, 'output', 'Report Builder', 'report')}
+                onMouseEnter={(e) => showTooltip(e, 'Report Builder', 'Design a customized report (PDF/Markdown) from your pipeline results.')}
+                onMouseLeave={hideTooltip}
+                className="flex items-center space-x-3 p-3 bg-white border border-[#DFE1E6] hover:border-[#36B37E] hover:shadow-sm rounded-md cursor-grab transition-all"
+              >
+                <div className="p-1.5 bg-green-50 text-[#36B37E] rounded">
+                  <FileText size={16} />
+                </div>
+                <span className="text-sm font-medium text-gray-700">Report Builder</span>
+              </div>
               <div 
                 draggable 
                 onDragStart={(e) => onDragStart(e, 'output', 'Export File')}
@@ -1907,6 +1921,158 @@ function Dashboard() {
                     <label className="block text-xs font-semibold text-[#6B778C] mb-1">Last Export Path (Server)</label>
                     <input type="text" readOnly value={String((selectedNode.data.config as Record<string, unknown>)?.file_path || "No export yet")} className="w-full bg-gray-50 border border-[#DFE1E6] rounded-md px-3 py-2 text-xs text-[#6B778C] font-mono" />
                   </div>
+                </div>
+              )}
+
+              {selectedNode.type === 'output' && selectedNode.data?.subtype === 'report' && (
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-[#6B778C] mb-1">Report Title</label>
+                    <input 
+                      type="text" 
+                      value={String((selectedNode.data.config as any)?.title || 'Data Analysis Report')}
+                      onChange={(e) => {
+                        const updated = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), title: e.target.value } } };
+                        setSelectedNode(updated);
+                        setNodes((nds) => nds.map((n) => n.id === updated.id ? updated : n));
+                      }}
+                      className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-[#6B778C] mb-1">Description</label>
+                    <textarea 
+                      rows={2}
+                      value={String((selectedNode.data.config as any)?.description || '')}
+                      onChange={(e) => {
+                        const updated = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), description: e.target.value } } };
+                        setSelectedNode(updated);
+                        setNodes((nds) => nds.map((n) => n.id === updated.id ? updated : n));
+                      }}
+                      className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-sm"
+                    />
+                  </div>
+
+                  <div>
+                     <label className="block text-[10px] font-bold text-[#6B778C] uppercase mb-2">Sections</label>
+                     <div className="space-y-3">
+                        {((selectedNode.data.config as any)?.sections || []).map((sec: any, idx: number) => (
+                           <div key={idx} className="p-3 bg-gray-50 border border-[#DFE1E6] rounded-md relative group">
+                              <button 
+                                onClick={() => {
+                                   const sections = [...((selectedNode.data.config as any).sections)];
+                                   sections.splice(idx, 1);
+                                   const updated = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), sections } } };
+                                   setSelectedNode(updated);
+                                   setNodes((nds) => nds.map((n) => n.id === updated.id ? updated : n));
+                                }}
+                                className="absolute -top-1.5 -right-1.5 p-1 bg-white border border-red-200 text-red-500 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                              ><Trash2 size={10} /></button>
+                              
+                              <input 
+                                placeholder="Section Heading"
+                                className="w-full text-xs font-bold border-none bg-transparent mb-2 focus:ring-0 p-0"
+                                value={sec.heading}
+                                onChange={(e) => {
+                                   const sections = [...((selectedNode.data.config as any).sections)];
+                                   sections[idx].heading = e.target.value;
+                                   const updated = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), sections } } };
+                                   setSelectedNode(updated);
+                                }}
+                              />
+                              
+                              <select 
+                                className="w-full text-[10px] border rounded p-1 mb-2"
+                                value={sec.type}
+                                onChange={(e) => {
+                                   const sections = [...((selectedNode.data.config as any).sections)];
+                                   sections[idx].type = e.target.value;
+                                   const updated = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), sections } } };
+                                   setSelectedNode(updated);
+                                }}
+                              >
+                                <option value="table">Data Table</option>
+                                <option value="stats">Summary Statistics</option>
+                                <option value="text">Custom Remarks</option>
+                              </select>
+
+                              {sec.type === 'text' && (
+                                <textarea 
+                                  placeholder="Example: Total records processed: {{row_count}}"
+                                  className="w-full text-[10px] border rounded p-2 italic"
+                                  rows={2}
+                                  value={sec.content}
+                                  onChange={(e) => {
+                                    const sections = [...((selectedNode.data.config as any).sections)];
+                                    sections[idx].content = e.target.value;
+                                    const updated = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), sections } } };
+                                    setSelectedNode(updated);
+                                  }}
+                                />
+                              )}
+                           </div>
+                        ))}
+                        <button 
+                           onClick={() => {
+                              const sections = [...((selectedNode.data.config as any)?.sections || [])];
+                              sections.push({ heading: 'New Section', type: 'table', content: '' });
+                              const updated = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), sections } } };
+                              setSelectedNode(updated);
+                              setNodes((nds) => nds.map((n) => n.id === updated.id ? updated : n));
+                           }}
+                           className="w-full py-1.5 border border-dashed text-[10px] uppercase font-bold text-[#0052CC] hover:bg-blue-50 border-[#0052CC] rounded"
+                        >+ Add Section</button>
+                     </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-[#6B778C] mb-1">Format</label>
+                      <select 
+                         value={String((selectedNode.data.config as any)?.format || 'PDF')}
+                         onChange={(e) => setSelectedNode({ ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), format: e.target.value } } })}
+                         className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-xs"
+                      >
+                         <option value="PDF">PDF Report</option>
+                         <option value="Markdown">Markdown</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-[#6B778C] mb-1">Font</label>
+                      <select 
+                         value={String((selectedNode.data.config as any)?.font || 'NanumGothic')}
+                         onChange={(e) => setSelectedNode({ ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), font: e.target.value } } })}
+                         className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-xs"
+                      >
+                         <option value="NanumGothic">NanumGothic (KR)</option>
+                         <option value="Helvetica">Helvetica (EN)</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <button 
+                    onClick={async () => {
+                      try {
+                        const res = await generateReport(getNodes(), getEdges(), selectedNode.data.config);
+                        if (res.report_url) {
+                          const link = document.createElement('a');
+                          link.href = API_BASE_URL.replace('/api/v1', '') + res.report_url;
+                          link.setAttribute('download', '');
+                          document.body.appendChild(link);
+                          link.click();
+                          document.body.removeChild(link);
+                        }
+                        alert("Report generated successfully!");
+                      } catch (err) {
+                        alert("Report generation failed!");
+                        console.error(err);
+                      }
+                    }}
+                    className="w-full py-2 bg-[#36B37E] text-white font-bold rounded shadow-sm hover:bg-[#36B37E]/90 flex items-center justify-center gap-2"
+                  >
+                    <FileText size={14} />
+                    Generate Report
+                  </button>
                 </div>
               )}
             </div>
