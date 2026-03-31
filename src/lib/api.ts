@@ -1,13 +1,13 @@
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000/api/v1';
 
-export async function executeWorkflow(nodes: any[], edges: any[]) {
+export async function executeWorkflow(nodes: any[], edges: any[], previewLimit: number = 50) {
   try {
     const response = await fetch(`${API_BASE_URL}/workflows/execute`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ nodes, edges }),
+      body: JSON.stringify({ nodes, edges, preview_limit: previewLimit }),
     });
 
     if (!response.ok) {

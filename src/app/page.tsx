@@ -97,8 +97,76 @@ function Dashboard() {
   const [availableWorkflows, setAvailableWorkflows] = useState<string[]>([]);
   const [executionResult, setExecutionResult] = useState<any>(null);
   const [isExecuting, setIsExecuting] = useState(false);
-  const [nodeSamples, setNodeSamples] = useState<Record<string, any[]>>({});
   const [previewHeight, setPreviewHeight] = useState(280);
+  const [previewLimit, setPreviewLimit] = useState(50);
+  const [nodeSamples, setNodeSamples] = useState<Record<string, any[]>>({});
+
+  // Auto-initialize column selections if empty to avoid [SKIP] in backend
+  React.useEffect(() => {
+    if (selectedNode && selectedNode.data?.subtype) {
+      const subtype = selectedNode.data.subtype;
+      const config = selectedNode.data.config as any;
+      
+      // Helper to find all available columns for this node (redundant but matches current logic)
+      const nodes = getNodes();
+      const edges = getEdges();
+      
+      const getNodeOutputColumnsLocal = (nId: string, visited = new Set<string>()): string[] => {
+        if (visited.has(nId)) return [];
+        visited.add(nId);
+        const node = nodes.find(n => n.id === nId);
+        if (!node) return [];
+        const cfg = node.data?.config as any;
+        const sub = node.data?.subtype;
+        if (sub === 'aggregate') {
+          const groupBy = (cfg?.groupBy || "").split(',').map((c: string) => c.trim()).filter((c: string) => c);
+          const op = cfg?.operation || 'sum';
+          const col = cfg?.column || '';
+          const alias = cfg?.alias || (col ? `${op}_${col}` : (cfg?.groupBy ? '' : 'count_all'));
+          const predicted = [...groupBy];
+          if (alias) predicted.push(alias);
+          return predicted;
+        }
+        if (sub === 'select') {
+          return (cfg?.columns || "").split(',').map((c: string) => c.trim()).filter((c: string) => c);
+        }
+        if (node.type === 'input') return cfg?.columns || [];
+        const preds = edges.filter(e => e.target === nId).map(e => e.source);
+        const allCols = new Set<string>();
+        preds.forEach(pId => getNodeOutputColumnsLocal(pId, visited).forEach(c => allCols.add(c)));
+        return Array.from(allCols);
+      };
+
+      const columns = getNodeOutputColumnsLocal(selectedNode.id);
+      
+      if (columns.length > 0) {
+        let updatedConfig: any = null;
+        
+        // Handle standard 'column' picks
+        if (['filter', 'aggregate', 'sort', 'clean'].includes(subtype as string) && !config?.column) {
+          updatedConfig = { ...(config || {}), column: columns[0] };
+        }
+        
+        // Handle Join keys
+        if (subtype === 'combine' && (!config?.leftColumn || !config?.rightColumn)) {
+          updatedConfig = { 
+            ...(config || {}), 
+            leftColumn: config?.leftColumn || columns[0],
+            rightColumn: config?.rightColumn || columns[0]
+          };
+        }
+
+        if (updatedConfig) {
+          const updatedNode = { 
+            ...selectedNode, 
+            data: { ...selectedNode.data, config: updatedConfig } 
+          };
+          setSelectedNode(updatedNode);
+          setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
+        }
+      }
+    }
+  }, [selectedNode?.id, getNodes, getEdges]);
 
   const handleSaveWorkflow = async () => {
     if (!workflowName) return;
@@ -219,7 +287,7 @@ function Dashboard() {
   const handleExecute = async () => {
     setIsExecuting(true);
     try {
-      const result = await executeWorkflow(getNodes(), getEdges());
+      const result = await executeWorkflow(getNodes(), getEdges(), previewLimit);
       setExecutionResult(result);
       if (result.node_samples) {
         setNodeSamples(result.node_samples);
@@ -322,6 +390,22 @@ function Dashboard() {
         </div>
         
         <div className="flex items-center space-x-3">
+          <div className="flex items-center space-x-2 bg-gray-50 px-3 py-1.5 rounded-md border border-[#DFE1E6]">
+            <Eye size={14} className="text-[#6B778C]" />
+            <span className="text-xs font-semibold text-[#6B778C]">Preview:</span>
+            <select 
+              value={previewLimit}
+              onChange={(e) => setPreviewLimit(Number(e.target.value))}
+              className="bg-transparent text-xs font-bold text-[#171717] focus:outline-none border-none cursor-pointer"
+            >
+              <option value={50}>50 rows</option>
+              <option value={100}>100 rows</option>
+              <option value={200}>200 rows</option>
+              <option value={500}>500 rows</option>
+              <option value={1000}>1000 rows</option>
+            </select>
+          </div>
+
           <button 
             onClick={handleBeautify}
             className="flex items-center space-x-2 px-3 py-2 text-sm font-medium text-[#0052CC] bg-white border border-[#0052CC]/30 hover:bg-blue-50 rounded-md transition-colors"
