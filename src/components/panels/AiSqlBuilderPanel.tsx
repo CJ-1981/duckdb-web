@@ -5,14 +5,23 @@ import type { ColumnTypeDef } from './DataInspectionPanel';
 
 interface Provider {
   id: string; name: string; baseUrl: string;
-  isOpenAICompat: boolean;
+  type: 'openai' | 'anthropic' | 'google';
   extraHeaders?: Record<string, string>;
   models: { id: string; name: string }[];
 }
 
 const PROVIDERS: Provider[] = [
   {
-    id: 'groq', name: 'Groq', baseUrl: 'https://api.groq.com/openai/v1/chat/completions', isOpenAICompat: true,
+    id: 'google', name: 'Google (Gemini)', baseUrl: 'https://generativelanguage.googleapis.com/v1beta/models', type: 'google',
+    models: [
+      { id: 'gemini-2.0-flash', name: 'Gemini 2.5 Flash' },
+      { id: 'gemini-2.0-flash-lite', name: 'Gemini 2.0 Flash Lite' },
+      { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash' },
+      { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro' },
+    ],
+  },
+  {
+    id: 'groq', name: 'Groq', baseUrl: 'https://api.groq.com/openai/v1/chat/completions', type: 'openai',
     models: [
       { id: 'llama-3.3-70b-versatile', name: 'Llama 3.3 70B Versatile' },
       { id: 'llama-3.1-8b-instant', name: 'Llama 3.1 8B Instant' },
@@ -21,14 +30,14 @@ const PROVIDERS: Provider[] = [
     ],
   },
   {
-    id: 'cerebras', name: 'Cerebras', baseUrl: 'https://api.cerebras.ai/v1/chat/completions', isOpenAICompat: true,
+    id: 'cerebras', name: 'Cerebras', baseUrl: 'https://api.cerebras.ai/v1/chat/completions', type: 'openai',
     models: [
       { id: 'llama-3.3-70b', name: 'Llama 3.3 70B' },
       { id: 'llama3.1-8b', name: 'Llama 3.1 8B' },
     ],
   },
   {
-    id: 'openrouter', name: 'OpenRouter', baseUrl: 'https://openrouter.ai/api/v1/chat/completions', isOpenAICompat: true,
+    id: 'openrouter', name: 'OpenRouter', baseUrl: 'https://openrouter.ai/api/v1/chat/completions', type: 'openai',
     extraHeaders: { 'HTTP-Referer': 'https://duckdb-platform.local', 'X-Title': 'DuckDB AI SQL Builder' },
     models: [
       { id: 'anthropic/claude-3.5-sonnet', name: 'Claude 3.5 Sonnet' },
@@ -41,7 +50,7 @@ const PROVIDERS: Provider[] = [
     ],
   },
   {
-    id: 'openai', name: 'OpenAI', baseUrl: 'https://api.openai.com/v1/chat/completions', isOpenAICompat: true,
+    id: 'openai', name: 'OpenAI', baseUrl: 'https://api.openai.com/v1/chat/completions', type: 'openai',
     models: [
       { id: 'gpt-4o', name: 'GPT-4o' },
       { id: 'gpt-4o-mini', name: 'GPT-4o mini' },
@@ -49,7 +58,7 @@ const PROVIDERS: Provider[] = [
     ],
   },
   {
-    id: 'anthropic', name: 'Anthropic', baseUrl: 'https://api.anthropic.com/v1/messages', isOpenAICompat: false,
+    id: 'anthropic', name: 'Anthropic', baseUrl: 'https://api.anthropic.com/v1/messages', type: 'anthropic',
     models: [
       { id: 'claude-3-5-sonnet-20241022', name: 'Claude 3.5 Sonnet' },
       { id: 'claude-3-5-haiku-20241022', name: 'Claude 3.5 Haiku' },
@@ -77,7 +86,21 @@ async function callLLM(provider: Provider, model: string, apiKey: string, userPr
   const systemPrompt = buildSystemPrompt(schema);
   const fullPrompt = `${systemPrompt}\n\nUser request: ${userPrompt}`;
 
-  if (!provider.isOpenAICompat) {
+  if (provider.type === 'google') {
+    const res = await fetch(`${provider.baseUrl}/${model}:generateContent?key=${apiKey}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: fullPrompt }] }],
+        generationConfig: { temperature: 0.1, maxOutputTokens: 1024 }
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data?.error?.message || JSON.stringify(data));
+    return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+  }
+
+  if (provider.type === 'anthropic') {
     // Anthropic format
     const res = await fetch(provider.baseUrl, {
       method: 'POST',
@@ -99,7 +122,7 @@ async function callLLM(provider: Provider, model: string, apiKey: string, userPr
     return data.content?.[0]?.text || '';
   }
 
-  // OpenAI-compatible format
+  // provider.type === 'openai'
   const res = await fetch(provider.baseUrl, {
     method: 'POST',
     headers: {
@@ -134,6 +157,8 @@ export default function AiSqlBuilderPanel({ schema, onInsertSql }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [inserted, setInserted] = useState(false);
+  const [isSchemaExpanded, setIsSchemaExpanded] = useState(false);
+  const visibleSchema = isSchemaExpanded ? schema : schema.slice(0, 8);
 
   const provider = PROVIDERS.find(p => p.id === providerId)!;
 
@@ -224,11 +249,25 @@ export default function AiSqlBuilderPanel({ schema, onInsertSql }: Props) {
 
       {/* Schema Context */}
       {schema.length > 0 && (
-        <div className="p-2.5 bg-[#1E1E2E] rounded-md">
-          <div className="text-[9px] font-bold text-[#89DCEB] uppercase tracking-wider mb-1.5">Schema Context</div>
-          <div className="text-[10px] text-[#CDD6F4] font-mono leading-relaxed">
-            {schema.slice(0, 8).map(c => <div key={c.column_name}><span className="text-[#89DCEB]">{c.column_name}</span> <span className="text-[#6B778C]">{c.column_type}</span></div>)}
-            {schema.length > 8 && <div className="text-[#6B778C]">… and {schema.length - 8} more columns</div>}
+        <div className="p-2.5 bg-[#1E1E2E] rounded-md transition-all duration-300">
+          <div className="flex items-center justify-between mb-1.5">
+            <div className="text-[9px] font-bold text-[#89DCEB] uppercase tracking-wider">Schema Context</div>
+            {schema.length > 8 && (
+              <button
+                onClick={() => setIsSchemaExpanded(!isSchemaExpanded)}
+                className="text-[9px] font-bold text-[#565f89] hover:text-[#89DCEB] transition-colors uppercase tracking-widest outline-none"
+              >
+                {isSchemaExpanded ? 'Collapse' : `+ ${schema.length - 8} more`}
+              </button>
+            )}
+          </div>
+          <div className="text-[10px] text-[#CDD6F4] font-mono leading-relaxed max-h-48 overflow-y-auto custom-scrollbar pr-2">
+            {visibleSchema.map(c => (
+              <div key={c.column_name} className="flex justify-between gap-4 py-0.5">
+                <span className="text-[#89DCEB] truncate">{c.column_name}</span>
+                <span className="text-[#6B778C] shrink-0 font-mono">{c.column_type}</span>
+              </div>
+            ))}
           </div>
         </div>
       )}
