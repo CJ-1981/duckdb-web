@@ -1,0 +1,38 @@
+#!/bin/bash
+
+# Exit script on any error
+set -e
+
+# Function to cleanup background processes on exit
+cleanup() {
+    echo "Stopping all services..."
+    kill $(jobs -p)
+}
+
+trap cleanup EXIT
+
+echo "🚀 Starting DuckDB Data Processor Services..."
+
+# 1. Start Backend (FastAPI)
+echo "📦 Starting Backend (FastAPI)..."
+if [ -d ".venv" ]; then
+    source .venv/bin/activate
+fi
+
+# Run backend in background
+uvicorn src.api.main:create_app --factory --reload --port 8000 &
+
+# 2. Wait a moment for backend to initialize
+sleep 2
+
+# 3. Start Frontend (Next.js)
+echo "💻 Starting Frontend (Next.js)..."
+cd frontend
+
+# Check if node_modules exists, if not install dependencies
+if [ ! -d "node_modules" ]; then
+    echo "Installing frontend dependencies..."
+    npm install
+fi
+
+npm run dev

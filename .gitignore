@@ -1,0 +1,46 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+.venv/
+venv/
+ENV/
+
+# Node service
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+
+# DuckDB / Data
+uploads/
+downloads/
+data/
+*.db
+*.csv
+!CSV_CONNECTOR_USAGE.md
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Misc
+.coverage
+.pytest_cache/
+coverage_html_report/
