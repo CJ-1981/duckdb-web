@@ -420,6 +420,15 @@ async def execute_workflow_graph(
             if node_id not in node_to_table and prev_table:
                 node_to_table[node_id] = prev_table
 
+        if not sorted_nodes:
+            return {
+                "status": "success",
+                "row_count": 0,
+                "preview": [],
+                "columns": [],
+                "message": "No nodes processed."
+            }
+
         final_node_id = sorted_nodes[-1]["id"]
         final_table = node_to_table.get(final_node_id)
         if not final_table:
@@ -786,8 +795,10 @@ async def inspect_node_dataset(request: InspectRequest):
         def val_or_none(v):
             if v is None: return None
             try:
-                if isinstance(v, float) and math.isnan(v): return None
-            except Exception: pass
+                fv = float(v)
+                if not math.isfinite(fv): return None
+                return fv
+            except (ValueError, TypeError): pass
             return v
 
         for _, drow in desc_df.iterrows():
@@ -821,7 +832,9 @@ async def inspect_node_dataset(request: InspectRequest):
             columns.append(stat)
 
         def clean_json(v):
-            if isinstance(v, float) and math.isnan(v): return None
+            if isinstance(v, float):
+                if not math.isfinite(v): return None
+                return v
             if isinstance(v, list): return [clean_json(i) for i in v]
             if isinstance(v, dict): return {ki: clean_json(vi) for ki, vi in v.items()}
             return v

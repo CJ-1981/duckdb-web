@@ -592,6 +592,47 @@ function Dashboard() {
     return result as FullStats;
   };
 
+  // ─── Keyboard Shortcuts ───────────────────────────────────────────────────
+  const isMac = typeof window !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.userAgent);
+  const mod = isMac ? '⌘' : 'Ctrl+';
+
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't trigger if user is typing in an input, textarea, or select
+      const activeElement = document.activeElement;
+      if (
+        activeElement instanceof HTMLInputElement ||
+        activeElement instanceof HTMLTextAreaElement ||
+        activeElement instanceof HTMLSelectElement ||
+        (activeElement as HTMLElement)?.isContentEditable
+      ) {
+        return;
+      }
+
+      const modifier = isMac ? e.metaKey : e.ctrlKey;
+      
+      if (modifier) {
+        const key = e.key.toLowerCase();
+        if (key === 'r') {
+          e.preventDefault();
+          handleExecute();
+        } else if (key === 'o') {
+          e.preventDefault();
+          openLoadModal();
+        } else if (key === 's') {
+          e.preventDefault();
+          setIsSaveModalOpen(true);
+        } else if (key === 'b') {
+          e.preventDefault();
+          handleBeautify();
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleExecute, openLoadModal, handleBeautify, isMac]);
+
   return (
     <div className="flex flex-col h-screen bg-[#FAFBFC] overflow-hidden text-[#171717]">
       {/* Top Header */}
@@ -624,7 +665,7 @@ function Dashboard() {
 
           <button
             onClick={handleBeautify}
-            onMouseEnter={(e) => showHeaderTooltip(e, 'Beautify Layout', 'Automatically organize nodes into a clean, hierarchical structure.')}
+            onMouseEnter={(e) => showHeaderTooltip(e, 'Beautify Layout', `Automatically organize nodes into a clean, hierarchical structure (${mod}B).`)}
             onMouseLeave={hideTooltip}
             className="flex items-center space-x-2 px-3 py-2 text-sm font-medium text-[#0052CC] bg-white border border-[#0052CC]/30 hover:bg-blue-50 rounded-md transition-colors"
           >
@@ -633,7 +674,7 @@ function Dashboard() {
           </button>
           <button
             onClick={() => setIsSaveModalOpen(true)}
-            onMouseEnter={(e) => showHeaderTooltip(e, 'Save Pipeline', 'Save your current workflow configuration to the server.')}
+            onMouseEnter={(e) => showHeaderTooltip(e, 'Save Pipeline', `Save your current workflow configuration to the server (${mod}S).`)}
             onMouseLeave={hideTooltip}
             className="flex items-center space-x-2 px-3 py-2 text-sm font-medium text-[#6B778C] bg-white border border-[#DFE1E6] hover:bg-gray-50 rounded-md transition-colors"
           >
@@ -642,7 +683,7 @@ function Dashboard() {
           </button>
           <button
             onClick={openLoadModal}
-            onMouseEnter={(e) => showHeaderTooltip(e, 'Open Pipeline', 'Load a previously saved workflow from your library.')}
+            onMouseEnter={(e) => showHeaderTooltip(e, 'Open Pipeline', `Load a previously saved workflow from your library (${mod}O).`)}
             onMouseLeave={hideTooltip}
             className="flex items-center space-x-2 px-3 py-2 text-sm font-medium text-[#6B778C] bg-white border border-[#DFE1E6] hover:bg-gray-50 rounded-md transition-colors"
           >
@@ -651,7 +692,7 @@ function Dashboard() {
           </button>
           <button
             onClick={handleExecute}
-            onMouseEnter={(e) => showHeaderTooltip(e, 'Execute Workflow', 'Run the entire pipeline processing logic and generate results.')}
+            onMouseEnter={(e) => showHeaderTooltip(e, 'Execute Workflow', `Run the entire pipeline processing logic and generate results (${mod}R).`)}
             onMouseLeave={hideTooltip}
             disabled={isExecuting}
             className={`flex items-center space-x-2 px-4 py-2 text-sm font-medium text-white rounded-md transition-colors shadow-sm ${isExecuting ? 'bg-gray-400' : 'bg-[#0052CC] hover:bg-[#0065FF]'}`}
