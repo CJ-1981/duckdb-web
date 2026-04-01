@@ -249,22 +249,47 @@ function Dashboard() {
 
   const showTooltip = (e: React.MouseEvent, label: string, text: string) => {
     const rect = e.currentTarget.getBoundingClientRect();
+    const padding = 10;
+    const tooltipWidth = 256;
+    let x = rect.right + 10;
+    if (x + tooltipWidth > window.innerWidth - padding) {
+      x = rect.left - tooltipWidth - 10;
+    }
     setTooltip({
       label,
       text,
-      x: rect.right + 10,
-      y: rect.top + rect.height / 2
-    });
+      x: x,
+      y: rect.top + rect.height / 2,
+      isHeader: false
+    } as any);
   };
 
   const showHeaderTooltip = (e: React.MouseEvent, label: string, text: string) => {
     const rect = e.currentTarget.getBoundingClientRect();
+    const padding = 20;
+    const tooltipWidth = 256;
+    const centerX = rect.left + rect.width / 2;
+
+    let x = centerX;
+    let arrowOffset = 0;
+
+    if (x - tooltipWidth / 2 < padding) {
+      const oldX = x;
+      x = tooltipWidth / 2 + padding;
+      arrowOffset = oldX - x;
+    } else if (x + tooltipWidth / 2 > window.innerWidth - padding) {
+      const oldX = x;
+      x = window.innerWidth - tooltipWidth / 2 - padding;
+      arrowOffset = oldX - x;
+    }
+
     setTooltip({
       label,
       text,
-      x: rect.left + rect.width / 2,
+      x: x,
       y: rect.bottom + 10,
-      isHeader: true
+      isHeader: true,
+      arrowOffset: arrowOffset
     } as any);
   };
 
@@ -2355,9 +2380,11 @@ function Dashboard() {
           <div className="relative bg-[#1E1E2E] text-white p-3 rounded-lg shadow-2xl border border-[#313244] w-64 font-inter">
             {/* Arrow */}
             <div className={`absolute border-[8px] border-transparent ${(tooltip as any).isHeader
-                ? 'border-b-[#1E1E2E] -top-[16px] left-1/2 -translate-x-1/2'
+                ? 'border-b-[#1E1E2E] -top-[16px] left-1/2'
                 : 'border-r-[#1E1E2E] -left-[16px] top-1/2 -translate-y-1/2'
-              }`} />
+              }`}
+              style={(tooltip as any).isHeader ? { transform: `translateX(calc(-50% + ${(tooltip as any).arrowOffset || 0}px))` } : {}}
+            />
 
             <div className="text-[10px] font-bold text-[#89DCEB] mb-1 uppercase tracking-wider">{tooltip.label}</div>
             <div className="text-[11px] leading-relaxed text-[#CDD6F4]">{tooltip.text}</div>

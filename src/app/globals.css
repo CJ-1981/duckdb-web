@@ -29,11 +29,12 @@ body {
 }
 
 /* Premium Tooltip Animations */
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(-50%) translateX(-10px); }
-  to { opacity: 1; transform: translateY(-50%) translateX(0); }
+@keyframes fadeInOpacity {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 .tooltip-animate {
-  animation: fadeIn 0.15s ease-out forwards;
+  animation: fadeInOpacity 0.15s ease-out forwards;
 }
+
