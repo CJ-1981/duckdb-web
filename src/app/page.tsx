@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import WorkspaceCanvas from '@/components/workflow/canvas';
-import { Database, Filter, ArrowRightLeft, Table, Settings, Play, Download, Search, LayoutDashboard, SlidersHorizontal, FileText, FileDown, Save, FolderOpen, Sigma, Eye, ChevronDown, ChevronRight, SortAsc, ListOrdered, Calculator, Code, Fingerprint, PenLine, GitBranch, BarChart3, Plus, Trash2, Wand2, Microscope } from 'lucide-react';
+import { Database, Filter, ArrowRightLeft, Table, Settings, Play, Download, Search, LayoutDashboard, SlidersHorizontal, FileText, FileDown, Save, FolderOpen, Sigma, Eye, ChevronDown, ChevronRight, SortAsc, ListOrdered, Calculator, Code, Fingerprint, PenLine, GitBranch, BarChart3, Plus, Trash2, Wand2, Microscope, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { Node, useReactFlow, ReactFlowProvider } from '@xyflow/react';
 import { executeWorkflow, uploadFile, saveWorkflow, listSavedWorkflows, loadWorkflowGraph, generateReport, inspectNode } from '@/lib/api';
 import DataInspectionPanel, { type ColumnTypeDef, type FullStats } from '@/components/panels/DataInspectionPanel';
@@ -239,6 +239,7 @@ function Dashboard() {
   const [nodeSamples, setNodeSamples] = useState<Record<string, any[]>>({});
   const [nodeTypes, setNodeTypes] = useState<Record<string, ColumnTypeDef[]>>({});
   const [activeBottomTab, setActiveBottomTab] = useState(0);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [tooltip, setTooltip] = useState<{ label: string; text: string; x: number; y: number } | null>(null);
 
   // DEBUG: State watcher
@@ -650,6 +651,9 @@ function Dashboard() {
         } else if (key === 'b') {
           e.preventDefault();
           handleBeautify();
+        } else if (key === '[') {
+          e.preventDefault();
+          setIsSidebarCollapsed(prev => !prev);
         }
       }
     };
@@ -662,7 +666,16 @@ function Dashboard() {
     <div className="flex flex-col h-screen bg-[#FAFBFC] overflow-hidden text-[#171717]">
       {/* Top Header */}
       <header className="h-16 flex items-center justify-between px-6 bg-white border-b border-[#DFE1E6] shrink-0">
-        <div className="flex items-center space-x-4">
+        <div className="flex items-center space-x-3">
+          <button
+            onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+            onMouseEnter={(e) => showHeaderTooltip(e, isSidebarCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar', `Toggle the component palette sidebar (${isMac ? '⌘' : 'Ctrl'}+[).`)}
+            onMouseLeave={hideTooltip}
+            className="p-2 text-[#6B778C] hover:bg-gray-100 rounded-md transition-colors mr-1"
+            title={isSidebarCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
+          >
+            {isSidebarCollapsed ? <PanelLeftOpen size={20} /> : <PanelLeftClose size={20} />}
+          </button>
           <div className="p-2 bg-[#0052CC] text-white rounded-md">
             <LayoutDashboard size={20} />
           </div>
@@ -730,7 +743,9 @@ function Dashboard() {
 
       <div className="flex flex-1 overflow-hidden">
         {/* Left Sidebar - Component Palette */}
-        <aside className="w-64 bg-white border-r border-[#DFE1E6] flex flex-col overflow-y-auto">
+        <aside
+          className={`${isSidebarCollapsed ? 'w-0 opacity-0 -translate-x-full border-none overflow-hidden' : 'w-64 opacity-100 translate-x-0 border-r overflow-y-auto'} bg-white border-[#DFE1E6] flex flex-col transition-all duration-300 ease-in-out shrink-0`}
+        >
           <div className="p-4 border-b border-[#DFE1E6]">
             <div className="relative">
               <Search className="absolute left-3 top-2.5 text-[#6B778C]" size={16} />
