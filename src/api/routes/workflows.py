@@ -12,6 +12,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from pydantic import BaseModel
 import duckdb
+import math
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
@@ -436,13 +437,15 @@ async def execute_workflow_graph(
             df.to_csv(export_path, index=False)
             export_url = f"/api/v1/data/download/{os.path.basename(export_path)}"
 
-        node_counts, node_columns, node_samples = {}, {}, {}
+        node_counts, node_columns, node_samples, node_types = {}, {}, {}, {}
         preview_limit = request.preview_limit or 50
         
         for nid, tname in node_to_table.items():
             try:
                 node_counts[nid] = conn.execute(f"SELECT COUNT(*) FROM {tname}").fetchone()[0]
-                node_columns[nid] = conn.execute(f"DESCRIBE {tname}").df()['column_name'].tolist()
+                desc_df = conn.execute(f"DESCRIBE {tname}").df()
+                node_columns[nid] = desc_df['column_name'].tolist()
+                node_types[nid] = desc_df[['column_name', 'column_type']].to_dict(orient='records')
                 node_samples[nid] = conn.execute(f"SELECT * FROM {tname} LIMIT {preview_limit}").df().fillna("").to_dict(orient="records")
             except:
                 pass
@@ -452,6 +455,7 @@ async def execute_workflow_graph(
             "row_count": len(df),
             "node_counts": node_counts,
             "node_columns": node_columns,
+            "node_types": node_types,
             "node_samples": node_samples,
             "preview": df.head(preview_limit).fillna("").to_dict(orient="records"),
             "columns": df.columns.tolist(),
@@ -645,6 +649,190 @@ async def generate_workflow_report(
         
         doc.build(elements)
         return {"status": "success", "report_url": f"/api/v1/data/download/{pdf_file}"}
+
+class InspectRequest(BaseModel):
+    nodes: List[Dict[str, Any]]
+    edges: List[Dict[str, Any]]
+    node_id: str
+
+@router.post("/inspect", status_code=status.HTTP_200_OK)
+async def inspect_node_dataset(request: InspectRequest):
+    """Run full statistical inspection on a specific node's output dataset."""
+    target_id = request.node_id
+    nodes, edges = request.nodes, request.edges
+
+    adj = {n["id"]: [] for n in nodes}
+    predecessors = {n["id"]: [] for n in nodes}
+    for edge in edges:
+        src, tgt = edge.get("source"), edge.get("target")
+        if src in adj and tgt in adj:
+            adj[src].append(tgt)
+            predecessors[tgt].append(src)
+
+    sorted_nodes: list = []
+    visited: set = set()
+    def _sort(nid: str):
+        if nid in visited: return
+        for p in predecessors.get(nid, []):
+            _sort(p)
+        visited.add(nid)
+        obj = next((n for n in nodes if n["id"] == nid), None)
+        if obj: sorted_nodes.append(obj)
+    _sort(target_id)
+
+    try:
+        conn = duckdb.connect(database=':memory:')
+        node_to_table: dict = {}
+
+        for node in sorted_nodes:
+            node_id = node["id"]
+            safe_id = node_id.replace("-", "_")
+            table_name = f"node_{safe_id}"
+            node_data = node.get("data", {})
+            subtype = node_data.get("subtype")
+            label = node_data.get("label", "")
+            config = node_data.get("config", {})
+            preds = predecessors[node_id]
+            prev_table = node_to_table.get(preds[0]) if preds else None
+
+            try:
+                if node["type"] == "input":
+                    fp = config.get("file_path")
+                    if not fp: continue
+                    if not os.path.isabs(fp): fp = os.path.abspath(fp)
+                    conn.execute(f"CREATE TEMP TABLE {table_name} AS SELECT * FROM read_csv_auto('{fp}')")
+                    node_to_table[node_id] = table_name
+                elif prev_table:
+                    # Pass-through execution for all transformation nodes
+                    exec_req = WorkflowExecutionRequest(nodes=nodes, edges=edges, preview_limit=0)
+                    # Re-use the single-node logic inline using a simplified pass
+                    if subtype == "filter" or "Filter" in label:
+                        is_adv = config.get("isAdvanced", False)
+                        where = ""
+                        if is_adv: where = config.get("customWhere", "")
+                        else:
+                            col, op = config.get("column"), config.get("operator", "==")
+                            val = str(config.get("value", "")).strip()
+                            if col:
+                                cv = val.replace("'", "''")
+                                if op == "==": where = f"TRIM(CAST(\"{col}\" AS VARCHAR)) = '{cv}'"
+                                elif op == "!=": where = f"(TRIM(CAST(\"{col}\" AS VARCHAR)) != '{cv}' OR \"{col}\" IS NULL)"
+                                elif op == "contains": where = f"CAST(\"{col}\" AS VARCHAR) ILIKE '%{cv}%'"
+                                elif op == "is_null": where = f"(\"{col}\" IS NULL OR CAST(\"{col}\" AS VARCHAR) = '')"
+                                elif op == "is_not_null": where = f"(\"{col}\" IS NOT NULL AND CAST(\"{col}\" AS VARCHAR) != '')"
+                                elif op in [">", "<", ">=", "<="]: where = f"TRY_CAST(REPLACE(CAST(\"{col}\" AS VARCHAR), ',', '') AS DOUBLE) {op} {cv.replace(',', '')}"
+                        if where:
+                            conn.execute(f"CREATE TEMP TABLE {table_name} AS SELECT * FROM {prev_table} WHERE {where}")
+                            node_to_table[node_id] = table_name
+                        else: node_to_table[node_id] = prev_table
+                    elif subtype == "select" or "Select" in label:
+                        cols = [c.strip() for c in config.get("columns", "").split(',') if c.strip()]
+                        if cols:
+                            conn.execute(f"CREATE TEMP TABLE {table_name} AS SELECT {', '.join([f'\"{c}\"' for c in cols])} FROM {prev_table}")
+                            node_to_table[node_id] = table_name
+                        else: node_to_table[node_id] = prev_table
+                    elif subtype == "aggregate" or "Aggregate" in label:
+                        group_by = [c.strip() for c in config.get("groupBy", "").split(',') if c.strip()]
+                        aggs = config.get("aggregations", []) or []
+                        if not aggs: aggs = [{"column": config.get("column"), "operation": config.get("operation", "sum").upper(), "alias": config.get("alias")}]
+                        agg_parts = []
+                        for a in aggs:
+                            c, f = a.get("column"), a.get("operation", "sum").upper()
+                            al = a.get("alias") or f"{f.lower()}_{c}"
+                            if c: agg_parts.append(f"COUNT(\"{c}\") AS \"{al}\"" if f == "COUNT" else f"{f}(TRY_CAST(REPLACE(CAST(\"{c}\" AS VARCHAR),',','') AS DOUBLE)) AS \"{al}\"")
+                            else: agg_parts.append(f"COUNT(*) AS \"{al}\"")
+                        sel = ", ".join(agg_parts)
+                        if group_by: sel = f"{', '.join([f'\"{c}\"' for c in group_by])}, {sel}"
+                        sql = f"CREATE TEMP TABLE {table_name} AS SELECT {sel} FROM {prev_table}"
+                        if group_by: sql += f" GROUP BY {', '.join([f'\"{c}\"' for c in group_by])}"
+                        conn.execute(sql); node_to_table[node_id] = table_name
+                    elif subtype == "sort" or "Sort" in label:
+                        col, direction = config.get("column"), config.get("direction", "asc").upper()
+                        if col:
+                            conn.execute(f"CREATE TEMP TABLE {table_name} AS SELECT * FROM {prev_table} ORDER BY \"{col}\" {direction}")
+                            node_to_table[node_id] = table_name
+                        else: node_to_table[node_id] = prev_table
+                    elif subtype == "limit" or "Limit" in label:
+                        conn.execute(f"CREATE TEMP TABLE {table_name} AS SELECT * FROM {prev_table} LIMIT {int(config.get('count', 100))}")
+                        node_to_table[node_id] = table_name
+                    elif subtype == "raw_sql":
+                        raw_sql = config.get("sql", "")
+                        if raw_sql:
+                            conn.execute(f"CREATE TEMP TABLE {table_name} AS {raw_sql.replace('{{input}}', prev_table)}")
+                            node_to_table[node_id] = table_name
+                        else: node_to_table[node_id] = prev_table
+                    else:
+                        node_to_table[node_id] = prev_table
+                elif node["type"] == "output":
+                    if prev_table: node_to_table[node_id] = prev_table
+            except Exception as node_err:
+                logger.warning(f"Inspect: node {node_id} failed: {node_err}")
+                if prev_table: node_to_table[node_id] = prev_table
+
+        target_table = node_to_table.get(target_id)
+        if not target_table:
+            raise HTTPException(status_code=400, detail=f"Could not execute workflow to reach node '{target_id}'.")
+
+        total_rows = conn.execute(f"SELECT COUNT(*) FROM {target_table}").fetchone()[0]
+        desc_df = conn.execute(f"DESCRIBE {target_table}").df()
+
+        columns = []
+        try:
+            summarize_df = conn.execute(f"SUMMARIZE {target_table}").df()
+            summarize_map = {row['column_name']: row for _, row in summarize_df.iterrows()}
+        except Exception:
+            summarize_map = {}
+
+        def val_or_none(v):
+            if v is None: return None
+            try:
+                if isinstance(v, float) and math.isnan(v): return None
+            except Exception: pass
+            return v
+
+        for _, drow in desc_df.iterrows():
+            col_name = drow['column_name']
+            col_type = drow['column_type']
+            stat: dict = {"column_name": col_name, "column_type": col_type}
+            if col_name in summarize_map:
+                s = summarize_map[col_name]
+                cnt = int(s.get('count', 0)) if val_or_none(s.get('count')) is not None else 0
+                stat.update({
+                    "count": cnt,
+                    "null_count": total_rows - cnt,
+                    "null_pct": round((total_rows - cnt) / total_rows * 100, 1) if total_rows else 0,
+                    "distinct": int(s.get('approx_unique', 0)) if val_or_none(s.get('approx_unique')) is not None else 0,
+                    "min": str(s['min']) if val_or_none(s.get('min')) is not None else None,
+                    "max": str(s['max']) if val_or_none(s.get('max')) is not None else None,
+                    "mean": round(float(s['avg']), 4) if val_or_none(s.get('avg')) is not None else None,
+                    "std": round(float(s['std']), 4) if val_or_none(s.get('std')) is not None else None,
+                    "q25": str(s['q25']) if val_or_none(s.get('q25')) is not None else None,
+                    "q50": str(s['q50']) if val_or_none(s.get('q50')) is not None else None,
+                    "q75": str(s['q75']) if val_or_none(s.get('q75')) is not None else None,
+                })
+            else:
+                try:
+                    cnt = conn.execute(f'SELECT COUNT("{col_name}") FROM {target_table}').fetchone()[0]
+                    dist = conn.execute(f'SELECT COUNT(DISTINCT "{col_name}") FROM {target_table}').fetchone()[0]
+                    stat.update({"count": cnt, "null_count": total_rows - cnt,
+                                 "null_pct": round((total_rows - cnt) / total_rows * 100, 1) if total_rows else 0,
+                                 "distinct": dist})
+                except Exception: pass
+            columns.append(stat)
+
+        def clean_json(v):
+            if isinstance(v, float) and math.isnan(v): return None
+            if isinstance(v, list): return [clean_json(i) for i in v]
+            if isinstance(v, dict): return {ki: clean_json(vi) for ki, vi in v.items()}
+            return v
+
+        return clean_json({"status": "success", "total_rows": total_rows, "total_columns": len(columns), "columns": columns})
+
+    except HTTPException: raise
+    except Exception as e:
+        logger.error(f"Inspect error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Inspection error: {str(e)}")
+
 
 @router.get("", response_model=WorkflowListResponse)
 @require_permission("workflows:read")

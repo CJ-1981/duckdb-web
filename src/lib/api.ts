@@ -94,3 +94,21 @@ export async function generateReport(nodes: any[], edges: any[], reportConfig: a
     throw error;
   }
 }
+
+export async function inspectNode(nodes: any[], edges: any[], nodeId: string) {
+  try {
+    const response = await fetch(`${API_BASE_URL}/workflows/inspect`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nodes, edges, node_id: nodeId }),
+    });
+    if (!response.ok) {
+      const errData = await response.json().catch(() => ({}));
+      throw new Error(errData?.detail || `Inspection failed: ${response.statusText}`);
+    }
+    return await response.json();
+  } catch (error) {
+    console.error('Failed to inspect node:', error);
+    throw error;
+  }
+}

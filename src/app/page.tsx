@@ -2,9 +2,11 @@
 
 import React, { useState } from 'react';
 import WorkspaceCanvas from '@/components/workflow/canvas';
-import { Database, Filter, ArrowRightLeft, Table, Settings, Play, Download, Search, LayoutDashboard, SlidersHorizontal, FileText, FileDown, Save, FolderOpen, Sigma, Eye, ChevronDown, ChevronRight, SortAsc, ListOrdered, Calculator, Code, Fingerprint, PenLine, GitBranch, BarChart3, Plus, Trash2 } from 'lucide-react';
+import { Database, Filter, ArrowRightLeft, Table, Settings, Play, Download, Search, LayoutDashboard, SlidersHorizontal, FileText, FileDown, Save, FolderOpen, Sigma, Eye, ChevronDown, ChevronRight, SortAsc, ListOrdered, Calculator, Code, Fingerprint, PenLine, GitBranch, BarChart3, Plus, Trash2, Wand2, Microscope } from 'lucide-react';
 import { Node, useReactFlow, ReactFlowProvider } from '@xyflow/react';
-import { executeWorkflow, uploadFile, saveWorkflow, listSavedWorkflows, loadWorkflowGraph, generateReport } from '@/lib/api';
+import { executeWorkflow, uploadFile, saveWorkflow, listSavedWorkflows, loadWorkflowGraph, generateReport, inspectNode } from '@/lib/api';
+import DataInspectionPanel, { type ColumnTypeDef, type FullStats } from '@/components/panels/DataInspectionPanel';
+import AiSqlBuilderPanel from '@/components/panels/AiSqlBuilderPanel';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000/api/v1';
 
@@ -235,6 +237,8 @@ function Dashboard() {
   const [previewHeight, setPreviewHeight] = useState(280);
   const [previewLimit, setPreviewLimit] = useState(50);
   const [nodeSamples, setNodeSamples] = useState<Record<string, any[]>>({});
+  const [nodeTypes, setNodeTypes] = useState<Record<string, ColumnTypeDef[]>>({});
+  const [activeBottomTab, setActiveBottomTab] = useState(0);
   const [tooltip, setTooltip] = useState<{ label: string; text: string; x: number; y: number } | null>(null);
 
   // DEBUG: State watcher
@@ -496,6 +500,9 @@ function Dashboard() {
       if (result.node_samples) {
         setNodeSamples(result.node_samples);
       }
+      if (result.node_types) {
+        setNodeTypes(result.node_types);
+      }
 
       setNodes((nds) => nds.map(node => ({
         ...node,
@@ -534,14 +541,9 @@ function Dashboard() {
 
     if (nodes.length === 0) return;
 
-    // 1. Calculate node depths (layered DAG approach)
     const depths: Record<string, number> = {};
     const incoming = (nodeId: string) => edges.filter(e => e.target === nodeId);
-
-    // Initialize depths
     nodes.forEach(n => depths[n.id] = 0);
-
-    // Iteratively assign depths (multi-pass to handle multi-step dependencies)
     let changed = true;
     for (let i = 0; i < nodes.length && changed; i++) {
       changed = false;
@@ -549,45 +551,45 @@ function Dashboard() {
         const predecessors = incoming(node.id);
         if (predecessors.length > 0) {
           const maxPrevDepth = Math.max(...predecessors.map(e => depths[e.source]));
-          if (depths[node.id] !== maxPrevDepth + 1) {
-            depths[node.id] = maxPrevDepth + 1;
-            changed = true;
-          }
+          if (depths[node.id] !== maxPrevDepth + 1) { depths[node.id] = maxPrevDepth + 1; changed = true; }
         }
       });
     }
-
-    // 2. Group nodes by depth for horizontal centering
     const depthGroups: Record<number, string[]> = {};
-    Object.entries(depths).forEach(([id, depth]) => {
-      if (!depthGroups[depth]) depthGroups[depth] = [];
-      depthGroups[depth].push(id);
-    });
-
-    // 3. Update node positions
-    const HORIZONTAL_GAP = 280;
-    const VERTICAL_GAP = 180;
-    const CANVAS_CENTER_X = 400; // Arbitrary center
-
+    Object.entries(depths).forEach(([id, depth]) => { if (!depthGroups[depth]) depthGroups[depth] = []; depthGroups[depth].push(id); });
+    const HORIZONTAL_GAP = 280, VERTICAL_GAP = 180, CANVAS_CENTER_X = 400;
     const newNodes = nodes.map(node => {
       const depth = depths[node.id];
       const group = depthGroups[depth];
       const indexInGroup = group.indexOf(node.id);
       const totalInGroup = group.length;
-
-      // Spread nodes horizontally within each depth level
       const xOffset = (indexInGroup - (totalInGroup - 1) / 2) * HORIZONTAL_GAP;
-
-      return {
-        ...node,
-        position: {
-          x: CANVAS_CENTER_X + xOffset,
-          y: 50 + depth * VERTICAL_GAP
-        }
-      };
+      return { ...node, position: { x: CANVAS_CENTER_X + xOffset, y: 50 + depth * VERTICAL_GAP } };
     });
-
     setNodes(newNodes);
+  };
+
+  const handleInsertSql = (sql: string) => {
+    const currentNodes = getNodes();
+    const x = currentNodes.length > 0 ? Math.max(...currentNodes.map(n => n.position.x)) + 300 : 400;
+    const y = currentNodes.length > 0 ? Math.min(...currentNodes.map(n => n.position.y)) : 100;
+    const newNode = {
+      id: `raw_sql_${Date.now()}`,
+      type: 'default',
+      position: { x, y },
+      data: { label: 'AI SQL Query', subtype: 'raw_sql', config: { sql } },
+    };
+    setNodes(nds => [...nds, newNode]);
+  };
+
+  const handleFetchFullStats = async (nodeId: string): Promise<FullStats> => {
+    const rawNodes = getNodes();
+    const rawEdges = getEdges();
+    // Strip React Flow internal properties to avoid JSON serialization issues
+    const nodes = rawNodes.map(n => ({ id: n.id, type: n.type, position: n.position, data: n.data }));
+    const edges = rawEdges.map(e => ({ id: e.id, source: e.source, target: e.target }));
+    const result = await inspectNode(nodes, edges, nodeId);
+    return result as FullStats;
   };
 
   return (
@@ -2143,64 +2145,100 @@ function Dashboard() {
             <div className="w-12 h-1 bg-[#DFE1E6] rounded-full group-hover:bg-[#0052CC] transition-colors"></div>
           </div>
 
-          <div className="flex items-center justify-between px-6 py-2 border-b border-[#DFE1E6] bg-[#FAFBFC] shrink-0">
-            <div className="flex items-center space-x-3">
-              <div className="p-1 bg-orange-50 text-[#FF8B00] rounded">
-                <Eye size={16} />
-              </div>
-              <div>
-                <span className="text-xs font-bold uppercase tracking-wider text-[#6B778C]">Dataset Preview</span>
-                <h4 className="text-sm font-bold text-[#171717]">{String(selectedNode.data.label)}</h4>
-              </div>
+          {/* Tab Header */}
+          <div className="flex items-center justify-between border-b border-[#DFE1E6] bg-[#FAFBFC] shrink-0 px-4">
+            <div className="flex items-center">
+              {[
+                { icon: <Eye size={13} />, label: 'Data Preview', color: 'text-[#FF8B00]' },
+                { icon: <Microscope size={13} />, label: 'Data Inspection', color: 'text-[#6554C0]' },
+                { icon: <Wand2 size={13} />, label: 'AI SQL Builder', color: 'text-[#0052CC]' },
+              ].map((tab, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => setActiveBottomTab(idx)}
+                  className={`flex items-center gap-1.5 px-4 py-2.5 text-xs font-bold border-b-2 transition-all mr-1 ${activeBottomTab === idx ? 'border-[#0052CC] text-[#0052CC]' : 'border-transparent text-[#6B778C] hover:text-[#171717] hover:border-gray-300'}`}
+                >
+                  <span className={activeBottomTab === idx ? 'text-[#0052CC]' : tab.color}>{tab.icon}</span>
+                  {tab.label}
+                  {idx === 0 && nodeSamples[selectedNode.id] && (
+                    <span className="ml-1 text-[9px] bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded-full font-bold">
+                      {nodeSamples[selectedNode.id].length} rows
+                    </span>
+                  )}
+                </button>
+              ))}
             </div>
-            <div className="flex items-center space-x-4">
-              {nodeSamples[selectedNode.id] && (
-                <span className="text-[10px] bg-gray-100 text-[#6B778C] px-2 py-1 rounded font-bold uppercase">
-                  Showing {nodeSamples[selectedNode.id].length} sample rows
-                </span>
-              )}
+            <div className="flex items-center gap-3">
+              <span className="text-xs font-medium text-[#6B778C]">{String(selectedNode.data.label)}</span>
               <button
                 onClick={() => setSelectedNode(null)}
                 className="p-1.5 text-[#6B778C] hover:bg-gray-200 rounded-md transition-colors"
-                title="Close Preview"
+                title="Close Panel"
               >
                 <ChevronDown size={18} />
               </button>
             </div>
           </div>
 
-          <div className="flex-1 overflow-auto bg-white p-0">
-            {nodeSamples[selectedNode.id] && nodeSamples[selectedNode.id].length > 0 ? (
-              <table className="w-full text-left border-collapse min-w-max">
-                <thead className="sticky top-0 bg-[#FAFBFC] z-10 border-b border-[#DFE1E6]">
-                  <tr>
-                    {Object.keys(nodeSamples[selectedNode.id][0]).map((key) => (
-                      <th key={key} className="px-4 py-2.5 text-[11px] font-bold text-[#6B778C] uppercase tracking-wider border-r border-[#DFE1E6] last:border-0">{key}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[#DFE1E6]">
-                  {nodeSamples[selectedNode.id].map((row: any, i: number) => (
-                    <tr key={i} className="hover:bg-blue-50/50 transition-colors">
-                      {Object.values(row).map((val: any, j: number) => (
-                        <td key={j} className="px-4 py-2 text-sm text-[#171717] border-r border-[#DFE1E6] last:border-0 max-w-[300px] truncate">
-                          {String(val)}
-                        </td>
+          {/* Tab Content */}
+          <div className="flex-1 overflow-hidden bg-white">
+            {/* Tab 0: Data Preview */}
+            {activeBottomTab === 0 && (
+              <div className="h-full overflow-auto">
+                {nodeSamples[selectedNode.id] && nodeSamples[selectedNode.id].length > 0 ? (
+                  <table className="w-full text-left border-collapse min-w-max">
+                    <thead className="sticky top-0 bg-[#FAFBFC] z-10 border-b border-[#DFE1E6]">
+                      <tr>
+                        {Object.keys(nodeSamples[selectedNode.id][0]).map((key) => (
+                          <th key={key} className="px-4 py-2.5 text-[11px] font-bold text-[#6B778C] uppercase tracking-wider border-r border-[#DFE1E6] last:border-0">{key}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[#DFE1E6]">
+                      {nodeSamples[selectedNode.id].map((row: any, i: number) => (
+                        <tr key={i} className="hover:bg-blue-50/50 transition-colors">
+                          {Object.values(row).map((val: any, j: number) => (
+                            <td key={j} className="px-4 py-2 text-sm text-[#171717] border-r border-[#DFE1E6] last:border-0 max-w-[300px] truncate">
+                              {String(val)}
+                            </td>
+                          ))}
+                        </tr>
                       ))}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            ) : (
-              <div className="h-full flex flex-col items-center justify-center text-[#6B778C] space-y-3 bg-[#FAFBFC]/50">
-                <div className="p-3 bg-gray-100 rounded-full"><Table size={24} className="opacity-40" /></div>
-                <p className="text-sm font-medium">No preview data available for this node.</p>
-                <p className="text-xs">Execute the workflow to generate sample data for all nodes.</p>
+                    </tbody>
+                  </table>
+                ) : (
+                  <div className="h-full flex flex-col items-center justify-center text-[#6B778C] space-y-3 bg-[#FAFBFC]/50">
+                    <div className="p-3 bg-gray-100 rounded-full"><Table size={24} className="opacity-40" /></div>
+                    <p className="text-sm font-medium">No preview data available for this node.</p>
+                    <p className="text-xs">Execute the workflow to generate sample data for all nodes.</p>
+                  </div>
+                )}
               </div>
+            )}
+
+            {/* Tab 1: Data Inspection */}
+            {activeBottomTab === 1 && (
+              <DataInspectionPanel
+                nodeId={selectedNode.id}
+                nodeLabel={String(selectedNode.data.label)}
+                nodeSamples={nodeSamples}
+                nodeTypes={nodeTypes}
+                onFetchFullStats={handleFetchFullStats}
+              />
+            )}
+
+            {/* Tab 2: AI SQL Builder */}
+            {activeBottomTab === 2 && (
+              <AiSqlBuilderPanel
+                schema={nodeTypes[selectedNode.id] || []}
+                onInsertSql={handleInsertSql}
+              />
             )}
           </div>
         </div>
       )}
+
+
 
       {/* Save Modal */}
       {isSaveModalOpen && (

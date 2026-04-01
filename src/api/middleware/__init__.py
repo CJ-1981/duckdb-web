@@ -109,14 +109,19 @@ class ErrorHandlerMiddleware(BaseHTTPMiddleware):
                 exc_info=True
             )
 
-            # Return JSON error response
+            # Return JSON error response - include CORS headers so browser can read the error
             return JSONResponse(
                 status_code=500,
                 content={
                     "detail": "Internal server error",
                     "request_id": request_id
                 },
-                headers={"X-Request-ID": request_id}
+                headers={
+                    "X-Request-ID": request_id,
+                    "Access-Control-Allow-Origin": "*",
+                    "Access-Control-Allow-Methods": "DELETE, GET, HEAD, OPTIONS, PATCH, POST, PUT",
+                    "Access-Control-Allow-Headers": "content-type, authorization",
+                }
             )
 
 
