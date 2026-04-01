@@ -22,9 +22,8 @@ ENV/
 
 # Node service (Frontend)
 node_modules/
-frontend/node_modules/
-frontend/.next/
-frontend/out/
+.next/
+out/
 .pnp
 .pnp.*
 .yarn/*

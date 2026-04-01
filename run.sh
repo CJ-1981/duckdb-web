@@ -27,7 +27,6 @@ sleep 2
 
 # 3. Start Frontend (Next.js)
 echo "💻 Starting Frontend (Next.js)..."
-cd frontend
 
 # Check if node_modules exists, if not install dependencies
 if [ ! -d "node_modules" ]; then

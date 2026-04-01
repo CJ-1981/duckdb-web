@@ -17,7 +17,6 @@ timeout /t 5 /nobreak > nul
 
 :: 3. Start Frontend (Next.js)
 echo 💻 Starting Frontend (Next.js)...
-cd frontend
 
 :: Check if node_modules exists, if not install dependencies
 if not exist node_modules (
