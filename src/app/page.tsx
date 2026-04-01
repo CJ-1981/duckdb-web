@@ -121,19 +121,19 @@ function getConditionSql(col: string, op: string, val: string): string {
   const column = col ? `"${col}"` : '/* column */';
   const value = val || '';
   const opMap: Record<string, string> = {
-    '==': `${column} = '${value}'`, 
+    '==': `${column} = '${value}'`,
     '!=': `${column} != '${value}'`,
-    '>': `${column} > ${value}`, 
+    '>': `${column} > ${value}`,
     '<': `${column} < ${value}`,
-    '>=': `${column} >= ${value}`, 
+    '>=': `${column} >= ${value}`,
     '<=': `${column} <= ${value}`,
     'contains': `${column} ILIKE '%${value}%'`,
     'not_contains': `${column} NOT ILIKE '%${value}%'`,
     'starts_with': `${column} ILIKE '${value}%'`,
     'ends_with': `${column} ILIKE '%${value}'`,
-    'is_null': `${column} IS NULL`, 
+    'is_null': `${column} IS NULL`,
     'is_not_null': `${column} IS NOT NULL`,
-    'in': `${column} IN (${value})`, 
+    'in': `${column} IN (${value})`,
     'not_in': `${column} NOT IN (${value})`,
   };
   return opMap[op] ?? `${column} ${op} '${value}'`;
@@ -151,7 +151,7 @@ function ExecuteButton() {
       console.log('Nodes structure:', JSON.stringify(nodes, null, 2));
       console.log('Executing workflow with', nodes.length, 'nodes');
       const result = await executeWorkflow(nodes, edges);
-      
+
       // Update any filter nodes with the discovered columns so the user can select them
       if (result.columns) {
         setNodes((nds) => nds.map((node) => {
@@ -172,7 +172,7 @@ function ExecuteButton() {
       }
 
       alert(`Success! processed ${result.row_count} rows.`);
-      
+
       // If there's an export file, trigger browser download
       if (result.export_url) {
         const downloadUrl = `http://localhost:8000${result.export_url}`;
@@ -210,7 +210,7 @@ function ExecuteButton() {
   };
 
   return (
-    <button 
+    <button
       onClick={handleExecute}
       className="flex items-center space-x-2 px-4 py-2 text-sm font-medium text-white bg-[#0052CC] hover:bg-[#0065FF] rounded-md transition-colors shadow-sm"
     >
@@ -223,7 +223,7 @@ function ExecuteButton() {
 function Dashboard() {
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
   const { setNodes, setEdges, getNodes, getEdges } = useReactFlow();
-  
+
   const [isSaveModalOpen, setIsSaveModalOpen] = useState(false);
   const [isLoadModalOpen, setIsLoadModalOpen] = useState(false);
   const [workflowName, setWorkflowName] = useState("");
@@ -231,10 +231,17 @@ function Dashboard() {
   const [executionResult, setExecutionResult] = useState<any>(null);
   const [isExecuting, setIsExecuting] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [executionSuccess, setExecutionSuccess] = useState(false);
   const [previewHeight, setPreviewHeight] = useState(280);
   const [previewLimit, setPreviewLimit] = useState(50);
   const [nodeSamples, setNodeSamples] = useState<Record<string, any[]>>({});
   const [tooltip, setTooltip] = useState<{ label: string; text: string; x: number; y: number } | null>(null);
+
+  // DEBUG: State watcher
+  React.useEffect(() => {
+    console.log(`[DEBUG] State update - saveSuccess: ${saveSuccess}, isExecuting: ${isExecuting}, selectedNode: ${selectedNode?.id}`);
+  }, [saveSuccess, isExecuting, selectedNode?.id]);
+
 
   const showTooltip = (e: React.MouseEvent, label: string, text: string) => {
     const rect = e.currentTarget.getBoundingClientRect();
@@ -247,14 +254,14 @@ function Dashboard() {
   };
 
   const showHeaderTooltip = (e: React.MouseEvent, label: string, text: string) => {
-     const rect = e.currentTarget.getBoundingClientRect();
-     setTooltip({
-       label,
-       text,
-       x: rect.left + rect.width / 2,
-       y: rect.bottom + 10,
-       isHeader: true
-     } as any);
+    const rect = e.currentTarget.getBoundingClientRect();
+    setTooltip({
+      label,
+      text,
+      x: rect.left + rect.width / 2,
+      y: rect.bottom + 10,
+      isHeader: true
+    } as any);
   };
 
   const hideTooltip = () => setTooltip(null);
@@ -264,11 +271,11 @@ function Dashboard() {
     if (selectedNode && selectedNode.data?.subtype) {
       const subtype = selectedNode.data.subtype;
       const config = selectedNode.data.config as any;
-      
+
       // Helper to find all available columns for this node (redundant but matches current logic)
       const nodes = getNodes();
       const edges = getEdges();
-      
+
       const getNodeOutputColumnsLocal = (nId: string, visited = new Set<string>()): string[] => {
         if (visited.has(nId)) return [];
         visited.add(nId);
@@ -296,19 +303,19 @@ function Dashboard() {
       };
 
       const columns = getNodeOutputColumnsLocal(selectedNode.id);
-      
+
       if (columns.length > 0) {
         let updatedConfig: any = null;
-        
+
         // Handle standard 'column' picks
         if (['filter', 'aggregate', 'sort', 'clean'].includes(subtype as string) && !config?.column) {
           updatedConfig = { ...(config || {}), column: columns[0] };
         }
-        
+
         // Handle Join keys
         if (subtype === 'combine' && (!config?.leftColumn || !config?.rightColumn)) {
-          updatedConfig = { 
-            ...(config || {}), 
+          updatedConfig = {
+            ...(config || {}),
             leftColumn: config?.leftColumn || columns[0],
             rightColumn: config?.rightColumn || columns[0]
           };
@@ -323,9 +330,9 @@ function Dashboard() {
         }
 
         if (updatedConfig) {
-          const updatedNode = { 
-            ...selectedNode, 
-            data: { ...selectedNode.data, config: updatedConfig } 
+          const updatedNode = {
+            ...selectedNode,
+            data: { ...selectedNode.data, config: updatedConfig }
           };
           setSelectedNode(updatedNode);
           setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
@@ -369,11 +376,11 @@ function Dashboard() {
   const getUpstreamColumns = (nodeId: string) => {
     const nodes = getNodes();
     const edges = getEdges();
-    
+
     const getNodeOutputColumns = (nId: string, visited = new Set<string>()): string[] => {
       if (visited.has(nId)) return [];
       visited.add(nId);
-      
+
       const node = nodes.find(n => n.id === nId);
       if (!node) return [];
 
@@ -395,9 +402,9 @@ function Dashboard() {
           const alias = config?.alias || (col ? `${op}_${col}` : (config?.groupBy ? '' : 'count_all'));
           if (alias) predictedCols.add(alias);
         }
-        
+
         if (Array.isArray(config?.availableColumns) && config.availableColumns.length > 0) {
-           return config.availableColumns;
+          return config.availableColumns;
         }
         return Array.from(predictedCols) as string[];
       }
@@ -421,8 +428,8 @@ function Dashboard() {
 
       // 2. Select node reduction
       if (subtype === 'select') {
-         const cols = (config?.columns || "").split(',').map((c: string) => c.trim()).filter((c: string) => c);
-         if (cols.length > 0) return cols;
+        const cols = (config?.columns || "").split(',').map((c: string) => c.trim()).filter((c: string) => c);
+        if (cols.length > 0) return cols;
       }
 
       // 2. If it's an input node, use its columns
@@ -436,12 +443,12 @@ function Dashboard() {
       for (const edge of incoming) {
         getNodeOutputColumns(edge.source, visited).forEach(c => upstreamCols.add(c));
       }
-      
+
       // If we have real columns from execution, they are most accurate
       if (Array.isArray(config?.availableColumns) && config.availableColumns.length > 0) {
         return config.availableColumns;
       }
-      
+
       return Array.from(upstreamCols);
     };
 
@@ -460,20 +467,25 @@ function Dashboard() {
 
   const saveNodeChanges = () => {
     if (!selectedNode) return;
-    setNodes((nds) => 
+    console.log('[DEBUG] saveNodeChanges triggered');
+    setNodes((nds) =>
       nds.map((node) => {
         if (node.id === selectedNode.id) {
           // Return a brand new object to ensure React Flow triggers a re-render
-          return { 
-            ...node, 
-            data: { ...selectedNode.data } 
+          return {
+            ...node,
+            data: { ...selectedNode.data }
           };
         }
         return node;
       })
     );
     setSaveSuccess(true);
-    setTimeout(() => setSaveSuccess(false), 2000);
+    console.log('[DEBUG] saveSuccess set to TRUE, starting 2000ms timer');
+    setTimeout(() => {
+      console.log('[DEBUG] 2000ms timer ended - resetting saveSuccess');
+      setSaveSuccess(false);
+    }, 2000);
   };
 
   const handleExecute = async () => {
@@ -484,20 +496,30 @@ function Dashboard() {
       if (result.node_samples) {
         setNodeSamples(result.node_samples);
       }
-      
+
       setNodes((nds) => nds.map(node => ({
         ...node,
         data: {
-            ...node.data,
-            rowCount: result.node_counts?.[node.id] ?? result.row_count,
-            config: {
-              ...(node.data.config as any || {}),
-              availableColumns: result.node_columns?.[node.id] ?? (node.data.config as any)?.availableColumns
-            }
+          ...node.data,
+          rowCount: result.node_counts?.[node.id] ?? result.row_count,
+          config: {
+            ...(node.data.config as any || {}),
+            availableColumns: result.node_columns?.[node.id] ?? (node.data.config as any)?.availableColumns
+          }
         }
       })));
 
-      alert(`Success! Processed ${result.row_count} rows.`);
+      console.log('[DEBUG] Execution success result:', result);
+      setExecutionSuccess(true);
+      console.log('[DEBUG] setExecutionSuccess(true), starting 2000ms timer');
+      setTimeout(() => {
+        console.log('[DEBUG] ExecutionSuccess timer ended - resetting state');
+        setExecutionSuccess(false);
+      }, 2000);
+
+      // Keep the alert for now as a fallback, or we can remove it if preferred
+      // alert(`Success! Processed ${result.row_count} rows.`);
+
     } catch (e) {
       alert("Execution failed.");
       console.error(e);
@@ -507,67 +529,67 @@ function Dashboard() {
   };
 
   const handleBeautify = () => {
-     const nodes = getNodes();
-     const edges = getEdges();
-     
-     if (nodes.length === 0) return;
+    const nodes = getNodes();
+    const edges = getEdges();
 
-     // 1. Calculate node depths (layered DAG approach)
-     const depths: Record<string, number> = {};
-     const incoming = (nodeId: string) => edges.filter(e => e.target === nodeId);
-     
-     // Initialize depths
-     nodes.forEach(n => depths[n.id] = 0);
+    if (nodes.length === 0) return;
 
-     // Iteratively assign depths (multi-pass to handle multi-step dependencies)
-     let changed = true;
-     for (let i = 0; i < nodes.length && changed; i++) {
-        changed = false;
-        nodes.forEach(node => {
-           const predecessors = incoming(node.id);
-           if (predecessors.length > 0) {
-              const maxPrevDepth = Math.max(...predecessors.map(e => depths[e.source]));
-              if (depths[node.id] !== maxPrevDepth + 1) {
-                 depths[node.id] = maxPrevDepth + 1;
-                 changed = true;
-              }
-           }
-        });
-     }
+    // 1. Calculate node depths (layered DAG approach)
+    const depths: Record<string, number> = {};
+    const incoming = (nodeId: string) => edges.filter(e => e.target === nodeId);
 
-     // 2. Group nodes by depth for horizontal centering
-     const depthGroups: Record<number, string[]> = {};
-     Object.entries(depths).forEach(([id, depth]) => {
-        if (!depthGroups[depth]) depthGroups[depth] = [];
-        depthGroups[depth].push(id);
-     });
+    // Initialize depths
+    nodes.forEach(n => depths[n.id] = 0);
 
-     // 3. Update node positions
-     const HORIZONTAL_GAP = 280;
-     const VERTICAL_GAP = 180;
-     const CANVAS_CENTER_X = 400; // Arbitrary center
+    // Iteratively assign depths (multi-pass to handle multi-step dependencies)
+    let changed = true;
+    for (let i = 0; i < nodes.length && changed; i++) {
+      changed = false;
+      nodes.forEach(node => {
+        const predecessors = incoming(node.id);
+        if (predecessors.length > 0) {
+          const maxPrevDepth = Math.max(...predecessors.map(e => depths[e.source]));
+          if (depths[node.id] !== maxPrevDepth + 1) {
+            depths[node.id] = maxPrevDepth + 1;
+            changed = true;
+          }
+        }
+      });
+    }
 
-     const newNodes = nodes.map(node => {
-        const depth = depths[node.id];
-        const group = depthGroups[depth];
-        const indexInGroup = group.indexOf(node.id);
-        const totalInGroup = group.length;
+    // 2. Group nodes by depth for horizontal centering
+    const depthGroups: Record<number, string[]> = {};
+    Object.entries(depths).forEach(([id, depth]) => {
+      if (!depthGroups[depth]) depthGroups[depth] = [];
+      depthGroups[depth].push(id);
+    });
 
-        // Spread nodes horizontally within each depth level
-        const xOffset = (indexInGroup - (totalInGroup - 1) / 2) * HORIZONTAL_GAP;
-        
-        return {
-           ...node,
-           position: {
-              x: CANVAS_CENTER_X + xOffset,
-              y: 50 + depth * VERTICAL_GAP
-           }
-        };
-     });
+    // 3. Update node positions
+    const HORIZONTAL_GAP = 280;
+    const VERTICAL_GAP = 180;
+    const CANVAS_CENTER_X = 400; // Arbitrary center
 
-     setNodes(newNodes);
+    const newNodes = nodes.map(node => {
+      const depth = depths[node.id];
+      const group = depthGroups[depth];
+      const indexInGroup = group.indexOf(node.id);
+      const totalInGroup = group.length;
+
+      // Spread nodes horizontally within each depth level
+      const xOffset = (indexInGroup - (totalInGroup - 1) / 2) * HORIZONTAL_GAP;
+
+      return {
+        ...node,
+        position: {
+          x: CANVAS_CENTER_X + xOffset,
+          y: 50 + depth * VERTICAL_GAP
+        }
+      };
+    });
+
+    setNodes(newNodes);
   };
-   
+
   return (
     <div className="flex flex-col h-screen bg-[#FAFBFC] overflow-hidden text-[#171717]">
       {/* Top Header */}
@@ -580,12 +602,12 @@ function Dashboard() {
             Data Analyst Platform
           </h1>
         </div>
-        
+
         <div className="flex items-center space-x-3">
           <div className="flex items-center space-x-2 bg-gray-50 px-3 py-1.5 rounded-md border border-[#DFE1E6]">
             <Eye size={14} className="text-[#6B778C]" />
             <span className="text-xs font-semibold text-[#6B778C]">Preview:</span>
-            <select 
+            <select
               value={previewLimit}
               onChange={(e) => setPreviewLimit(Number(e.target.value))}
               className="bg-transparent text-xs font-bold text-[#171717] focus:outline-none border-none cursor-pointer"
@@ -598,7 +620,7 @@ function Dashboard() {
             </select>
           </div>
 
-          <button 
+          <button
             onClick={handleBeautify}
             onMouseEnter={(e) => showHeaderTooltip(e, 'Beautify Layout', 'Automatically organize nodes into a clean, hierarchical structure.')}
             onMouseLeave={hideTooltip}
@@ -607,7 +629,7 @@ function Dashboard() {
             <SlidersHorizontal size={16} />
             <span>Beautify</span>
           </button>
-          <button 
+          <button
             onClick={() => setIsSaveModalOpen(true)}
             onMouseEnter={(e) => showHeaderTooltip(e, 'Save Pipeline', 'Save your current workflow configuration to the server.')}
             onMouseLeave={hideTooltip}
@@ -616,7 +638,7 @@ function Dashboard() {
             <Save size={16} />
             <span>Save</span>
           </button>
-          <button 
+          <button
             onClick={openLoadModal}
             onMouseEnter={(e) => showHeaderTooltip(e, 'Open Pipeline', 'Load a previously saved workflow from your library.')}
             onMouseLeave={hideTooltip}
@@ -625,7 +647,7 @@ function Dashboard() {
             <FolderOpen size={16} />
             <span>Open</span>
           </button>
-          <button 
+          <button
             onClick={handleExecute}
             onMouseEnter={(e) => showHeaderTooltip(e, 'Execute Workflow', 'Run the entire pipeline processing logic and generate results.')}
             onMouseLeave={hideTooltip}
@@ -644,19 +666,19 @@ function Dashboard() {
           <div className="p-4 border-b border-[#DFE1E6]">
             <div className="relative">
               <Search className="absolute left-3 top-2.5 text-[#6B778C]" size={16} />
-              <input 
-                type="text" 
-                placeholder="Search components..." 
+              <input
+                type="text"
+                placeholder="Search components..."
                 className="w-full pl-9 pr-4 py-2 text-sm border border-[#DFE1E6] rounded-md focus:outline-none focus:ring-2 focus:ring-[#0052CC] focus:border-transparent"
               />
             </div>
           </div>
-          
+
           <div className="flex-1 p-4">
             <h3 className="text-xs font-semibold text-[#6B778C] uppercase tracking-wider mb-3">Data Sources</h3>
             <div className="space-y-2 mb-6">
-              <div 
-                draggable 
+              <div
+                draggable
                 onDragStart={(e) => onDragStart(e, 'input', 'Database Table')}
                 onMouseEnter={(e) => showTooltip(e, 'Database Table', 'Source data directly from project-level DuckDB tables.')}
                 onMouseLeave={hideTooltip}
@@ -667,8 +689,8 @@ function Dashboard() {
                 </div>
                 <span className="text-sm font-medium text-gray-700">Database Table</span>
               </div>
-              <div 
-                draggable 
+              <div
+                draggable
                 onDragStart={(e) => onDragStart(e, 'input', 'CSV/Excel File')}
                 onMouseEnter={(e) => showTooltip(e, 'CSV/Excel File', 'Upload or select local data files (CSV, XLSX) to analyze.')}
                 onMouseLeave={hideTooltip}
@@ -683,8 +705,8 @@ function Dashboard() {
 
             <h3 className="text-xs font-semibold text-[#6B778C] uppercase tracking-wider mb-3">Transformations</h3>
             <div className="space-y-2 mb-6">
-              <div 
-                draggable 
+              <div
+                draggable
                 onDragStart={(e) => onDragStart(e, 'default', 'Filter Records', 'filter')}
                 onMouseEnter={(e) => showTooltip(e, 'Filter Records', 'Keep only records that match specific conditions (e.g. amount > 1000).')}
                 onMouseLeave={hideTooltip}
@@ -695,8 +717,8 @@ function Dashboard() {
                 </div>
                 <span className="text-sm font-medium text-gray-700">Filter Records</span>
               </div>
-              <div 
-                draggable 
+              <div
+                draggable
                 onDragStart={(e) => onDragStart(e, 'default', 'Combine Datasets', 'combine')}
                 onMouseEnter={(e) => showTooltip(e, 'Combine Datasets', 'Join two separate tables together using common keys (Inner, Left, UNION, etc).')}
                 onMouseLeave={hideTooltip}
@@ -707,8 +729,8 @@ function Dashboard() {
                 </div>
                 <span className="text-sm font-medium text-gray-700">Combine Datasets</span>
               </div>
-              <div 
-                draggable 
+              <div
+                draggable
                 onDragStart={(e) => onDragStart(e, 'default', 'Clean & Format', 'clean')}
                 onMouseEnter={(e) => showTooltip(e, 'Clean & Format', 'Standardize data quality: trim spaces, change case, or fix null values.')}
                 onMouseLeave={hideTooltip}
@@ -719,8 +741,8 @@ function Dashboard() {
                 </div>
                 <span className="text-sm font-medium text-gray-700">Clean & Format</span>
               </div>
-              <div 
-                draggable 
+              <div
+                draggable
                 onDragStart={(e) => onDragStart(e, 'default', 'Aggregate Data', 'aggregate')}
                 onMouseEnter={(e) => showTooltip(e, 'Aggregate Data', 'Summarize your data: calculate counts, averages, or totals grouped by categories.')}
                 onMouseLeave={hideTooltip}
@@ -731,8 +753,8 @@ function Dashboard() {
                 </div>
                 <span className="text-sm font-medium text-gray-700">Aggregate Data</span>
               </div>
-              <div 
-                draggable 
+              <div
+                draggable
                 onDragStart={(e) => onDragStart(e, 'default', 'Sort Data', 'sort')}
                 onMouseEnter={(e) => showTooltip(e, 'Sort Data', 'Reorder your records based on one or more column values.')}
                 onMouseLeave={hideTooltip}
@@ -743,8 +765,8 @@ function Dashboard() {
                 </div>
                 <span className="text-sm font-medium text-gray-700">Sort Data</span>
               </div>
-              <div 
-                draggable 
+              <div
+                draggable
                 onDragStart={(e) => onDragStart(e, 'default', 'Limit Data', 'limit')}
                 onMouseEnter={(e) => showTooltip(e, 'Limit Data', 'Restrict the output to the first N rows of your dataset.')}
                 onMouseLeave={hideTooltip}
@@ -755,8 +777,8 @@ function Dashboard() {
                 </div>
                 <span className="text-sm font-medium text-gray-700">Limit Data</span>
               </div>
-              <div 
-                draggable 
+              <div
+                draggable
                 onDragStart={(e) => onDragStart(e, 'default', 'Select Columns', 'select')}
                 onMouseEnter={(e) => showTooltip(e, 'Select Columns', 'Choose which columns to keep and which to discard from the dataset.')}
                 onMouseLeave={hideTooltip}
@@ -767,8 +789,8 @@ function Dashboard() {
                 </div>
                 <span className="text-sm font-medium text-gray-700">Select Columns</span>
               </div>
-              <div 
-                draggable 
+              <div
+                draggable
                 onDragStart={(e) => onDragStart(e, 'default', 'Add Column', 'computed')}
                 onMouseEnter={(e) => showTooltip(e, 'Add Column', 'Create new columns using arithmetic or SQL expressions (e.g. price * 1.1).')}
                 onMouseLeave={hideTooltip}
@@ -779,8 +801,8 @@ function Dashboard() {
                 </div>
                 <span className="text-sm font-medium text-gray-700">Add Column</span>
               </div>
-              <div 
-                draggable 
+              <div
+                draggable
                 onDragStart={(e) => onDragStart(e, 'default', 'Rename Columns', 'rename')}
                 onMouseEnter={(e) => showTooltip(e, 'Rename Columns', 'Modify column headers to make them more descriptive and readable.')}
                 onMouseLeave={hideTooltip}
@@ -791,8 +813,8 @@ function Dashboard() {
                 </div>
                 <span className="text-sm font-medium text-gray-700">Rename Columns</span>
               </div>
-              <div 
-                draggable 
+              <div
+                draggable
                 onDragStart={(e) => onDragStart(e, 'default', 'Remove Duplicates', 'distinct')}
                 onMouseEnter={(e) => showTooltip(e, 'Remove Duplicates', 'Filter out identical rows to ensure data uniqueness.')}
                 onMouseLeave={hideTooltip}
@@ -803,8 +825,8 @@ function Dashboard() {
                 </div>
                 <span className="text-sm font-medium text-gray-700">Remove Duplicates</span>
               </div>
-              <div 
-                draggable 
+              <div
+                draggable
                 onDragStart={(e) => onDragStart(e, 'default', 'Conditional Logic', 'case_when')}
                 onMouseEnter={(e) => showTooltip(e, 'Conditional Logic', 'Apply CASE-WHEN logic to create sophisticated branching rules.')}
                 onMouseLeave={hideTooltip}
@@ -815,8 +837,8 @@ function Dashboard() {
                 </div>
                 <span className="text-sm font-medium text-gray-700">Conditional Logic</span>
               </div>
-              <div 
-                draggable 
+              <div
+                draggable
                 onDragStart={(e) => onDragStart(e, 'default', 'Window Function', 'window')}
                 onMouseEnter={(e) => showTooltip(e, 'Window Function', 'Perform calculations across related rows (ranks, moving averages).')}
                 onMouseLeave={hideTooltip}
@@ -827,8 +849,8 @@ function Dashboard() {
                 </div>
                 <span className="text-sm font-medium text-gray-700">Window Function</span>
               </div>
-              <div 
-                draggable 
+              <div
+                draggable
                 onDragStart={(e) => onDragStart(e, 'default', 'Custom SQL', 'raw_sql')}
                 onMouseEnter={(e) => showTooltip(e, 'Custom SQL', 'Maximum power: write your own DuckDB SQL to transform data.')}
                 onMouseLeave={hideTooltip}
@@ -840,11 +862,11 @@ function Dashboard() {
                 <span className="text-sm font-medium text-gray-700">Custom SQL</span>
               </div>
             </div>
-            
+
             <h3 className="text-xs font-semibold text-[#6B778C] uppercase tracking-wider mb-3">Outputs</h3>
             <div className="space-y-2 mb-6">
-              <div 
-                draggable 
+              <div
+                draggable
                 onDragStart={(e) => onDragStart(e, 'output', 'Report Builder', 'report')}
                 onMouseEnter={(e) => showTooltip(e, 'Report Builder', 'Design a customized report (PDF/Markdown) from your pipeline results.')}
                 onMouseLeave={hideTooltip}
@@ -855,8 +877,8 @@ function Dashboard() {
                 </div>
                 <span className="text-sm font-medium text-gray-700">Report Builder</span>
               </div>
-              <div 
-                draggable 
+              <div
+                draggable
                 onDragStart={(e) => onDragStart(e, 'output', 'Export File')}
                 onMouseEnter={(e) => showTooltip(e, 'Export File', 'Save your processed data to a CSV or Excel file for external use.')}
                 onMouseLeave={hideTooltip}
@@ -885,9 +907,9 @@ function Dashboard() {
             </div>
             <div className="p-4 flex-1">
               <h3 className="text-base font-medium text-[#171717] mb-2 flex items-center justify-between">
-                <input 
-                  type="text" 
-                  value={String(selectedNode.data?.label || '')} 
+                <input
+                  type="text"
+                  value={String(selectedNode.data?.label || '')}
                   onChange={(e) => setSelectedNode({ ...selectedNode, data: { ...selectedNode.data, label: e.target.value } })}
                   className="flex-1 bg-transparent border-none focus:outline-none focus:ring-0 p-0 font-medium text-lg placeholder-gray-400"
                   placeholder="Node Label"
@@ -898,55 +920,55 @@ function Dashboard() {
                   </span>
                 )}
               </h3>
-              
+
               {selectedNode && selectedNode.type === 'input' && typeof selectedNode.data?.config === 'object' && selectedNode.data.config !== null && (
                 <div className="space-y-4">
                   <div>
                     <label className="block text-xs font-semibold text-[#6B778C] mb-1">File Upload</label>
                     <label className="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-[#DFE1E6] border-dashed rounded-md bg-[#FAFBFC] hover:border-[#0052CC] hover:bg-blue-50 transition-colors cursor-pointer relative">
-                      <input 
-                        type="file" 
+                      <input
+                        type="file"
                         accept=".csv,.xlsx"
                         className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                         onChange={async (e) => {
                           const file = e.target.files?.[0];
                           if (file) {
-                             try {
-                                const uploadResult = await uploadFile(file);
-                                const updatedNode = { 
-                                  ...selectedNode, 
-                                  data: { 
-                                    ...selectedNode.data, 
-                                    config: { 
-                                      ...(selectedNode.data.config as any), 
-                                      file: uploadResult.filename, 
-                                      file_path: uploadResult.file_path,
-                                      availableColumns: uploadResult.available_columns
-                                    } 
-                                  } 
-                                };
-                                setSelectedNode(updatedNode);
-                                // Automatically push column metadata to all filter nodes so dropdowns are ready
-                                setNodes((nds) => nds.map((n) => {
-                                  if (n.id === updatedNode.id) return updatedNode;
-                                  if (n.type === 'default' || n.id.includes('Filter')) {
-                                    return {
-                                      ...n,
-                                      data: {
-                                        ...n.data,
-                                        config: {
-                                          ...(n.data.config as any || {}),
-                                          availableColumns: uploadResult.available_columns
-                                        }
-                                      }
-                                    };
+                            try {
+                              const uploadResult = await uploadFile(file);
+                              const updatedNode = {
+                                ...selectedNode,
+                                data: {
+                                  ...selectedNode.data,
+                                  config: {
+                                    ...(selectedNode.data.config as any),
+                                    file: uploadResult.filename,
+                                    file_path: uploadResult.file_path,
+                                    availableColumns: uploadResult.available_columns
                                   }
-                                  return n;
-                                }));
-                             } catch (err) {
-                                alert("File upload failed!");
-                                console.error(err);
-                             }
+                                }
+                              };
+                              setSelectedNode(updatedNode);
+                              // Automatically push column metadata to all filter nodes so dropdowns are ready
+                              setNodes((nds) => nds.map((n) => {
+                                if (n.id === updatedNode.id) return updatedNode;
+                                if (n.type === 'default' || n.id.includes('Filter')) {
+                                  return {
+                                    ...n,
+                                    data: {
+                                      ...n.data,
+                                      config: {
+                                        ...(n.data.config as any || {}),
+                                        availableColumns: uploadResult.available_columns
+                                      }
+                                    }
+                                  };
+                                }
+                                return n;
+                              }));
+                            } catch (err) {
+                              alert("File upload failed!");
+                              console.error(err);
+                            }
                           }
                         }}
                       />
@@ -969,125 +991,124 @@ function Dashboard() {
 
               {selectedNode.type === 'default' && typeof selectedNode.data?.config === 'object' && selectedNode.data.config !== null && (
                 <div className="space-y-4">
-                   {/* Filter Records UI */}
-                   {selectedNode.data.subtype === 'filter' && (
-                     <div className="space-y-4">
-                        <div className="flex items-center justify-between border-b border-gray-100 pb-2">
-                           <label className="text-[10px] uppercase font-bold text-[#6B778C]">Filter Configuration</label>
-                           <button 
-                             onClick={() => {
-                               const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), isAdvanced: !(selectedNode.data.config as any)?.isAdvanced } } };
-                               setSelectedNode(updatedNode);
-                               setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
-                             }}
-                             className={`text-[9px] px-2 py-0.5 rounded font-bold transition-all border shadow-sm flex items-center gap-1 ${
-                               (selectedNode.data.config as any)?.isAdvanced 
-                                 ? 'bg-[#0052CC] text-white border-[#0052CC] hover:bg-[#0065FF] hover:border-[#0065FF]' 
-                                 : 'bg-white text-[#6B778C] border-[#DFE1E6] hover:bg-gray-50 hover:text-[#171717] hover:border-[#C1C7D0]'
-                             }`}
-                           >
-                             <SlidersHorizontal size={8} />
-                             {(selectedNode.data.config as any)?.isAdvanced ? 'SQL MODE' : 'SIMPLE'}
-                           </button>
-                        </div>
+                  {/* Filter Records UI */}
+                  {selectedNode.data.subtype === 'filter' && (
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between border-b border-gray-100 pb-2">
+                        <label className="text-[10px] uppercase font-bold text-[#6B778C]">Filter Configuration</label>
+                        <button
+                          onClick={() => {
+                            const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), isAdvanced: !(selectedNode.data.config as any)?.isAdvanced } } };
+                            setSelectedNode(updatedNode);
+                            setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
+                          }}
+                          className={`text-[9px] px-2 py-0.5 rounded font-bold transition-all border shadow-sm flex items-center gap-1 ${(selectedNode.data.config as any)?.isAdvanced
+                              ? 'bg-[#0052CC] text-white border-[#0052CC] hover:bg-[#0065FF] hover:border-[#0065FF]'
+                              : 'bg-white text-[#6B778C] border-[#DFE1E6] hover:bg-gray-50 hover:text-[#171717] hover:border-[#C1C7D0]'
+                            }`}
+                        >
+                          <SlidersHorizontal size={8} />
+                          {(selectedNode.data.config as any)?.isAdvanced ? 'SQL MODE' : 'SIMPLE'}
+                        </button>
+                      </div>
 
-                        {(selectedNode.data.config as any)?.isAdvanced ? (
-                           <div>
-                             <label className="block text-xs font-semibold text-[#6B778C] mb-1">Raw WHERE Clause</label>
-                             <textarea 
-                               rows={3}
-                               placeholder="e.g. status = 'active' OR priority = 'high'"
-                               value={String((selectedNode.data.config as any)?.customWhere || '')}
-                               onChange={(e) => {
-                                  const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), customWhere: e.target.value } } };
+                      {(selectedNode.data.config as any)?.isAdvanced ? (
+                        <div>
+                          <label className="block text-xs font-semibold text-[#6B778C] mb-1">Raw WHERE Clause</label>
+                          <textarea
+                            rows={3}
+                            placeholder="e.g. status = 'active' OR priority = 'high'"
+                            value={String((selectedNode.data.config as any)?.customWhere || '')}
+                            onChange={(e) => {
+                              const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), customWhere: e.target.value } } };
+                              setSelectedNode(updatedNode);
+                              setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
+                            }}
+                            className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-xs font-mono outline-none focus:ring-1 focus:ring-[#0052CC]"
+                          />
+                          <p className="text-[10px] text-[#6B778C] mt-1 italic">Write the condition after the WHERE keyword.</p>
+                        </div>
+                      ) : (
+                        <>
+                          <div>
+                            <label className="block text-xs font-semibold text-[#6B778C] mb-1">Column to Filter</label>
+                            <select
+                              value={String((selectedNode.data.config as Record<string, unknown>)?.column || '')}
+                              onChange={(e) => {
+                                const updatedNode = {
+                                  ...selectedNode,
+                                  data: {
+                                    ...selectedNode.data,
+                                    config: {
+                                      ...(selectedNode.data.config as any),
+                                      column: e.target.value
+                                    }
+                                  }
+                                };
+                                setSelectedNode(updatedNode);
+                                setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
+                              }}
+                              className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-sm text-[#171717] focus:ring-[#0052CC] focus:border-[#0052CC]"
+                            >
+                              {getUpstreamColumns(selectedNode.id).map((col: string) => (
+                                <option key={col} value={col}>{col}</option>
+                              ))}
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-xs font-semibold text-[#6B778C] mb-1">Condition</label>
+                            <select
+                              value={String((selectedNode.data.config as Record<string, unknown>)?.operator || '==')}
+                              onChange={(e) => {
+                                const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), operator: e.target.value } } };
+                                setSelectedNode(updatedNode);
+                                setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
+                              }}
+                              className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-sm text-[#171717] focus:ring-[#0052CC] focus:border-[#0052CC]"
+                            >
+                              <option value="==">is equal to</option>
+                              <option value="!=">is not equal to</option>
+                              <option value=">">is greater than</option>
+                              <option value="<">is less than</option>
+                              <option value=">=">is greater or equal</option>
+                              <option value="<=">is less or equal</option>
+                              <option value="contains">contains</option>
+                              <option value="not_contains">does not contain</option>
+                              <option value="starts_with">starts with</option>
+                              <option value="ends_with">ends with</option>
+                              <option value="is_null">is empty / null</option>
+                              <option value="is_not_null">is not empty</option>
+                              <option value="in">is in list (a,b,c)</option>
+                              <option value="not_in">is NOT in list (a,b,c)</option>
+                            </select>
+                          </div>
+                          {!['is_null', 'is_not_null'].includes(String((selectedNode.data.config as any)?.operator)) && (
+                            <div>
+                              <label className="block text-xs font-semibold text-[#6B778C] mb-1">Value</label>
+                              <input
+                                type="text"
+                                value={String((selectedNode.data.config as Record<string, unknown>)?.value || '')}
+                                onChange={(e) => {
+                                  const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), value: e.target.value } } };
                                   setSelectedNode(updatedNode);
                                   setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
-                               }}
-                               className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-xs font-mono outline-none focus:ring-1 focus:ring-[#0052CC]"
-                             />
-                             <p className="text-[10px] text-[#6B778C] mt-1 italic">Write the condition after the WHERE keyword.</p>
-                           </div>
-                        ) : (
-                          <>
-                           <div>
-                             <label className="block text-xs font-semibold text-[#6B778C] mb-1">Column to Filter</label>
-                             <select 
-                               value={String((selectedNode.data.config as Record<string, unknown>)?.column || '')} 
-                               onChange={(e) => {
-                                 const updatedNode = { 
-                                   ...selectedNode, 
-                                   data: { 
-                                     ...selectedNode.data, 
-                                     config: { 
-                                       ...(selectedNode.data.config as any), 
-                                       column: e.target.value
-                                     } 
-                                   } 
-                                 };
-                                 setSelectedNode(updatedNode);
-                                 setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
-                               }}
-                               className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-sm text-[#171717] focus:ring-[#0052CC] focus:border-[#0052CC]"
-                             >
-                               {getUpstreamColumns(selectedNode.id).map((col: string) => (
-                                 <option key={col} value={col}>{col}</option>
-                               ))}
-                             </select>
-                           </div>
-                           <div>
-                             <label className="block text-xs font-semibold text-[#6B778C] mb-1">Condition</label>
-                             <select 
-                               value={String((selectedNode.data.config as Record<string, unknown>)?.operator || '==')}
-                               onChange={(e) => {
-                                 const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), operator: e.target.value } } };
-                                 setSelectedNode(updatedNode);
-                                 setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
-                               }}
-                               className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-sm text-[#171717] focus:ring-[#0052CC] focus:border-[#0052CC]"
-                             >
-                               <option value="==">is equal to</option>
-                               <option value="!=">is not equal to</option>
-                               <option value=">">is greater than</option>
-                               <option value="<">is less than</option>
-                               <option value=">=">is greater or equal</option>
-                               <option value="<=">is less or equal</option>
-                               <option value="contains">contains</option>
-                               <option value="not_contains">does not contain</option>
-                               <option value="starts_with">starts with</option>
-                               <option value="ends_with">ends with</option>
-                               <option value="is_null">is empty / null</option>
-                               <option value="is_not_null">is not empty</option>
-                               <option value="in">is in list (a,b,c)</option>
-                               <option value="not_in">is NOT in list (a,b,c)</option>
-                             </select>
-                           </div>
-                           {!['is_null', 'is_not_null'].includes(String((selectedNode.data.config as any)?.operator)) && (
-                             <div>
-                               <label className="block text-xs font-semibold text-[#6B778C] mb-1">Value</label>
-                               <input 
-                                 type="text" 
-                                 value={String((selectedNode.data.config as Record<string, unknown>)?.value || '')} 
-                                 onChange={(e) => {
-                                   const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), value: e.target.value } } };
-                                   setSelectedNode(updatedNode);
-                                   setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
-                                 }}
-                                 className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-sm text-[#171717] focus:ring-[#0052CC] focus:border-[#0052CC]" 
-                               />
-                             </div>
-                           )}
-                          </>
-                        )}
-                        <SqlPreview sql={buildSql('filter', selectedNode.data.config as any)} />
-                     </div>
-                   )}
+                                }}
+                                className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-sm text-[#171717] focus:ring-[#0052CC] focus:border-[#0052CC]"
+                              />
+                            </div>
+                          )}
+                        </>
+                      )}
+                      <SqlPreview sql={buildSql('filter', selectedNode.data.config as any)} />
+                    </div>
+                  )}
 
                   {/* Combine Datasets UI */}
                   {selectedNode.data.subtype === 'combine' && (
                     <div className="space-y-4">
                       <div>
                         <label className="block text-xs font-semibold text-[#6B778C] mb-1">Merge Type</label>
-                        <select 
+                        <select
                           value={String((selectedNode.data.config as Record<string, unknown>)?.joinType || 'inner')}
                           onChange={(e) => {
                             const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), joinType: e.target.value } } };
@@ -1116,7 +1137,7 @@ function Dashboard() {
                           <div className="grid grid-cols-2 gap-3 items-center">
                             <div>
                               <label className="block text-[9px] font-bold text-[#6B778C] mb-1 tracking-tighter uppercase">Left Input Key</label>
-                              <select 
+                              <select
                                 value={String((selectedNode.data.config as any)?.leftColumn || '')}
                                 onChange={(e) => {
                                   const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), leftColumn: e.target.value } } };
@@ -1136,7 +1157,7 @@ function Dashboard() {
                             </div>
                             <div>
                               <label className="block text-[9px] font-bold text-[#6B778C] mb-1 tracking-tighter uppercase">Right Input Key</label>
-                              <select 
+                              <select
                                 value={String((selectedNode.data.config as any)?.rightColumn || '')}
                                 onChange={(e) => {
                                   const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), rightColumn: e.target.value } } };
@@ -1154,7 +1175,7 @@ function Dashboard() {
                           </div>
                         </div>
                       )}
-                      
+
                       <SqlPreview sql={buildSql('combine', selectedNode.data.config as any)} />
                     </div>
                   )}
@@ -1164,18 +1185,18 @@ function Dashboard() {
                     <>
                       <div>
                         <label className="block text-xs font-semibold text-[#6B778C] mb-1">Target Column</label>
-                        <select 
-                          value={String((selectedNode.data.config as Record<string, unknown>)?.column || '')} 
+                        <select
+                          value={String((selectedNode.data.config as Record<string, unknown>)?.column || '')}
                           onChange={(e) => {
-                            const updatedNode = { 
-                              ...selectedNode, 
-                              data: { 
-                                ...selectedNode.data, 
-                                config: { 
-                                  ...(selectedNode.data.config as any), 
+                            const updatedNode = {
+                              ...selectedNode,
+                              data: {
+                                ...selectedNode.data,
+                                config: {
+                                  ...(selectedNode.data.config as any),
                                   column: e.target.value
-                                } 
-                              } 
+                                }
+                              }
                             };
                             setSelectedNode(updatedNode);
                             setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
@@ -1190,7 +1211,7 @@ function Dashboard() {
                       </div>
                       <div>
                         <label className="block text-xs font-semibold text-[#6B778C] mb-1">Operation</label>
-                        <select 
+                        <select
                           value={String((selectedNode.data.config as Record<string, unknown>)?.operation || 'trim')}
                           onChange={(e) => {
                             const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), operation: e.target.value } } };
@@ -1210,20 +1231,20 @@ function Dashboard() {
                       {String((selectedNode.data.config as any)?.operation) === 'replace_null' && (
                         <div>
                           <label className="block text-xs font-semibold text-[#6B778C] mb-1">New Value</label>
-                          <input 
-                            type="text" 
+                          <input
+                            type="text"
                             placeholder="Replacement text"
-                            value={String((selectedNode.data.config as Record<string, unknown>)?.newValue || '')} 
+                            value={String((selectedNode.data.config as Record<string, unknown>)?.newValue || '')}
                             onChange={(e) => {
                               const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), newValue: e.target.value } } };
                               setSelectedNode(updatedNode);
                               setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
                             }}
-                            className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-sm text-[#171717] focus:ring-[#0052CC] focus:border-[#0052CC]" 
+                            className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-sm text-[#171717] focus:ring-[#0052CC] focus:border-[#0052CC]"
                           />
                         </div>
                       )}
-                    <SqlPreview sql={buildSql('clean', selectedNode.data.config as any)} />
+                      <SqlPreview sql={buildSql('clean', selectedNode.data.config as any)} />
                     </>
                   )}
 
@@ -1237,16 +1258,16 @@ function Dashboard() {
                             const isChecked = String((selectedNode.data.config as any)?.groupBy || '').split(',').map(s => s.trim()).includes(col);
                             return (
                               <label key={col} className={`flex items-center space-x-2 cursor-pointer hover:bg-gray-100 p-1.5 rounded transition-colors ${isChecked ? 'bg-blue-50' : ''}`}>
-                                <input 
-                                  type="checkbox" 
+                                <input
+                                  type="checkbox"
                                   className="w-4 h-4 rounded border-[#DFE1E6] text-[#0052CC]"
                                   checked={isChecked}
                                   onChange={(e) => {
-                                     const currentList = String((selectedNode.data.config as any)?.groupBy || '').split(',').map(s => s.trim()).filter(s => s);
-                                     let newList = e.target.checked ? [...currentList, col] : currentList.filter(s => s !== col);
-                                     const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), groupBy: newList.join(', ') } } };
-                                     setSelectedNode(updatedNode);
-                                     setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
+                                    const currentList = String((selectedNode.data.config as any)?.groupBy || '').split(',').map(s => s.trim()).filter(s => s);
+                                    let newList = e.target.checked ? [...currentList, col] : currentList.filter(s => s !== col);
+                                    const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), groupBy: newList.join(', ') } } };
+                                    setSelectedNode(updatedNode);
+                                    setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
                                   }}
                                 />
                                 <span className={`text-sm ${isChecked ? 'font-bold' : ''}`}>{col}</span>
@@ -1259,62 +1280,62 @@ function Dashboard() {
                       <div className="space-y-3">
                         <label className="block text-xs font-semibold text-[#6B778C]">Aggregations</label>
                         {((selectedNode.data.config as any)?.aggregations || []).map((agg: any, idx: number) => (
-                           <div key={idx} className="p-3 bg-gray-50 border border-[#DFE1E6] rounded-md space-y-2 relative group">
-                              <button 
-                                className="absolute top-1 right-1 p-1 text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
-                                onClick={() => {
+                          <div key={idx} className="p-3 bg-gray-50 border border-[#DFE1E6] rounded-md space-y-2 relative group">
+                            <button
+                              className="absolute top-1 right-1 p-1 text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                              onClick={() => {
+                                const aggs = [...(selectedNode.data.config as any).aggregations];
+                                aggs.splice(idx, 1);
+                                const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), aggregations: aggs } } };
+                                setSelectedNode(updatedNode);
+                                setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
+                              }}
+                            ><Trash2 size={12} /></button>
+                            <select
+                              value={agg.column}
+                              onChange={(e) => {
+                                const aggs = [...(selectedNode.data.config as any).aggregations];
+                                aggs[idx].column = e.target.value;
+                                const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), aggregations: aggs } } };
+                                setSelectedNode(updatedNode);
+                              }}
+                              className="w-full text-xs border rounded p-1"
+                            >
+                              <option value="">Count (*)</option>
+                              {getUpstreamColumns(selectedNode.id).map(c => <option key={c} value={c}>{c}</option>)}
+                            </select>
+                            <div className="flex space-x-1">
+                              <select
+                                value={agg.operation}
+                                onChange={(e) => {
                                   const aggs = [...(selectedNode.data.config as any).aggregations];
-                                  aggs.splice(idx, 1);
+                                  aggs[idx].operation = e.target.value;
                                   const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), aggregations: aggs } } };
                                   setSelectedNode(updatedNode);
-                                  setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
                                 }}
-                              ><Trash2 size={12} /></button>
-                              <select 
-                                value={agg.column} 
-                                onChange={(e) => {
-                                   const aggs = [...(selectedNode.data.config as any).aggregations];
-                                   aggs[idx].column = e.target.value;
-                                   const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), aggregations: aggs } } };
-                                   setSelectedNode(updatedNode);
-                                }}
-                                className="w-full text-xs border rounded p-1"
+                                className="flex-1 text-xs border rounded p-1"
                               >
-                                <option value="">Count (*)</option>
-                                {getUpstreamColumns(selectedNode.id).map(c => <option key={c} value={c}>{c}</option>)}
+                                <option value="sum">Sum</option>
+                                <option value="avg">Avg</option>
+                                <option value="count">Count</option>
+                                <option value="min">Min</option>
+                                <option value="max">Max</option>
                               </select>
-                              <div className="flex space-x-1">
-                                <select 
-                                  value={agg.operation} 
-                                  onChange={(e) => {
-                                     const aggs = [...(selectedNode.data.config as any).aggregations];
-                                     aggs[idx].operation = e.target.value;
-                                     const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), aggregations: aggs } } };
-                                     setSelectedNode(updatedNode);
-                                  }}
-                                  className="flex-1 text-xs border rounded p-1"
-                                >
-                                  <option value="sum">Sum</option>
-                                  <option value="avg">Avg</option>
-                                  <option value="count">Count</option>
-                                  <option value="min">Min</option>
-                                  <option value="max">Max</option>
-                                </select>
-                                <input 
-                                  placeholder="Alias"
-                                  value={agg.alias}
-                                  onChange={(e) => {
-                                     const aggs = [...(selectedNode.data.config as any).aggregations];
-                                     aggs[idx].alias = e.target.value;
-                                     const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), aggregations: aggs } } };
-                                     setSelectedNode(updatedNode);
-                                  }}
-                                  className="flex-1 text-xs border rounded p-1"
-                                />
-                              </div>
-                           </div>
+                              <input
+                                placeholder="Alias"
+                                value={agg.alias}
+                                onChange={(e) => {
+                                  const aggs = [...(selectedNode.data.config as any).aggregations];
+                                  aggs[idx].alias = e.target.value;
+                                  const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), aggregations: aggs } } };
+                                  setSelectedNode(updatedNode);
+                                }}
+                                className="flex-1 text-xs border rounded p-1"
+                              />
+                            </div>
+                          </div>
                         ))}
-                        <button 
+                        <button
                           onClick={() => {
                             const aggs = [...((selectedNode.data.config as any)?.aggregations || [])];
                             aggs.push({ column: '', operation: 'count', alias: `count_${aggs.length}` });
@@ -1327,7 +1348,7 @@ function Dashboard() {
                           <Plus size={12} /> <span>Add Aggregation</span>
                         </button>
                       </div>
-                    <SqlPreview sql={buildSql('aggregate', selectedNode.data.config as any)} />
+                      <SqlPreview sql={buildSql('aggregate', selectedNode.data.config as any)} />
                     </div>
                   )}
 
@@ -1336,32 +1357,32 @@ function Dashboard() {
                     <div className="space-y-4">
                       <div>
                         <label className="block text-xs font-semibold text-[#6B778C] mb-1">SQL Expression</label>
-                        <textarea 
+                        <textarea
                           rows={3}
                           placeholder="e.g. price * quantity"
                           value={String((selectedNode.data.config as any)?.expression || '')}
                           onChange={(e) => {
-                             const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), expression: e.target.value } } };
-                             setSelectedNode(updatedNode);
-                             setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
+                            const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), expression: e.target.value } } };
+                            setSelectedNode(updatedNode);
+                            setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
                           }}
                           className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-xs font-mono"
                         />
                       </div>
                       <div>
                         <label className="block text-xs font-semibold text-[#6B778C] mb-1">New Column Header</label>
-                        <input 
+                        <input
                           type="text"
                           value={String((selectedNode.data.config as any)?.alias || '')}
                           onChange={(e) => {
-                             const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), alias: e.target.value } } };
-                             setSelectedNode(updatedNode);
-                             setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
+                            const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), alias: e.target.value } } };
+                            setSelectedNode(updatedNode);
+                            setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
                           }}
                           className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-sm"
                         />
                       </div>
-                    <SqlPreview sql={buildSql('computed', selectedNode.data.config as any)} />
+                      <SqlPreview sql={buildSql('computed', selectedNode.data.config as any)} />
                     </div>
                   )}
 
@@ -1371,42 +1392,42 @@ function Dashboard() {
                       <label className="block text-xs font-semibold text-[#6B778C]">Mappings</label>
                       {((selectedNode.data.config as any)?.mappings || []).map((m: any, idx: number) => (
                         <div key={idx} className="flex items-center space-x-2">
-                           <select 
-                             value={m.old} 
-                             onChange={(e) => {
-                               const maps = [...(selectedNode.data.config as any).mappings];
-                               maps[idx].old = e.target.value;
-                               const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), mappings: maps } } };
-                               setSelectedNode(updatedNode);
-                               setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
-                             }}
-                             className="flex-1 text-xs border rounded p-1"
-                           >
-                              <option value="">Select...</option>
-                              {getUpstreamColumns(selectedNode.id).map(c => <option key={c} value={c}>{c}</option>)}
-                           </select>
-                           <ArrowRightLeft size={12} className="text-[#6B778C]" />
-                           <input 
-                             value={m.new}
-                             onChange={(e) => {
-                               const maps = [...(selectedNode.data.config as any).mappings];
-                               maps[idx].new = e.target.value;
-                               const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), mappings: maps } } };
-                               setSelectedNode(updatedNode);
-                               setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
-                             }}
-                             className="flex-1 text-xs border rounded p-1"
-                           />
-                           <button onClick={() => {
-                             const maps = [...(selectedNode.data.config as any).mappings];
-                             maps.splice(idx, 1);
-                             const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), mappings: maps } } };
-                             setSelectedNode(updatedNode);
-                             setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
-                           }}><Trash2 size={12} className="text-red-400" /></button>
+                          <select
+                            value={m.old}
+                            onChange={(e) => {
+                              const maps = [...(selectedNode.data.config as any).mappings];
+                              maps[idx].old = e.target.value;
+                              const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), mappings: maps } } };
+                              setSelectedNode(updatedNode);
+                              setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
+                            }}
+                            className="flex-1 text-xs border rounded p-1"
+                          >
+                            <option value="">Select...</option>
+                            {getUpstreamColumns(selectedNode.id).map(c => <option key={c} value={c}>{c}</option>)}
+                          </select>
+                          <ArrowRightLeft size={12} className="text-[#6B778C]" />
+                          <input
+                            value={m.new}
+                            onChange={(e) => {
+                              const maps = [...(selectedNode.data.config as any).mappings];
+                              maps[idx].new = e.target.value;
+                              const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), mappings: maps } } };
+                              setSelectedNode(updatedNode);
+                              setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
+                            }}
+                            className="flex-1 text-xs border rounded p-1"
+                          />
+                          <button onClick={() => {
+                            const maps = [...(selectedNode.data.config as any).mappings];
+                            maps.splice(idx, 1);
+                            const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), mappings: maps } } };
+                            setSelectedNode(updatedNode);
+                            setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
+                          }}><Trash2 size={12} className="text-red-400" /></button>
                         </div>
                       ))}
-                      <button 
+                      <button
                         onClick={() => {
                           const maps = [...((selectedNode.data.config as any)?.mappings || [])];
                           maps.push({ old: '', new: '' });
@@ -1416,7 +1437,7 @@ function Dashboard() {
                         }}
                         className="w-full py-1.5 border border-dashed text-xs text-[#0052CC] font-bold rounded"
                       >+ Add Mapping</button>
-                    <SqlPreview sql={buildSql('rename', selectedNode.data.config as any)} />
+                      <SqlPreview sql={buildSql('rename', selectedNode.data.config as any)} />
                     </div>
                   )}
 
@@ -1430,16 +1451,16 @@ function Dashboard() {
                           const isChecked = String((selectedNode.data.config as any)?.columns || '').split(',').map(s => s.trim()).includes(col);
                           return (
                             <label key={col} className={`flex items-center space-x-2 cursor-pointer hover:bg-gray-100 p-1.5 rounded transition-colors ${isChecked ? 'bg-blue-50' : ''}`}>
-                              <input 
-                                type="checkbox" 
+                              <input
+                                type="checkbox"
                                 className="w-4 h-4 rounded border-[#DFE1E6] text-[#0052CC]"
                                 checked={isChecked}
                                 onChange={(e) => {
-                                   const currentList = String((selectedNode.data.config as any)?.columns || '').split(',').map(s => s.trim()).filter(s => s);
-                                   let newList = e.target.checked ? [...currentList, col] : currentList.filter(s => s !== col);
-                                   const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), columns: newList.join(', ') } } };
-                                   setSelectedNode(updatedNode);
-                                   setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
+                                  const currentList = String((selectedNode.data.config as any)?.columns || '').split(',').map(s => s.trim()).filter(s => s);
+                                  let newList = e.target.checked ? [...currentList, col] : currentList.filter(s => s !== col);
+                                  const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), columns: newList.join(', ') } } };
+                                  setSelectedNode(updatedNode);
+                                  setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
                                 }}
                               />
                               <span className="text-sm font-inter">{col}</span>
@@ -1447,7 +1468,7 @@ function Dashboard() {
                           );
                         })}
                       </div>
-                    <SqlPreview sql={buildSql('distinct', selectedNode.data.config as any)} />
+                      <SqlPreview sql={buildSql('distinct', selectedNode.data.config as any)} />
                     </div>
                   )}
 
@@ -1459,188 +1480,187 @@ function Dashboard() {
                         <div className="p-2 mb-2 bg-blue-50 text-[10px] text-[#0052CC] rounded leading-relaxed border border-blue-100">
                           Use <b>{"{{input}}"}</b> to reference the incoming dataset table name.
                         </div>
-                        <textarea 
+                        <textarea
                           rows={6}
                           placeholder="SELECT * FROM {{input}} WHERE row_num > 10"
                           value={String((selectedNode.data.config as any)?.sql || '')}
                           onChange={(e) => {
-                             const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), sql: e.target.value } } };
-                             setSelectedNode(updatedNode);
-                             setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
+                            const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), sql: e.target.value } } };
+                            setSelectedNode(updatedNode);
+                            setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
                           }}
                           className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-xs font-mono outline-none focus:ring-1 focus:ring-[#0052CC]"
                         />
                       </div>
-                    <SqlPreview sql={buildSql('raw_sql', selectedNode.data.config as any)} />
+                      <SqlPreview sql={buildSql('raw_sql', selectedNode.data.config as any)} />
                     </div>
                   )}
 
                   {/* CASE/WHEN Logic UI */}
                   {selectedNode.data.subtype === 'case_when' && (
                     <div className="space-y-4">
-                       <label className="block text-xs font-semibold text-[#6B778C]">Logic Steps</label>
-                       
-                       <div className="p-2 mb-2 bg-blue-50 text-[10px] text-[#0052CC] rounded leading-relaxed border border-blue-100">
-                         <b>Tip:</b> Text values (like <i>Gold</i> or <i>VIP</i>) are <b>automatically quoted</b>. No need to add single quotes manually.
-                       </div>
+                      <label className="block text-xs font-semibold text-[#6B778C]">Logic Steps</label>
 
-                       {((selectedNode.data.config as any)?.conditions || []).map((c: any, idx: number) => (
-                         <div key={idx} className="p-3 bg-gray-50 border rounded-md space-y-3 relative overflow-hidden">
-                            <div className="flex items-center justify-between border-b border-gray-200 pb-2 mb-1">
-                               <span className="text-[10px] font-bold text-[#6B778C] uppercase tracking-wider">Step {idx + 1}</span>
-                               <div className="flex items-center gap-2">
-                                 <button 
-                                   onClick={() => {
-                                     const conds = [...(selectedNode.data.config as any).conditions];
-                                     conds[idx].isAdvanced = !conds[idx].isAdvanced;
-                                     const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), conditions: conds } } };
-                                     setSelectedNode(updatedNode);
-                                     setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
-                                   }}
-                                   className={`text-[9px] px-2 py-0.5 rounded font-bold transition-all border shadow-sm flex items-center gap-1 ${
-                                     c.isAdvanced 
-                                       ? 'bg-[#0052CC] text-white border-[#0052CC] hover:bg-[#0065FF] hover:border-[#0065FF]' 
-                                       : 'bg-white text-[#6B778C] border-[#DFE1E6] hover:bg-gray-50 hover:text-[#171717] hover:border-[#C1C7D0]'
-                                   }`}
-                                 >
-                                   <SlidersHorizontal size={8} />
-                                   {c.isAdvanced ? 'SQL MODE' : 'SIMPLE'}
-                                 </button>
-                                 <button className="p-1 text-red-400 hover:bg-red-50 rounded" onClick={() => {
-                                    const conds = [...(selectedNode.data.config as any).conditions];
-                                    conds.splice(idx, 1);
-                                    const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), conditions: conds } } };
-                                    setSelectedNode(updatedNode);
-                                    setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
-                                  }}><Trash2 size={12} /></button>
-                               </div>
-                            </div>
+                      <div className="p-2 mb-2 bg-blue-50 text-[10px] text-[#0052CC] rounded leading-relaxed border border-blue-100">
+                        <b>Tip:</b> Text values (like <i>Gold</i> or <i>VIP</i>) are <b>automatically quoted</b>. No need to add single quotes manually.
+                      </div>
 
-                            {(c.isAdvanced || (c.isAdvanced === undefined && c.when)) ? (
-                              <div>
-                                 <label className="text-[9px] uppercase font-bold text-[#6B778C]">When (SQL Condition)</label>
-                                 <input 
-                                   value={c.when} 
-                                   onChange={(e) => {
-                                      const conds = [...(selectedNode.data.config as any).conditions];
-                                      conds[idx].when = e.target.value;
-                                      const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), conditions: conds } } };
-                                      setSelectedNode(updatedNode);
-                                      setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
-                                   }} 
-                                   className="w-full text-xs p-1.5 border rounded font-mono bg-white" 
-                                   placeholder="age > 20" 
-                                 />
-                              </div>
-                            ) : (
-                              <div className="space-y-2">
-                                <div className="grid grid-cols-2 gap-2">
-                                  <div>
-                                    <label className="text-[9px] uppercase font-bold text-[#6B778C]">Column</label>
-                                    <select
-                                      value={c.column || ''}
-                                      onChange={(e) => {
-                                        const conds = [...(selectedNode.data.config as any).conditions];
-                                        conds[idx].column = e.target.value;
-                                        conds[idx].when = getConditionSql(conds[idx].column, conds[idx].operator || '==', conds[idx].value || '');
-                                        const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), conditions: conds } } };
-                                        setSelectedNode(updatedNode);
-                                        setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
-                                      }}
-                                      className="w-full text-xs p-1 border rounded bg-white"
-                                    >
-                                      <option value="">Select...</option>
-                                      {getUpstreamColumns(selectedNode.id).map(col => <option key={col} value={col}>{col}</option>)}
-                                    </select>
-                                  </div>
-                                  <div>
-                                    <label className="text-[9px] uppercase font-bold text-[#6B778C]">Operator</label>
-                                    <select
-                                      value={c.operator || '=='}
-                                      onChange={(e) => {
-                                        const conds = [...(selectedNode.data.config as any).conditions];
-                                        conds[idx].operator = e.target.value;
-                                        conds[idx].when = getConditionSql(conds[idx].column || '', conds[idx].operator, conds[idx].value || '');
-                                        const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), conditions: conds } } };
-                                        setSelectedNode(updatedNode);
-                                        setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
-                                      }}
-                                      className="w-full text-xs p-1 border rounded bg-white"
-                                    >
-                                      <option value="==">is equal to</option>
-                                      <option value="!=">is not equal to</option>
-                                      <option value=">">is greater than</option>
-                                      <option value="<">is less than</option>
-                                      <option value=">=">is greater or equal</option>
-                                      <option value="<=">is less or equal</option>
-                                      <option value="contains">contains</option>
-                                      <option value="not_contains">does not contain</option>
-                                      <option value="starts_with">starts with</option>
-                                      <option value="ends_with">ends with</option>
-                                      <option value="is_null">is empty / null</option>
-                                      <option value="is_not_null">is not empty</option>
-                                      <option value="in">is in list (a,b,c)</option>
-                                      <option value="not_in">is NOT in list (a,b,c)</option>
-                                    </select>
-                                  </div>
-                                </div>
-                                {!['is_null', 'is_not_null'].includes(c.operator) && (
-                                  <div>
-                                    <label className="text-[9px] uppercase font-bold text-[#6B778C]">Value</label>
-                                    <input 
-                                      value={c.value || ''} 
-                                      onChange={(e) => {
-                                        const conds = [...(selectedNode.data.config as any).conditions];
-                                        conds[idx].value = e.target.value;
-                                        conds[idx].when = getConditionSql(conds[idx].column || '', conds[idx].operator || '==', conds[idx].value);
-                                        const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), conditions: conds } } };
-                                        setSelectedNode(updatedNode);
-                                        setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
-                                      }}
-                                      className="w-full text-xs p-1.5 border rounded bg-white" 
-                                      placeholder="Value..." 
-                                    />
-                                  </div>
-                                )}
-                              </div>
-                            )}
-
-                            <div>
-                               <label className="text-[9px] uppercase font-bold text-[#6B778C]">Then (Result)</label>
-                               <input value={c.then} onChange={(e) => {
+                      {((selectedNode.data.config as any)?.conditions || []).map((c: any, idx: number) => (
+                        <div key={idx} className="p-3 bg-gray-50 border rounded-md space-y-3 relative overflow-hidden">
+                          <div className="flex items-center justify-between border-b border-gray-200 pb-2 mb-1">
+                            <span className="text-[10px] font-bold text-[#6B778C] uppercase tracking-wider">Step {idx + 1}</span>
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={() => {
                                   const conds = [...(selectedNode.data.config as any).conditions];
-                                  conds[idx].then = e.target.value;
+                                  conds[idx].isAdvanced = !conds[idx].isAdvanced;
                                   const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), conditions: conds } } };
                                   setSelectedNode(updatedNode);
                                   setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
-                               }} className="w-full text-xs p-1.5 border rounded bg-white" placeholder="'Adult' or 100" />
+                                }}
+                                className={`text-[9px] px-2 py-0.5 rounded font-bold transition-all border shadow-sm flex items-center gap-1 ${c.isAdvanced
+                                    ? 'bg-[#0052CC] text-white border-[#0052CC] hover:bg-[#0065FF] hover:border-[#0065FF]'
+                                    : 'bg-white text-[#6B778C] border-[#DFE1E6] hover:bg-gray-50 hover:text-[#171717] hover:border-[#C1C7D0]'
+                                  }`}
+                              >
+                                <SlidersHorizontal size={8} />
+                                {c.isAdvanced ? 'SQL MODE' : 'SIMPLE'}
+                              </button>
+                              <button className="p-1 text-red-400 hover:bg-red-50 rounded" onClick={() => {
+                                const conds = [...(selectedNode.data.config as any).conditions];
+                                conds.splice(idx, 1);
+                                const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), conditions: conds } } };
+                                setSelectedNode(updatedNode);
+                                setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
+                              }}><Trash2 size={12} /></button>
                             </div>
-                         </div>
-                       ))}
-                       <button onClick={() => {
-                          const conds = [...((selectedNode.data.config as any)?.conditions || [])];
-                          conds.push({ when: '', then: '', column: '', operator: '==', value: '', isAdvanced: false });
-                          const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), conditions: conds } } };
-                          setSelectedNode(updatedNode);
-                          setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
-                       }} className="w-full py-1.5 border border-dashed text-xs text-[#0052CC] font-bold rounded">+ Add Case</button>
-                       <div className="pt-2 border-t mt-2">
-                          <label className="block text-xs font-semibold text-[#6B778C] mb-1">Else / Default Result</label>
-                          <input 
-                            value={String((selectedNode.data.config as any)?.elseValue || '')} 
-                            onChange={(e) => setSelectedNode({ ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), elseValue: e.target.value } } })}
-                            className="w-full text-xs border rounded p-2" placeholder="'Unknown'" 
-                          />
-                       </div>
-                       <div>
-                          <label className="block text-xs font-semibold text-[#6B778C] mb-1">Output Alias</label>
-                          <input 
-                            value={String((selectedNode.data.config as any)?.alias || '')} 
-                            onChange={(e) => setSelectedNode({ ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), alias: e.target.value } } })}
-                            className="w-full text-xs border rounded p-2" placeholder="my_status" 
-                          />
-                       </div>
-                    <SqlPreview sql={buildSql('case_when', selectedNode.data.config as any)} />
+                          </div>
+
+                          {(c.isAdvanced || (c.isAdvanced === undefined && c.when)) ? (
+                            <div>
+                              <label className="text-[9px] uppercase font-bold text-[#6B778C]">When (SQL Condition)</label>
+                              <input
+                                value={c.when}
+                                onChange={(e) => {
+                                  const conds = [...(selectedNode.data.config as any).conditions];
+                                  conds[idx].when = e.target.value;
+                                  const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), conditions: conds } } };
+                                  setSelectedNode(updatedNode);
+                                  setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
+                                }}
+                                className="w-full text-xs p-1.5 border rounded font-mono bg-white"
+                                placeholder="age > 20"
+                              />
+                            </div>
+                          ) : (
+                            <div className="space-y-2">
+                              <div className="grid grid-cols-2 gap-2">
+                                <div>
+                                  <label className="text-[9px] uppercase font-bold text-[#6B778C]">Column</label>
+                                  <select
+                                    value={c.column || ''}
+                                    onChange={(e) => {
+                                      const conds = [...(selectedNode.data.config as any).conditions];
+                                      conds[idx].column = e.target.value;
+                                      conds[idx].when = getConditionSql(conds[idx].column, conds[idx].operator || '==', conds[idx].value || '');
+                                      const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), conditions: conds } } };
+                                      setSelectedNode(updatedNode);
+                                      setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
+                                    }}
+                                    className="w-full text-xs p-1 border rounded bg-white"
+                                  >
+                                    <option value="">Select...</option>
+                                    {getUpstreamColumns(selectedNode.id).map(col => <option key={col} value={col}>{col}</option>)}
+                                  </select>
+                                </div>
+                                <div>
+                                  <label className="text-[9px] uppercase font-bold text-[#6B778C]">Operator</label>
+                                  <select
+                                    value={c.operator || '=='}
+                                    onChange={(e) => {
+                                      const conds = [...(selectedNode.data.config as any).conditions];
+                                      conds[idx].operator = e.target.value;
+                                      conds[idx].when = getConditionSql(conds[idx].column || '', conds[idx].operator, conds[idx].value || '');
+                                      const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), conditions: conds } } };
+                                      setSelectedNode(updatedNode);
+                                      setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
+                                    }}
+                                    className="w-full text-xs p-1 border rounded bg-white"
+                                  >
+                                    <option value="==">is equal to</option>
+                                    <option value="!=">is not equal to</option>
+                                    <option value=">">is greater than</option>
+                                    <option value="<">is less than</option>
+                                    <option value=">=">is greater or equal</option>
+                                    <option value="<=">is less or equal</option>
+                                    <option value="contains">contains</option>
+                                    <option value="not_contains">does not contain</option>
+                                    <option value="starts_with">starts with</option>
+                                    <option value="ends_with">ends with</option>
+                                    <option value="is_null">is empty / null</option>
+                                    <option value="is_not_null">is not empty</option>
+                                    <option value="in">is in list (a,b,c)</option>
+                                    <option value="not_in">is NOT in list (a,b,c)</option>
+                                  </select>
+                                </div>
+                              </div>
+                              {!['is_null', 'is_not_null'].includes(c.operator) && (
+                                <div>
+                                  <label className="text-[9px] uppercase font-bold text-[#6B778C]">Value</label>
+                                  <input
+                                    value={c.value || ''}
+                                    onChange={(e) => {
+                                      const conds = [...(selectedNode.data.config as any).conditions];
+                                      conds[idx].value = e.target.value;
+                                      conds[idx].when = getConditionSql(conds[idx].column || '', conds[idx].operator || '==', conds[idx].value);
+                                      const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), conditions: conds } } };
+                                      setSelectedNode(updatedNode);
+                                      setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
+                                    }}
+                                    className="w-full text-xs p-1.5 border rounded bg-white"
+                                    placeholder="Value..."
+                                  />
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          <div>
+                            <label className="text-[9px] uppercase font-bold text-[#6B778C]">Then (Result)</label>
+                            <input value={c.then} onChange={(e) => {
+                              const conds = [...(selectedNode.data.config as any).conditions];
+                              conds[idx].then = e.target.value;
+                              const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), conditions: conds } } };
+                              setSelectedNode(updatedNode);
+                              setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
+                            }} className="w-full text-xs p-1.5 border rounded bg-white" placeholder="'Adult' or 100" />
+                          </div>
+                        </div>
+                      ))}
+                      <button onClick={() => {
+                        const conds = [...((selectedNode.data.config as any)?.conditions || [])];
+                        conds.push({ when: '', then: '', column: '', operator: '==', value: '', isAdvanced: false });
+                        const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), conditions: conds } } };
+                        setSelectedNode(updatedNode);
+                        setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
+                      }} className="w-full py-1.5 border border-dashed text-xs text-[#0052CC] font-bold rounded">+ Add Case</button>
+                      <div className="pt-2 border-t mt-2">
+                        <label className="block text-xs font-semibold text-[#6B778C] mb-1">Else / Default Result</label>
+                        <input
+                          value={String((selectedNode.data.config as any)?.elseValue || '')}
+                          onChange={(e) => setSelectedNode({ ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), elseValue: e.target.value } } })}
+                          className="w-full text-xs border rounded p-2" placeholder="'Unknown'"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-[#6B778C] mb-1">Output Alias</label>
+                        <input
+                          value={String((selectedNode.data.config as any)?.alias || '')}
+                          onChange={(e) => setSelectedNode({ ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), alias: e.target.value } } })}
+                          className="w-full text-xs border rounded p-2" placeholder="my_status"
+                        />
+                      </div>
+                      <SqlPreview sql={buildSql('case_when', selectedNode.data.config as any)} />
                     </div>
                   )}
 
@@ -1743,11 +1763,10 @@ function Dashboard() {
                                     setSelectedNode(updatedNode);
                                     setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
                                   }}
-                                  className={`px-3 py-2 text-xs font-bold transition-colors ${
-                                    isActive
+                                  className={`px-3 py-2 text-xs font-bold transition-colors ${isActive
                                       ? 'bg-[#0052CC] text-white'
                                       : 'bg-white text-[#6B778C] hover:bg-gray-50'
-                                  }`}
+                                    }`}
                                 >
                                   {dir === 'ASC' ? '↑ ASC' : '↓ DESC'}
                                 </button>
@@ -1802,21 +1821,21 @@ function Dashboard() {
                           const isChecked = String((selectedNode.data.config as any)?.columns || '').split(',').map(s => s.trim()).includes(col);
                           return (
                             <label key={col} className={`flex items-center space-x-2 cursor-pointer hover:bg-gray-100 p-1.5 rounded transition-colors group ${isChecked ? 'bg-blue-50' : ''}`}>
-                              <input 
-                                type="checkbox" 
+                              <input
+                                type="checkbox"
                                 className="w-4 h-4 rounded border-[#DFE1E6] text-[#0052CC] focus:ring-[#0052CC]"
                                 checked={isChecked}
                                 onChange={(e) => {
-                                   const currentList = String((selectedNode.data.config as any)?.columns || '').split(',').map(s => s.trim()).filter(s => s);
-                                   let newList;
-                                   if (e.target.checked) {
-                                      newList = [...currentList, col].join(', ');
-                                   } else {
-                                      newList = currentList.filter(s => s !== col).join(', ');
-                                   }
-                                   const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), columns: newList } } };
-                                   setSelectedNode(updatedNode);
-                                   setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
+                                  const currentList = String((selectedNode.data.config as any)?.columns || '').split(',').map(s => s.trim()).filter(s => s);
+                                  let newList;
+                                  if (e.target.checked) {
+                                    newList = [...currentList, col].join(', ');
+                                  } else {
+                                    newList = currentList.filter(s => s !== col).join(', ');
+                                  }
+                                  const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), columns: newList } } };
+                                  setSelectedNode(updatedNode);
+                                  setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
                                 }}
                               />
                               <span className={`text-sm ${isChecked ? 'font-bold text-[#0052CC]' : 'text-[#171717]'}`}>{col}</span>
@@ -1827,7 +1846,7 @@ function Dashboard() {
                           <div className="text-xs text-center text-[#6B778C] py-4 italic">Connect an input node first</div>
                         )}
                       </div>
-                    <SqlPreview sql={buildSql('select', selectedNode.data.config as any)} />
+                      <SqlPreview sql={buildSql('select', selectedNode.data.config as any)} />
                     </div>
                   )}
 
@@ -1836,8 +1855,8 @@ function Dashboard() {
                     <>
                       <div>
                         <label className="block text-xs font-semibold text-[#6B778C] mb-1">Sort Column</label>
-                        <select 
-                          value={String((selectedNode.data.config as any)?.column || '')} 
+                        <select
+                          value={String((selectedNode.data.config as any)?.column || '')}
                           onChange={(e) => {
                             const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), column: e.target.value } } };
                             setSelectedNode(updatedNode);
@@ -1853,8 +1872,8 @@ function Dashboard() {
                       </div>
                       <div>
                         <label className="block text-xs font-semibold text-[#6B778C] mb-1">Direction</label>
-                        <select 
-                          value={String((selectedNode.data.config as any)?.direction || 'asc')} 
+                        <select
+                          value={String((selectedNode.data.config as any)?.direction || 'asc')}
                           onChange={(e) => {
                             const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), direction: e.target.value } } };
                             setSelectedNode(updatedNode);
@@ -1866,7 +1885,7 @@ function Dashboard() {
                           <option value="desc">Descending (Z-A, 9-0)</option>
                         </select>
                       </div>
-                    <SqlPreview sql={buildSql('sort', selectedNode.data.config as any)} />
+                      <SqlPreview sql={buildSql('sort', selectedNode.data.config as any)} />
                     </>
                   )}
 
@@ -1874,17 +1893,17 @@ function Dashboard() {
                   {selectedNode.data.subtype === 'limit' && (
                     <div>
                       <label className="block text-xs font-semibold text-[#6B778C] mb-1">Row Limit</label>
-                      <input 
-                        type="number" 
-                        value={Number((selectedNode.data.config as any)?.count || 100)} 
+                      <input
+                        type="number"
+                        value={Number((selectedNode.data.config as any)?.count || 100)}
                         onChange={(e) => {
                           const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), count: parseInt(e.target.value) } } };
                           setSelectedNode(updatedNode);
                           setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
                         }}
-                        className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-sm text-[#171717] focus:ring-[#0052CC] focus:border-[#0052CC]" 
+                        className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-sm text-[#171717] focus:ring-[#0052CC] focus:border-[#0052CC]"
                       />
-                    <SqlPreview sql={buildSql('limit', selectedNode.data.config as any)} />
+                      <SqlPreview sql={buildSql('limit', selectedNode.data.config as any)} />
                     </div>
                   )}
                 </div>
@@ -1894,7 +1913,7 @@ function Dashboard() {
                 <div className="space-y-4">
                   <div>
                     <label className="block text-xs font-semibold text-[#6B778C] mb-1">Export Format</label>
-                    <select 
+                    <select
                       value={String((selectedNode.data.config as Record<string, unknown>)?.format || 'CSV')}
                       onChange={(e) => setSelectedNode({ ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), format: e.target.value } } })}
                       className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-sm text-[#171717] focus:ring-[#0052CC] focus:border-[#0052CC]"
@@ -1906,15 +1925,15 @@ function Dashboard() {
                   </div>
                   <div>
                     <label className="block text-xs font-semibold text-[#6B778C] mb-1">File Name</label>
-                    <input 
-                      type="text" 
+                    <input
+                      type="text"
                       value={String((selectedNode.data.config as Record<string, unknown>)?.filename || 'aggregated_results.csv')}
                       onChange={(e) => {
                         const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), filename: e.target.value } } };
                         setSelectedNode(updatedNode);
                         setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
                       }}
-                      className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-sm text-[#171717] focus:ring-[#0052CC] focus:border-[#0052CC]" 
+                      className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-sm text-[#171717] focus:ring-[#0052CC] focus:border-[#0052CC]"
                     />
                   </div>
                   <div>
@@ -1928,8 +1947,8 @@ function Dashboard() {
                 <div className="space-y-4">
                   <div>
                     <label className="block text-xs font-semibold text-[#6B778C] mb-1">Report Title</label>
-                    <input 
-                      type="text" 
+                    <input
+                      type="text"
                       value={String((selectedNode.data.config as any)?.title || 'Data Analysis Report')}
                       onChange={(e) => {
                         const updated = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), title: e.target.value } } };
@@ -1941,7 +1960,7 @@ function Dashboard() {
                   </div>
                   <div>
                     <label className="block text-xs font-semibold text-[#6B778C] mb-1">Description</label>
-                    <textarea 
+                    <textarea
                       rows={2}
                       value={String((selectedNode.data.config as any)?.description || '')}
                       onChange={(e) => {
@@ -1954,103 +1973,103 @@ function Dashboard() {
                   </div>
 
                   <div>
-                     <label className="block text-[10px] font-bold text-[#6B778C] uppercase mb-2">Sections</label>
-                     <div className="space-y-3">
-                        {((selectedNode.data.config as any)?.sections || []).map((sec: any, idx: number) => (
-                           <div key={idx} className="p-3 bg-gray-50 border border-[#DFE1E6] rounded-md relative group">
-                              <button 
-                                onClick={() => {
-                                   const sections = [...((selectedNode.data.config as any).sections)];
-                                   sections.splice(idx, 1);
-                                   const updated = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), sections } } };
-                                   setSelectedNode(updated);
-                                   setNodes((nds) => nds.map((n) => n.id === updated.id ? updated : n));
-                                }}
-                                className="absolute -top-1.5 -right-1.5 p-1 bg-white border border-red-200 text-red-500 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
-                              ><Trash2 size={10} /></button>
-                              
-                              <input 
-                                placeholder="Section Heading"
-                                className="w-full text-xs font-bold border-none bg-transparent mb-2 focus:ring-0 p-0"
-                                value={sec.heading}
-                                onChange={(e) => {
-                                   const sections = [...((selectedNode.data.config as any).sections)];
-                                   sections[idx].heading = e.target.value;
-                                   const updated = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), sections } } };
-                                   setSelectedNode(updated);
-                                }}
-                              />
-                              
-                              <select 
-                                className="w-full text-[10px] border rounded p-1 mb-2"
-                                value={sec.type}
-                                onChange={(e) => {
-                                   const sections = [...((selectedNode.data.config as any).sections)];
-                                   sections[idx].type = e.target.value;
-                                   const updated = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), sections } } };
-                                   setSelectedNode(updated);
-                                }}
-                              >
-                                <option value="table">Data Table</option>
-                                <option value="stats">Summary Statistics</option>
-                                <option value="text">Custom Remarks</option>
-                              </select>
-
-                              {sec.type === 'text' && (
-                                <textarea 
-                                  placeholder="Example: Total records processed: {{row_count}}"
-                                  className="w-full text-[10px] border rounded p-2 italic"
-                                  rows={2}
-                                  value={sec.content}
-                                  onChange={(e) => {
-                                    const sections = [...((selectedNode.data.config as any).sections)];
-                                    sections[idx].content = e.target.value;
-                                    const updated = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), sections } } };
-                                    setSelectedNode(updated);
-                                  }}
-                                />
-                              )}
-                           </div>
-                        ))}
-                        <button 
-                           onClick={() => {
-                              const sections = [...((selectedNode.data.config as any)?.sections || [])];
-                              sections.push({ heading: 'New Section', type: 'table', content: '' });
+                    <label className="block text-[10px] font-bold text-[#6B778C] uppercase mb-2">Sections</label>
+                    <div className="space-y-3">
+                      {((selectedNode.data.config as any)?.sections || []).map((sec: any, idx: number) => (
+                        <div key={idx} className="p-3 bg-gray-50 border border-[#DFE1E6] rounded-md relative group">
+                          <button
+                            onClick={() => {
+                              const sections = [...((selectedNode.data.config as any).sections)];
+                              sections.splice(idx, 1);
                               const updated = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), sections } } };
                               setSelectedNode(updated);
                               setNodes((nds) => nds.map((n) => n.id === updated.id ? updated : n));
-                           }}
-                           className="w-full py-1.5 border border-dashed text-[10px] uppercase font-bold text-[#0052CC] hover:bg-blue-50 border-[#0052CC] rounded"
-                        >+ Add Section</button>
-                     </div>
+                            }}
+                            className="absolute -top-1.5 -right-1.5 p-1 bg-white border border-red-200 text-red-500 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                          ><Trash2 size={10} /></button>
+
+                          <input
+                            placeholder="Section Heading"
+                            className="w-full text-xs font-bold border-none bg-transparent mb-2 focus:ring-0 p-0"
+                            value={sec.heading}
+                            onChange={(e) => {
+                              const sections = [...((selectedNode.data.config as any).sections)];
+                              sections[idx].heading = e.target.value;
+                              const updated = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), sections } } };
+                              setSelectedNode(updated);
+                            }}
+                          />
+
+                          <select
+                            className="w-full text-[10px] border rounded p-1 mb-2"
+                            value={sec.type}
+                            onChange={(e) => {
+                              const sections = [...((selectedNode.data.config as any).sections)];
+                              sections[idx].type = e.target.value;
+                              const updated = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), sections } } };
+                              setSelectedNode(updated);
+                            }}
+                          >
+                            <option value="table">Data Table</option>
+                            <option value="stats">Summary Statistics</option>
+                            <option value="text">Custom Remarks</option>
+                          </select>
+
+                          {sec.type === 'text' && (
+                            <textarea
+                              placeholder="Example: Total records processed: {{row_count}}"
+                              className="w-full text-[10px] border rounded p-2 italic"
+                              rows={2}
+                              value={sec.content}
+                              onChange={(e) => {
+                                const sections = [...((selectedNode.data.config as any).sections)];
+                                sections[idx].content = e.target.value;
+                                const updated = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), sections } } };
+                                setSelectedNode(updated);
+                              }}
+                            />
+                          )}
+                        </div>
+                      ))}
+                      <button
+                        onClick={() => {
+                          const sections = [...((selectedNode.data.config as any)?.sections || [])];
+                          sections.push({ heading: 'New Section', type: 'table', content: '' });
+                          const updated = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), sections } } };
+                          setSelectedNode(updated);
+                          setNodes((nds) => nds.map((n) => n.id === updated.id ? updated : n));
+                        }}
+                        className="w-full py-1.5 border border-dashed text-[10px] uppercase font-bold text-[#0052CC] hover:bg-blue-50 border-[#0052CC] rounded"
+                      >+ Add Section</button>
+                    </div>
                   </div>
 
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className="block text-xs font-semibold text-[#6B778C] mb-1">Format</label>
-                      <select 
-                         value={String((selectedNode.data.config as any)?.format || 'PDF')}
-                         onChange={(e) => setSelectedNode({ ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), format: e.target.value } } })}
-                         className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-xs"
+                      <select
+                        value={String((selectedNode.data.config as any)?.format || 'PDF')}
+                        onChange={(e) => setSelectedNode({ ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), format: e.target.value } } })}
+                        className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-xs"
                       >
-                         <option value="PDF">PDF Report</option>
-                         <option value="Markdown">Markdown</option>
+                        <option value="PDF">PDF Report</option>
+                        <option value="Markdown">Markdown</option>
                       </select>
                     </div>
                     <div>
                       <label className="block text-xs font-semibold text-[#6B778C] mb-1">Font</label>
-                      <select 
-                         value={String((selectedNode.data.config as any)?.font || 'NanumGothic')}
-                         onChange={(e) => setSelectedNode({ ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), font: e.target.value } } })}
-                         className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-xs"
+                      <select
+                        value={String((selectedNode.data.config as any)?.font || 'NanumGothic')}
+                        onChange={(e) => setSelectedNode({ ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), font: e.target.value } } })}
+                        className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-xs"
                       >
-                         <option value="NanumGothic">NanumGothic (KR)</option>
-                         <option value="Helvetica">Helvetica (EN)</option>
+                        <option value="NanumGothic">NanumGothic (KR)</option>
+                        <option value="Helvetica">Helvetica (EN)</option>
                       </select>
                     </div>
                   </div>
 
-                  <button 
+                  <button
                     onClick={async () => {
                       try {
                         const res = await generateReport(getNodes(), getEdges(), selectedNode.data.config);
@@ -2062,7 +2081,8 @@ function Dashboard() {
                           link.click();
                           document.body.removeChild(link);
                         }
-                        alert("Report generated successfully!");
+                        setExecutionSuccess(true);
+                        setTimeout(() => setExecutionSuccess(false), 2000);
                       } catch (err) {
                         alert("Report generation failed!");
                         console.error(err);
@@ -2077,7 +2097,7 @@ function Dashboard() {
               )}
             </div>
             <div className="p-4 border-t border-[#DFE1E6]">
-              <button 
+              <button
                 onClick={saveNodeChanges}
                 disabled={saveSuccess}
                 className={`w-full px-4 py-2 text-white text-sm font-medium rounded-md transition-all shadow-sm flex items-center justify-center space-x-2 ${saveSuccess ? 'bg-[#36B37E]' : 'bg-[#0052CC] hover:bg-[#0065FF]'}`}
@@ -2098,12 +2118,12 @@ function Dashboard() {
 
       {/* Resizable Bottom Preview Panel */}
       {selectedNode && (
-        <div 
+        <div
           style={{ height: `${previewHeight}px` }}
           className="bg-white border-t border-[#DFE1E6] flex flex-col relative z-20 shadow-[0_-4px_12px_rgba(0,0,0,0.05)] transition-all duration-300"
         >
           {/* Resize Handle */}
-          <div 
+          <div
             className="absolute -top-1.5 left-0 right-0 h-3 cursor-ns-resize hover:bg-[#0052CC]/10 transition-colors z-30 flex items-center justify-center group"
             onMouseDown={(e) => {
               const startY = e.clientY;
@@ -2139,8 +2159,8 @@ function Dashboard() {
                   Showing {nodeSamples[selectedNode.id].length} sample rows
                 </span>
               )}
-              <button 
-                onClick={() => setSelectedNode(null)} 
+              <button
+                onClick={() => setSelectedNode(null)}
                 className="p-1.5 text-[#6B778C] hover:bg-gray-200 rounded-md transition-colors"
                 title="Close Preview"
               >
@@ -2199,7 +2219,7 @@ function Dashboard() {
             />
             <div className="flex justify-end space-x-3">
               <button onClick={() => setIsSaveModalOpen(false)} className="px-4 py-2 text-sm text-[#6B778C] hover:bg-gray-100 rounded-md transition-colors">Cancel</button>
-              <button 
+              <button
                 onClick={handleSaveWorkflow}
                 disabled={!workflowName}
                 className="px-4 py-2 text-sm bg-[#0052CC] text-white font-medium rounded-md hover:bg-[#0065FF] disabled:opacity-50 transition-colors shadow-sm"
@@ -2233,8 +2253,8 @@ function Dashboard() {
               </div>
             )}
             <div className="flex justify-end">
-              <button 
-                onClick={() => setIsLoadModalOpen(false)} 
+              <button
+                onClick={() => setIsLoadModalOpen(false)}
                 className="px-4 py-2 text-sm text-[#6B778C] hover:bg-gray-100 rounded-md transition-colors"
               >
                 Close
@@ -2245,24 +2265,37 @@ function Dashboard() {
       )}
       {/* Global Tooltip */}
       {tooltip && (
-        <div 
+        <div
           className="fixed z-[9999] pointer-events-none tooltip-animate"
-          style={{ 
-            left: tooltip.x, 
+          style={{
+            left: tooltip.x,
             top: tooltip.y,
             transform: (tooltip as any).isHeader ? 'translate(-50%, 0)' : 'translate(0, -50%)'
           }}
         >
           <div className="relative bg-[#1E1E2E] text-white p-3 rounded-lg shadow-2xl border border-[#313244] w-64 font-inter">
-             {/* Arrow */}
-             <div className={`absolute border-[8px] border-transparent ${
-               (tooltip as any).isHeader 
-               ? 'border-b-[#1E1E2E] -top-[16px] left-1/2 -translate-x-1/2' 
-               : 'border-r-[#1E1E2E] -left-[16px] top-1/2 -translate-y-1/2'
-             }`} />
-             
-             <div className="text-[10px] font-bold text-[#89DCEB] mb-1 uppercase tracking-wider">{tooltip.label}</div>
-             <div className="text-[11px] leading-relaxed text-[#CDD6F4]">{tooltip.text}</div>
+            {/* Arrow */}
+            <div className={`absolute border-[8px] border-transparent ${(tooltip as any).isHeader
+                ? 'border-b-[#1E1E2E] -top-[16px] left-1/2 -translate-x-1/2'
+                : 'border-r-[#1E1E2E] -left-[16px] top-1/2 -translate-y-1/2'
+              }`} />
+
+            <div className="text-[10px] font-bold text-[#89DCEB] mb-1 uppercase tracking-wider">{tooltip.label}</div>
+            <div className="text-[11px] leading-relaxed text-[#CDD6F4]">{tooltip.text}</div>
+          </div>
+        </div>
+      )}
+      {/* Success Notification for Query Execution */}
+      {executionSuccess && (
+        <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[100] animate-in slide-in-from-bottom-4 duration-300">
+          <div className="bg-[#36B37E] text-white px-6 py-3 rounded-full shadow-2xl flex items-center space-x-3 border-2 border-white/20 backdrop-blur-md">
+            <div className="bg-white/20 p-1.5 rounded-full">
+              <Play size={16} fill="white" />
+            </div>
+            <div className="flex flex-col">
+              <span className="text-xs font-bold leading-none mb-0.5 uppercase tracking-wider">Query Successful</span>
+              <span className="text-[10px] opacity-90 text-white/80">Processed {executionResult?.row_count?.toLocaleString()} rows successfully</span>
+            </div>
           </div>
         </div>
       )}
