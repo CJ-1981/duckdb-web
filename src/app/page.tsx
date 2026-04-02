@@ -685,22 +685,6 @@ function Dashboard() {
         </div>
 
         <div className="flex items-center space-x-3">
-          <div className="flex items-center space-x-2 bg-gray-50 px-3 py-1.5 rounded-md border border-[#DFE1E6]">
-            <Eye size={14} className="text-[#6B778C]" />
-            <span className="text-xs font-semibold text-[#6B778C]">Preview:</span>
-            <select
-              value={previewLimit}
-              onChange={(e) => setPreviewLimit(Number(e.target.value))}
-              className="bg-transparent text-xs font-bold text-[#171717] focus:outline-none border-none cursor-pointer"
-            >
-              <option value={50}>50 rows</option>
-              <option value={100}>100 rows</option>
-              <option value={200}>200 rows</option>
-              <option value={500}>500 rows</option>
-              <option value={1000}>1000 rows</option>
-            </select>
-          </div>
-
           <button
             onClick={handleBeautify}
             onMouseEnter={(e) => showHeaderTooltip(e, 'Beautify Layout', `Automatically organize nodes into a clean, hierarchical structure (${mod}B).`)}
@@ -2250,6 +2234,20 @@ function Dashboard() {
               ))}
             </div>
             <div className="flex items-center gap-3">
+              <div className="flex items-center !space-x-1.5 px-2.5 py-1 rounded-md border border-[#DFE1E6] bg-white/50 hover:bg-white transition-colors">
+                <span className="text-[10px] font-bold text-[#6B778C] uppercase tracking-tighter">rows:</span>
+                <select
+                  value={previewLimit}
+                  onChange={(e) => setPreviewLimit(Number(e.target.value))}
+                  className="bg-transparent text-[10px] font-bold text-[#171717] focus:outline-none border-none cursor-pointer pr-1"
+                >
+                  <option value={50}>50</option>
+                  <option value={100}>100</option>
+                  <option value={200}>200</option>
+                  <option value={500}>500</option>
+                  <option value={1000}>1000</option>
+                </select>
+              </div>
               <span className="text-xs font-medium text-[#6B778C]">{String(selectedNode.data.label)}</span>
               <button
                 onClick={() => setSelectedNode(null)}
