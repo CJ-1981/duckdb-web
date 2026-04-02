@@ -2,9 +2,9 @@
 
 import React, { useState } from 'react';
 import WorkspaceCanvas from '@/components/workflow/canvas';
-import { Database, Filter, ArrowRightLeft, Table, Settings, Play, Download, Search, LayoutDashboard, SlidersHorizontal, FileText, FileDown, Save, FolderOpen, Sigma, Eye, ChevronDown, ChevronRight, SortAsc, ListOrdered, Calculator, Code, Fingerprint, PenLine, GitBranch, BarChart3, Plus, Trash2, Wand2, Microscope, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { Database, Filter, ArrowRightLeft, Table, Settings, Play, Download, Search, LayoutDashboard, SlidersHorizontal, FileText, FileDown, Save, FolderOpen, Sigma, Eye, ChevronDown, ChevronRight, SortAsc, ListOrdered, Calculator, Code, Fingerprint, PenLine, GitBranch, BarChart3, Plus, Trash2, Wand2, Microscope, PanelLeftClose, PanelLeftOpen, Copy } from 'lucide-react';
 import { Node, useReactFlow, ReactFlowProvider } from '@xyflow/react';
-import { executeWorkflow, uploadFile, saveWorkflow, listSavedWorkflows, loadWorkflowGraph, generateReport, inspectNode, renameWorkflow } from '@/lib/api';
+import { executeWorkflow, uploadFile, saveWorkflow, listSavedWorkflows, loadWorkflowGraph, generateReport, inspectNode, renameWorkflow, validateSql } from '@/lib/api';
 import DataInspectionPanel, { type ColumnTypeDef, type FullStats } from '@/components/panels/DataInspectionPanel';
 import AiSqlBuilderPanel from '@/components/panels/AiSqlBuilderPanel';
 
@@ -243,6 +243,7 @@ function Dashboard() {
   const [nodeTypes, setNodeTypes] = useState<Record<string, ColumnTypeDef[]>>({});
   const [activeBottomTab, setActiveBottomTab] = useState(0);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
   const [tooltip, setTooltip] = useState<{ label: string; text: string; x: number; y: number } | null>(null);
 
   // DEBUG: State watcher
@@ -796,227 +797,97 @@ function Dashboard() {
               <input
                 type="text"
                 placeholder="Search components..."
-                className="w-full pl-9 pr-4 py-2 text-sm border border-[#DFE1E6] rounded-md focus:outline-none focus:ring-2 focus:ring-[#0052CC] focus:border-transparent"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-9 pr-4 py-2 text-sm border border-[#DFE1E6] rounded-md focus:outline-none focus:ring-2 focus:ring-[#0052CC] focus:border-[#0052CC]"
               />
             </div>
           </div>
 
           <div className="flex-1 p-4">
-            <h3 className="text-xs font-semibold text-[#6B778C] uppercase tracking-wider mb-3">Data Sources</h3>
-            <div className="space-y-2 mb-6">
-              <div
-                draggable
-                onDragStart={(e) => onDragStart(e, 'input', 'Database Table')}
-                onMouseEnter={(e) => showTooltip(e, 'Database Table', 'Source data directly from project-level DuckDB tables.')}
-                onMouseLeave={hideTooltip}
-                className="flex items-center space-x-3 p-3 bg-white border border-[#DFE1E6] hover:border-[#0052CC] hover:shadow-sm rounded-md cursor-grab transition-all"
-              >
-                <div className="p-1.5 bg-blue-50 text-[#0052CC] rounded">
-                  <Database size={16} />
-                </div>
-                <span className="text-sm font-medium text-gray-700">Database Table</span>
-              </div>
-              <div
-                draggable
-                onDragStart={(e) => onDragStart(e, 'input', 'CSV/Excel File')}
-                onMouseEnter={(e) => showTooltip(e, 'CSV/Excel File', 'Upload or select local data files (CSV, XLSX) to analyze.')}
-                onMouseLeave={hideTooltip}
-                className="flex items-center space-x-3 p-3 bg-white border border-[#DFE1E6] hover:border-[#0052CC] hover:shadow-sm rounded-md cursor-grab transition-all"
-              >
-                <div className="p-1.5 bg-blue-50 text-[#0052CC] rounded">
-                  <Table size={16} />
-                </div>
-                <span className="text-sm font-medium text-gray-700">CSV/Excel File</span>
-              </div>
-            </div>
+            {(() => {
+              const shouldShow = (label: string, desc?: string) => {
+                const q = searchQuery.toLowerCase();
+                return label.toLowerCase().includes(q) || (desc && desc.toLowerCase().includes(q));
+              };
 
-            <h3 className="text-xs font-semibold text-[#6B778C] uppercase tracking-wider mb-3">Transformations</h3>
-            <div className="space-y-2 mb-6">
-              <div
-                draggable
-                onDragStart={(e) => onDragStart(e, 'default', 'Filter Records', 'filter')}
-                onMouseEnter={(e) => showTooltip(e, 'Filter Records', 'Keep only records that match specific conditions (e.g. amount > 1000).')}
-                onMouseLeave={hideTooltip}
-                className="flex items-center space-x-3 p-3 bg-white border border-[#DFE1E6] hover:border-[#6554C0] hover:shadow-sm rounded-md cursor-grab transition-all"
-              >
-                <div className="p-1.5 bg-purple-50 text-[#6554C0] rounded">
-                  <Filter size={16} />
-                </div>
-                <span className="text-sm font-medium text-gray-700">Filter Records</span>
-              </div>
-              <div
-                draggable
-                onDragStart={(e) => onDragStart(e, 'default', 'Combine Datasets', 'combine')}
-                onMouseEnter={(e) => showTooltip(e, 'Combine Datasets', 'Join two separate tables together using common keys (Inner, Left, UNION, etc).')}
-                onMouseLeave={hideTooltip}
-                className="flex items-center space-x-3 p-3 bg-white border border-[#DFE1E6] hover:border-[#6554C0] hover:shadow-sm rounded-md cursor-grab transition-all"
-              >
-                <div className="p-1.5 bg-purple-50 text-[#6554C0] rounded">
-                  <ArrowRightLeft size={16} />
-                </div>
-                <span className="text-sm font-medium text-gray-700">Combine Datasets</span>
-              </div>
-              <div
-                draggable
-                onDragStart={(e) => onDragStart(e, 'default', 'Clean & Format', 'clean')}
-                onMouseEnter={(e) => showTooltip(e, 'Clean & Format', 'Standardize data quality: trim spaces, change case, or fix null values.')}
-                onMouseLeave={hideTooltip}
-                className="flex items-center space-x-3 p-3 bg-white border border-[#DFE1E6] hover:border-[#6554C0] hover:shadow-sm rounded-md cursor-grab transition-all"
-              >
-                <div className="p-1.5 bg-purple-50 text-[#6554C0] rounded">
-                  <Settings size={16} />
-                </div>
-                <span className="text-sm font-medium text-gray-700">Clean & Format</span>
-              </div>
-              <div
-                draggable
-                onDragStart={(e) => onDragStart(e, 'default', 'Aggregate Data', 'aggregate')}
-                onMouseEnter={(e) => showTooltip(e, 'Aggregate Data', 'Summarize your data: calculate counts, averages, or totals grouped by categories.')}
-                onMouseLeave={hideTooltip}
-                className="flex items-center space-x-3 p-3 bg-white border border-[#DFE1E6] hover:border-[#6554C0] hover:shadow-sm rounded-md cursor-grab transition-all"
-              >
-                <div className="p-1.5 bg-purple-50 text-[#6554C0] rounded">
-                  <Sigma size={16} />
-                </div>
-                <span className="text-sm font-medium text-gray-700">Aggregate Data</span>
-              </div>
-              <div
-                draggable
-                onDragStart={(e) => onDragStart(e, 'default', 'Sort Data', 'sort')}
-                onMouseEnter={(e) => showTooltip(e, 'Sort Data', 'Reorder your records based on one or more column values.')}
-                onMouseLeave={hideTooltip}
-                className="flex items-center space-x-3 p-3 bg-white border border-[#DFE1E6] hover:border-[#6554C0] hover:shadow-sm rounded-md cursor-grab transition-all"
-              >
-                <div className="p-1.5 bg-purple-50 text-[#6554C0] rounded">
-                  <SortAsc size={16} />
-                </div>
-                <span className="text-sm font-medium text-gray-700">Sort Data</span>
-              </div>
-              <div
-                draggable
-                onDragStart={(e) => onDragStart(e, 'default', 'Limit Data', 'limit')}
-                onMouseEnter={(e) => showTooltip(e, 'Limit Data', 'Restrict the output to the first N rows of your dataset.')}
-                onMouseLeave={hideTooltip}
-                className="flex items-center space-x-3 p-3 bg-white border border-[#DFE1E6] hover:border-[#6554C0] hover:shadow-sm rounded-md cursor-grab transition-all"
-              >
-                <div className="p-1.5 bg-purple-50 text-[#6554C0] rounded">
-                  <ListOrdered size={16} />
-                </div>
-                <span className="text-sm font-medium text-gray-700">Limit Data</span>
-              </div>
-              <div
-                draggable
-                onDragStart={(e) => onDragStart(e, 'default', 'Select Columns', 'select')}
-                onMouseEnter={(e) => showTooltip(e, 'Select Columns', 'Choose which columns to keep and which to discard from the dataset.')}
-                onMouseLeave={hideTooltip}
-                className="flex items-center space-x-3 p-3 bg-white border border-[#DFE1E6] hover:border-[#6554C0] hover:shadow-sm rounded-md cursor-grab transition-all"
-              >
-                <div className="p-1.5 bg-purple-50 text-[#6554C0] rounded">
-                  <Table size={16} />
-                </div>
-                <span className="text-sm font-medium text-gray-700">Select Columns</span>
-              </div>
-              <div
-                draggable
-                onDragStart={(e) => onDragStart(e, 'default', 'Add Column', 'computed')}
-                onMouseEnter={(e) => showTooltip(e, 'Add Column', 'Create new columns using arithmetic or SQL expressions (e.g. price * 1.1).')}
-                onMouseLeave={hideTooltip}
-                className="flex items-center space-x-3 p-3 bg-white border border-[#DFE1E6] hover:border-[#6554C0] hover:shadow-sm rounded-md cursor-grab transition-all"
-              >
-                <div className="p-1.5 bg-purple-50 text-[#6554C0] rounded">
-                  <Calculator size={16} />
-                </div>
-                <span className="text-sm font-medium text-gray-700">Add Column</span>
-              </div>
-              <div
-                draggable
-                onDragStart={(e) => onDragStart(e, 'default', 'Rename Columns', 'rename')}
-                onMouseEnter={(e) => showTooltip(e, 'Rename Columns', 'Modify column headers to make them more descriptive and readable.')}
-                onMouseLeave={hideTooltip}
-                className="flex items-center space-x-3 p-3 bg-white border border-[#DFE1E6] hover:border-[#6554C0] hover:shadow-sm rounded-md cursor-grab transition-all"
-              >
-                <div className="p-1.5 bg-purple-50 text-[#6554C0] rounded">
-                  <PenLine size={16} />
-                </div>
-                <span className="text-sm font-medium text-gray-700">Rename Columns</span>
-              </div>
-              <div
-                draggable
-                onDragStart={(e) => onDragStart(e, 'default', 'Remove Duplicates', 'distinct')}
-                onMouseEnter={(e) => showTooltip(e, 'Remove Duplicates', 'Filter out identical rows to ensure data uniqueness.')}
-                onMouseLeave={hideTooltip}
-                className="flex items-center space-x-3 p-3 bg-white border border-[#DFE1E6] hover:border-[#6554C0] hover:shadow-sm rounded-md cursor-grab transition-all"
-              >
-                <div className="p-1.5 bg-purple-50 text-[#6554C0] rounded">
-                  <Fingerprint size={16} />
-                </div>
-                <span className="text-sm font-medium text-gray-700">Remove Duplicates</span>
-              </div>
-              <div
-                draggable
-                onDragStart={(e) => onDragStart(e, 'default', 'Conditional Logic', 'case_when')}
-                onMouseEnter={(e) => showTooltip(e, 'Conditional Logic', 'Apply CASE-WHEN logic to create sophisticated branching rules.')}
-                onMouseLeave={hideTooltip}
-                className="flex items-center space-x-3 p-3 bg-white border border-[#DFE1E6] hover:border-[#6554C0] hover:shadow-sm rounded-md cursor-grab transition-all"
-              >
-                <div className="p-1.5 bg-purple-50 text-[#6554C0] rounded">
-                  <GitBranch size={16} />
-                </div>
-                <span className="text-sm font-medium text-gray-700">Conditional Logic</span>
-              </div>
-              <div
-                draggable
-                onDragStart={(e) => onDragStart(e, 'default', 'Window Function', 'window')}
-                onMouseEnter={(e) => showTooltip(e, 'Window Function', 'Perform calculations across related rows (ranks, moving averages).')}
-                onMouseLeave={hideTooltip}
-                className="flex items-center space-x-3 p-3 bg-white border border-[#DFE1E6] hover:border-[#6554C0] hover:shadow-sm rounded-md cursor-grab transition-all"
-              >
-                <div className="p-1.5 bg-purple-50 text-[#6554C0] rounded">
-                  <BarChart3 size={16} />
-                </div>
-                <span className="text-sm font-medium text-gray-700">Window Function</span>
-              </div>
-              <div
-                draggable
-                onDragStart={(e) => onDragStart(e, 'default', 'Custom SQL', 'raw_sql')}
-                onMouseEnter={(e) => showTooltip(e, 'Custom SQL', 'Maximum power: write your own DuckDB SQL to transform data.')}
-                onMouseLeave={hideTooltip}
-                className="flex items-center space-x-3 p-3 bg-white border border-[#DFE1E6] hover:border-[#6554C0] hover:shadow-sm rounded-md cursor-grab transition-all"
-              >
-                <div className="p-1.5 bg-purple-50 text-[#6554C0] rounded">
-                  <Code size={16} />
-                </div>
-                <span className="text-sm font-medium text-gray-700">Custom SQL</span>
-              </div>
-            </div>
+              const categories = [
+                {
+                  title: 'Data Sources',
+                  items: [
+                    { type: 'input', label: 'Database Table', icon: <Database size={16} />, tooltip: 'Source data directly from project-level DuckDB tables.' },
+                    { type: 'input', label: 'CSV/Excel File', icon: <Table size={16} />, tooltip: 'Upload or select local data files (CSV, XLSX) to analyze.' }
+                  ]
+                },
+                {
+                  title: 'Transformations',
+                  items: [
+                    { type: 'default', subtype: 'filter', label: 'Filter Records', icon: <Filter size={16} />, tooltip: 'Keep only records that match specific conditions (e.g. amount > 1000).' },
+                    { type: 'default', subtype: 'combine', label: 'Combine Datasets', icon: <ArrowRightLeft size={16} />, tooltip: 'Join two separate tables together using common keys (Inner, Left, UNION, etc).' },
+                    { type: 'default', subtype: 'clean', label: 'Clean & Format', icon: <Settings size={16} />, tooltip: 'Standardize data quality: trim spaces, change case, or fix null values.' },
+                    { type: 'default', subtype: 'aggregate', label: 'Aggregate Data', icon: <Sigma size={16} />, tooltip: 'Summarize your data: calculate counts, averages, or totals grouped by categories.' },
+                    { type: 'default', subtype: 'sort', label: 'Sort Data', icon: <SortAsc size={16} />, tooltip: 'Reorder your records based on one or more column values.' },
+                    { type: 'default', subtype: 'limit', label: 'Limit Data', icon: <ListOrdered size={16} />, tooltip: 'Restrict the output to the first N rows of your dataset.' },
+                    { type: 'default', subtype: 'select', label: 'Select Columns', icon: <Table size={16} />, tooltip: 'Choose which columns to keep and which to discard from the dataset.' },
+                    { type: 'default', subtype: 'computed', label: 'Add Column', icon: <Calculator size={16} />, tooltip: 'Create new columns using arithmetic or SQL expressions (e.g. price * 1.1).' },
+                    { type: 'default', subtype: 'rename', label: 'Rename Columns', icon: <PenLine size={16} />, tooltip: 'Modify column headers to make them more descriptive and readable.' },
+                    { type: 'default', subtype: 'distinct', label: 'Remove Duplicates', icon: <Fingerprint size={16} />, tooltip: 'Filter out identical rows to ensure data uniqueness.' },
+                    { type: 'default', subtype: 'case_when', label: 'Conditional Logic', icon: <GitBranch size={16} />, tooltip: 'Apply CASE-WHEN logic to create sophisticated branching rules.' },
+                    { type: 'default', subtype: 'window', label: 'Window Function', icon: <BarChart3 size={16} />, tooltip: 'Perform calculations across related rows (ranks, moving averages).' },
+                    { type: 'default', subtype: 'raw_sql', label: 'Custom SQL', icon: <Code size={16} />, tooltip: 'Maximum power: write your own DuckDB SQL to transform data.' }
+                  ]
+                },
+                {
+                  title: 'Outputs',
+                  items: [
+                    { type: 'output', subtype: 'report', label: 'Report Builder', icon: <FileText size={16} />, tooltip: 'Design a customized report (PDF/Markdown) from your pipeline results.' },
+                    { type: 'output', subtype: 'export', label: 'Export File', icon: <FileDown size={16} />, tooltip: 'Save your processed data to a CSV or Excel file for external use.' }
+                  ]
+                }
+              ];
 
-            <h3 className="text-xs font-semibold text-[#6B778C] uppercase tracking-wider mb-3">Outputs</h3>
-            <div className="space-y-2 mb-6">
-              <div
-                draggable
-                onDragStart={(e) => onDragStart(e, 'output', 'Report Builder', 'report')}
-                onMouseEnter={(e) => showTooltip(e, 'Report Builder', 'Design a customized report (PDF/Markdown) from your pipeline results.')}
-                onMouseLeave={hideTooltip}
-                className="flex items-center space-x-3 p-3 bg-white border border-[#DFE1E6] hover:border-[#36B37E] hover:shadow-sm rounded-md cursor-grab transition-all"
-              >
-                <div className="p-1.5 bg-green-50 text-[#36B37E] rounded">
-                  <FileText size={16} />
-                </div>
-                <span className="text-sm font-medium text-gray-700">Report Builder</span>
-              </div>
-              <div
-                draggable
-                onDragStart={(e) => onDragStart(e, 'output', 'Export File')}
-                onMouseEnter={(e) => showTooltip(e, 'Export File', 'Save your processed data to a CSV or Excel file for external use.')}
-                onMouseLeave={hideTooltip}
-                className="flex items-center space-x-3 p-3 bg-white border border-[#DFE1E6] hover:border-[#36B37E] hover:shadow-sm rounded-md cursor-grab transition-all"
-              >
-                <div className="p-1.5 bg-green-50 text-[#36B37E] rounded">
-                  <FileDown size={16} />
-                </div>
-                <span className="text-sm font-medium text-gray-700">Export file</span>
-              </div>
-            </div>
+              let totalShowing = 0;
+              const renderedCategories = categories.map((cat, catIdx) => {
+                const filteredItems = cat.items.filter(item => shouldShow(item.label, item.tooltip));
+                totalShowing += filteredItems.length;
+                if (filteredItems.length === 0) return null;
+
+                return (
+                  <div key={catIdx} className="mb-6">
+                    <h3 className="text-xs font-semibold text-[#6B778C] uppercase tracking-wider mb-3">{cat.title}</h3>
+                    <div className="space-y-2">
+                      {filteredItems.map((item, itemIdx) => (
+                        <div
+                          key={itemIdx}
+                          draggable
+                          onDragStart={(e) => onDragStart(e, item.type, item.label, (item as any).subtype)}
+                          onMouseEnter={(e) => showTooltip(e, item.label, item.tooltip)}
+                          onMouseLeave={hideTooltip}
+                          className={`flex items-center space-x-3 p-3 bg-white border border-[#DFE1E6] rounded-md cursor-grab transition-all hover:shadow-sm ${item.type === 'input' ? 'hover:border-[#0052CC]' : item.type === 'output' ? 'hover:border-[#36B37E]' : 'hover:border-[#6554C0]'}`}
+                        >
+                          <div className={`p-1.5 rounded ${item.type === 'input' ? 'bg-blue-50 text-[#0052CC]' : item.type === 'output' ? 'bg-green-50 text-[#36B37E]' : 'bg-purple-50 text-[#6554C0]'}`}>
+                            {item.icon}
+                          </div>
+                          <span className="text-sm font-medium text-gray-700">{item.label}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              });
+
+              if (totalShowing === 0) {
+                return (
+                  <div className="flex flex-col items-center justify-center p-8 text-center bg-[#FAFBFC] rounded-lg border border-dashed border-[#DFE1E6]">
+                    <Search className="text-[#6B778C] mb-2 opacity-20" size={32} />
+                    <p className="text-sm font-medium text-[#171717]">No components found</p>
+                    <p className="text-xs text-[#6B778C] mt-1">Try another search term</p>
+                  </div>
+                );
+              }
+
+              return renderedCategories;
+            })()}
           </div>
         </aside>
 
@@ -1601,14 +1472,78 @@ function Dashboard() {
 
                   {/* Custom SQL UI */}
                   {selectedNode.data.subtype === 'raw_sql' && (
-                    <div className="space-y-4">
+                    <div className="space-y-3">
                       <div>
-                        <label className="block text-xs font-semibold text-[#6B778C] mb-1">Direct DuckDB SQL</label>
-                        <div className="p-2 mb-2 bg-blue-50 text-[10px] text-[#0052CC] rounded leading-relaxed border border-blue-100">
+                        <div className="mb-2">
+                          <label className="block text-[10px] uppercase font-bold text-[#6B778C] tracking-wider mb-2">Direct DuckDB SQL</label>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <button
+                              onClick={async () => {
+                                try {
+                                  const sql = (selectedNode.data.config as any)?.sql || '';
+                                  const columns = getUpstreamColumns(selectedNode.id);
+                                  const incoming = getEdges().find(e => e.target === selectedNode.id);
+                                  const sourceId = incoming?.source;
+                                  const schema = sourceId ? nodeTypes[sourceId] : null;
+                                  const preparedColumns = schema ? schema.map(c => JSON.stringify(c)) : columns;
+                                  
+                                  const result = await validateSql(sql, 'input_table', preparedColumns);
+                                  if (result.status === 'success') {
+                                    alert("✅ SQL is valid!");
+                                  } else {
+                                    alert("❌ SQL Error: " + result.message);
+                                  }
+                                } catch (e: any) {
+                                  alert("Error validating SQL: " + e.message);
+                                }
+                              }}
+                              className="text-[10px] bg-[#F4F5F7] hover:bg-[#EBECF0] text-[#42526E] px-2 py-1 rounded font-bold transition-all flex items-center gap-1.5"
+                            >
+                              <Search size={12} className="text-[#6B778C]" />
+                              VALIDATE
+                            </button>
+                            <button
+                              onClick={() => {
+                                const sql = (selectedNode.data.config as any)?.sql || '';
+                                navigator.clipboard.writeText(sql);
+                                alert("Copied to clipboard!");
+                              }}
+                              className="text-[10px] bg-[#F4F5F7] hover:bg-[#EBECF0] text-[#42526E] px-2 py-1 rounded font-bold transition-all flex items-center gap-1.5"
+                            >
+                              <Copy size={12} className="text-[#6B778C]" />
+                              COPY
+                            </button>
+                            <button
+                              onClick={() => {
+                                const sql = (selectedNode.data.config as any)?.sql || '';
+                                const lines = sql.split('\n');
+                                const beautified = lines.map((line: string) => {
+                                  const commentIdx = line.indexOf('--');
+                                  if (commentIdx === -1) {
+                                    return line.replace(/\s+/g, ' ').replace(/\b(SELECT|FROM|WHERE|GROUP BY|ORDER BY|HAVING|LIMIT|JOIN|LEFT JOIN|RIGHT JOIN|INNER JOIN|UNION|SET|INSERT|UPDATE|DELETE|CREATE|DROP|ALTER|WITH)\b/gi, '\n$1').replace(/,/g, ',\n ');
+                                  }
+                                  const code = line.slice(0, commentIdx);
+                                  const comment = line.slice(commentIdx);
+                                  const formattedCode = code.replace(/\s+/g, ' ').replace(/\b(SELECT|FROM|WHERE|GROUP BY|ORDER BY|HAVING|LIMIT|JOIN|LEFT JOIN|RIGHT JOIN|INNER JOIN|UNION|SET|INSERT|UPDATE|DELETE|CREATE|DROP|ALTER|WITH)\b/gi, '\n$1').replace(/,/g, ',\n ');
+                                  return formattedCode + ' ' + comment.trim();
+                                }).join('\n').replace(/\n\s*\n/g, '\n').trim();
+                                
+                                const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), sql: beautified } } };
+                                setSelectedNode(updatedNode);
+                                setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
+                              }}
+                              className="text-[10px] bg-[#F4F5F7] hover:bg-[#EBECF0] text-[#42526E] px-2 py-1 rounded font-bold transition-all flex items-center gap-1.5"
+                            >
+                              <SlidersHorizontal size={12} className="text-[#6B778C]" />
+                              BEAUTIFY
+                            </button>
+                          </div>
+                        </div>
+                        <div className="p-2 mb-2 bg-[#EBF4FF] text-[10px] text-[#0052CC] rounded leading-relaxed border border-[#B3D4FF]">
                           Use <b>{"{{input}}"}</b> to reference the incoming dataset table name.
                         </div>
                         <textarea
-                          rows={6}
+                          rows={12}
                           placeholder="SELECT * FROM {{input}} WHERE row_num > 10"
                           value={String((selectedNode.data.config as any)?.sql || '')}
                           onChange={(e) => {

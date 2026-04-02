@@ -17,7 +17,8 @@ import {
   useReactFlow,
   ReactFlowProvider,
   Handle,
-  Position
+  Position,
+  SelectionMode,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 
@@ -108,19 +109,81 @@ interface WorkspaceCanvasProps {
 function WorkspaceCanvas({ onNodeSelect }: WorkspaceCanvasProps) {
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
+  const [history, setHistory] = useState<{ nodes: Node[]; edges: Edge[] }[]>([]);
+  const [redoStack, setRedoStack] = useState<{ nodes: Node[]; edges: Edge[] }[]>([]);
+
+  const takeSnapshot = useCallback(() => {
+    setHistory((prev) => [...prev.slice(-49), { nodes: JSON.parse(JSON.stringify(nodes)), edges: JSON.parse(JSON.stringify(edges)) }]);
+    setRedoStack([]);
+  }, [nodes, edges]);
+
+  const undo = useCallback(() => {
+    if (history.length === 0) return;
+    const last = history[history.length - 1];
+    setRedoStack((prev) => [...prev, { nodes: JSON.parse(JSON.stringify(nodes)), edges: JSON.parse(JSON.stringify(edges)) }]);
+    setNodes(last.nodes);
+    setEdges(last.edges);
+    setHistory((prev) => prev.slice(0, -1));
+  }, [history, nodes, edges, setNodes, setEdges]);
+
+  const redo = useCallback(() => {
+    if (redoStack.length === 0) return;
+    const next = redoStack[redoStack.length - 1];
+    setHistory((prev) => [...prev, { nodes: JSON.parse(JSON.stringify(nodes)), edges: JSON.parse(JSON.stringify(edges)) }]);
+    setNodes(next.nodes);
+    setEdges(next.edges);
+    setRedoStack((prev) => prev.slice(0, -1));
+  }, [redoStack, nodes, edges, setNodes, setEdges]);
+
+  // Handle Keyboard Shortcuts
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const isMac = /Mac|iPod|iPhone|iPad/.test(navigator.userAgent);
+      const modifier = isMac ? e.metaKey : e.ctrlKey;
+
+      if (modifier && e.key.toLowerCase() === 'z') {
+        if (e.shiftKey) {
+          e.preventDefault();
+          redo();
+        } else {
+          e.preventDefault();
+          undo();
+        }
+      } else if (modifier && e.key.toLowerCase() === 'y') {
+        e.preventDefault();
+        redo();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [undo, redo]);
 
   const onConnect = useCallback(
-    (params: Connection | Edge) => setEdges((eds) => addEdge({ ...params, animated: true } as Edge, eds)),
-    [setEdges],
+    (params: Connection | Edge) => {
+      takeSnapshot();
+      setEdges((eds) => addEdge({ ...params, animated: true } as Edge, eds));
+    },
+    [setEdges, takeSnapshot],
   );
 
   const onSelectionChange = useCallback(
-    ({ nodes }: OnSelectionChangeParams) => {
+    ({ nodes: selectedNodes }: OnSelectionChangeParams) => {
       if (onNodeSelect) {
-        onNodeSelect(nodes.length > 0 ? nodes[0] : null);
+        onNodeSelect(selectedNodes.length > 0 ? selectedNodes[0] : null);
+      }
+
+      // Task 1: Auto-select edges between selected nodes
+      if (selectedNodes.length > 1) {
+        const nodeIds = new Set(selectedNodes.map((n) => n.id));
+        setEdges((eds) =>
+          eds.map((e) => ({
+            ...e,
+            selected: nodeIds.has(e.source) && nodeIds.has(e.target),
+          }))
+        );
       }
     },
-    [onNodeSelect]
+    [onNodeSelect, setEdges]
   );
 
   const reactFlowWrapper = React.useRef<HTMLDivElement>(null);
@@ -156,10 +219,23 @@ function WorkspaceCanvas({ onNodeSelect }: WorkspaceCanvasProps) {
         data: { label, subtype, config: {} },
       };
 
+      takeSnapshot();
       setNodes((nds) => nds.concat(newNode));
     },
-    [screenToFlowPosition, setNodes]
+    [screenToFlowPosition, setNodes, takeSnapshot]
   );
+
+  const onNodesDelete = useCallback(() => {
+    takeSnapshot();
+  }, [takeSnapshot]);
+
+  const onEdgesDelete = useCallback(() => {
+    takeSnapshot();
+  }, [takeSnapshot]);
+
+  const onNodeDragStop = useCallback(() => {
+    takeSnapshot();
+  }, [takeSnapshot]);
 
   return (
     <div className="w-full h-full relative" ref={reactFlowWrapper}>
@@ -172,7 +248,13 @@ function WorkspaceCanvas({ onNodeSelect }: WorkspaceCanvasProps) {
         onSelectionChange={onSelectionChange}
         onDrop={onDrop}
         onDragOver={onDragOver}
+        onNodesDelete={onNodesDelete}
+        onEdgesDelete={onEdgesDelete}
+        onNodeDragStop={onNodeDragStop}
         nodeTypes={nodeTypes}
+        selectionOnDrag
+        selectionMode={SelectionMode.Partial}
+        panOnDrag={[1, 2]}
         connectionRadius={40}
         defaultEdgeOptions={{ 
           animated: true, 

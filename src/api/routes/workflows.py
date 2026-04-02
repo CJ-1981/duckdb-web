@@ -122,6 +122,51 @@ async def list_saved_workflows():
     files = [f.replace(".json", "") for f in os.listdir(save_dir) if f.endswith(".json")]
     return {"workflows": sorted(files)}
 
+
+@router.post("/validate-sql")
+async def validate_sql(
+    sql: str = Query(...),
+    input_table: Optional[str] = Query(None),
+    columns: Optional[List[str]] = Query(None)
+):
+    """Validate a DuckDB SQL query using EXPLAIN with a realistic schema."""
+    logger.info(f">>> [VALIDATE] SQL Request received")
+    try:
+        conn = duckdb.connect(database=':memory:')
+        
+        # If input_table is provided, we build a dummy table for binder checks
+        if input_table:
+            cols_def = []
+            if columns:
+                for col_json in columns:
+                    try:
+                        # Try parsing as JSON to capture {column_name, column_type}
+                        c = json.loads(col_json)
+                        cname = c.get("column_name") or c.get("name")
+                        ctype = c.get("column_type") or c.get("type", "VARCHAR")
+                        cols_def.append(f"CAST(NULL AS {ctype}) as \"{cname.replace('\"', '\"\"')}\"")
+                    except:
+                        # Fallback to plain string column name cast to VARCHAR
+                        cols_def.append(f"CAST(NULL AS VARCHAR) as \"{col_json.replace('\"', '\"\"')}\"")
+            
+            if not cols_def:
+                cols_def = ["1 as id"]
+                
+            create_sql = f"CREATE TABLE \"{input_table.replace('\"', '\"\"')}\" AS SELECT {', '.join(cols_def)} WHERE 1=0"
+            logger.info(f">>> [VALIDATE] Schema SQL: {create_sql}")
+            conn.execute(create_sql)
+        
+        # Replace {{input}} placeholder
+        safe_input = f"\"{input_table.replace('\"', '\"\"')}\"" if input_table else "read_csv_auto('')"
+        processed_sql = sql.replace("{{input}}", safe_input).replace("`", "\"")
+        
+        # Validate syntax and binder via EXPLAIN
+        conn.execute(f"EXPLAIN {processed_sql}")
+        return {"status": "success", "message": "SQL is valid"}
+    except Exception as e:
+        logger.error(f">>> [VALIDATE] Binder ERROR: {str(e)}")
+        return {"status": "error", "message": str(e)}
+
 @router.get("/load/{name}")
 async def load_workflow_graph(name: str):
     """Load a specific workflow graph."""
