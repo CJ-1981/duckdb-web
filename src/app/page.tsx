@@ -1516,17 +1516,22 @@ function Dashboard() {
                             <button
                               onClick={() => {
                                 const sql = (selectedNode.data.config as any)?.sql || '';
-                                const lines = sql.split('\n');
-                                const beautified = lines.map((line: string) => {
-                                  const commentIdx = line.indexOf('--');
-                                  if (commentIdx === -1) {
-                                    return line.replace(/\s+/g, ' ').replace(/\b(SELECT|FROM|WHERE|GROUP BY|ORDER BY|HAVING|LIMIT|JOIN|LEFT JOIN|RIGHT JOIN|INNER JOIN|UNION|SET|INSERT|UPDATE|DELETE|CREATE|DROP|ALTER|WITH)\b/gi, '\n$1').replace(/,/g, ',\n ');
-                                  }
-                                  const code = line.slice(0, commentIdx);
-                                  const comment = line.slice(commentIdx);
-                                  const formattedCode = code.replace(/\s+/g, ' ').replace(/\b(SELECT|FROM|WHERE|GROUP BY|ORDER BY|HAVING|LIMIT|JOIN|LEFT JOIN|RIGHT JOIN|INNER JOIN|UNION|SET|INSERT|UPDATE|DELETE|CREATE|DROP|ALTER|WITH)\b/gi, '\n$1').replace(/,/g, ',\n ');
-                                  return formattedCode + ' ' + comment.trim();
-                                }).join('\n').replace(/\n\s*\n/g, '\n').trim();
+                                
+                                // Improved beautifier that respects strings and comments
+                                const tokens = sql.split(/('(?:''|[^'])*'|--.*(?:\n|$))/g);
+                                const beautified = tokens.map((token: string) => {
+                                  if (!token) return '';
+                                  if (token.startsWith("'") || token.startsWith("--")) return token;
+                                  
+                                  // Format keywords and commas in code parts
+                                  return token
+                                    .replace(/\s+/g, ' ')
+                                    .replace(/\b(SELECT|FROM|WHERE|GROUP BY|ORDER BY|HAVING|LIMIT|JOIN|LEFT JOIN|RIGHT JOIN|INNER JOIN|UNION|WITH|SET|VALUES|CASE|WHEN|THEN|ELSE|END|AS)\b/gi, (match: string) => `\n${match.toUpperCase()}`)
+                                    .replace(/,/g, ',\n  ');
+                                }).join('')
+                                  .replace(/\n\s*\n/g, '\n') // Remove extra empty lines
+                                  .replace(/^\s*\n/g, '') // Remove leading newline
+                                  .trim();
                                 
                                 const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), sql: beautified } } };
                                 setSelectedNode(updatedNode);

@@ -9,6 +9,7 @@ import os
 import uuid
 import json
 import logging
+import pandas as pd
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from pydantic import BaseModel
 import duckdb
@@ -123,14 +124,21 @@ async def list_saved_workflows():
     return {"workflows": sorted(files)}
 
 
+class SqlValidationRequest(BaseModel):
+    sql: str
+    input_table: Optional[str] = None
+    columns: Optional[List[Any]] = None
+
 @router.post("/validate-sql")
 async def validate_sql(
-    sql: str = Query(...),
-    input_table: Optional[str] = Query(None),
-    columns: Optional[List[str]] = Query(None)
+    request: SqlValidationRequest
 ):
     """Validate a DuckDB SQL query using EXPLAIN with a realistic schema."""
-    logger.info(f">>> [VALIDATE] SQL Request received")
+    sql = request.sql
+    input_table = request.input_table
+    columns = request.columns
+    
+    logger.info(f">>> [VALIDATE] SQL Request received (Length: {len(sql)})")
     try:
         conn = duckdb.connect(database=':memory:')
         
@@ -138,16 +146,26 @@ async def validate_sql(
         if input_table:
             cols_def = []
             if columns:
-                for col_json in columns:
+                for col_item in columns:
                     try:
-                        # Try parsing as JSON to capture {column_name, column_type}
-                        c = json.loads(col_json)
-                        cname = c.get("column_name") or c.get("name")
-                        ctype = c.get("column_type") or c.get("type", "VARCHAR")
-                        cols_def.append(f"CAST(NULL AS {ctype}) as \"{cname.replace('\"', '\"\"')}\"")
-                    except:
-                        # Fallback to plain string column name cast to VARCHAR
-                        cols_def.append(f"CAST(NULL AS VARCHAR) as \"{col_json.replace('\"', '\"\"')}\"")
+                        # Handle both JSON string and already-parsed dict/list
+                        c = col_item
+                        if isinstance(col_item, str):
+                            try:
+                                c = json.loads(col_item)
+                            except:
+                                pass
+                        
+                        if isinstance(c, dict):
+                            cname = c.get("column_name") or c.get("name")
+                            ctype = c.get("column_type") or c.get("type", "VARCHAR")
+                            cols_def.append(f"CAST(NULL AS {ctype}) as {quote_identifier(cname)}")
+                        else:
+                            # Fallback to plain string column name cast to VARCHAR
+                            cols_def.append(f"CAST(NULL AS VARCHAR) as {quote_identifier(str(col_item))}")
+                    except Exception as e:
+                        logger.warning(f"Failed to parse column for validation: {col_item} - {e}")
+                        cols_def.append(f"CAST(NULL AS VARCHAR) as {quote_identifier(str(col_item))}")
             
             if not cols_def:
                 cols_def = ["1 as id"]
@@ -874,12 +892,14 @@ async def inspect_node_dataset(request: InspectRequest):
             summarize_map = {}
 
         def val_or_none(v):
-            if v is None: return None
+            if v is None or pd.isna(v): return None
             try:
                 fv = float(v)
                 if not math.isfinite(fv): return None
                 return fv
             except (ValueError, TypeError): pass
+            if isinstance(v, (pd.Timestamp, pd.Period)):
+                return str(v)
             return v
 
         for _, drow in desc_df.iterrows():

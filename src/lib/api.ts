@@ -124,20 +124,31 @@ export async function inspectNode(nodes: any[], edges: any[], nodeId: string) {
   }
 }
 
-export async function validateSql(sql: string, inputTable?: string, columns?: string[]) {
-  const params = new URLSearchParams();
-  params.append('sql', sql);
-  if (inputTable) params.append('input_table', inputTable);
-  if (columns && columns.length > 0) {
-    columns.forEach(c => params.append('columns', c));
+export async function validateSql(sql: string, inputTable?: string, columns?: (string | any)[]) {
+  try {
+    const payload = {
+      sql: sql,
+      input_table: inputTable,
+      columns: columns
+    };
+
+    const response = await fetch(`${API_BASE_URL}/workflows/validate-sql`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.detail || "Validation request failed");
+    }
+
+    const result = await response.json();
+    return result;
+  } catch (error) {
+    console.error('Failed to validate SQL:', error);
+    throw error;
   }
-  
-  const response = await fetch(`${API_BASE_URL}/workflows/validate-sql?${params.toString()}`, {
-    method: 'POST',
-  });
-  console.log(`[API] validateSql request: ${API_BASE_URL}/workflows/validate-sql?${params.toString()}`);
-  if (!response.ok) throw new Error("Validation request failed");
-  const result = await response.json();
-  console.log(`[API] validateSql response:`, result);
-  return result;
 }
