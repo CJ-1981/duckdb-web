@@ -39,6 +39,12 @@ from src.api.services.workflow import WorkflowService
 
 router = APIRouter(prefix="/api/v1/workflows", tags=["Workflows"])
 
+def quote_identifier(name: str) -> str:
+    """Quote a SQL identifier and escape internal double quotes for DuckDB/Standard SQL."""
+    if not name:
+        return '""'
+    return f'"{name.replace("\"", "\"\"")}"'
+
 
 @router.post("", response_model=WorkflowResponse, status_code=status.HTTP_201_CREATED)
 @require_permission("workflows:create")
@@ -188,23 +194,24 @@ async def execute_workflow_graph(
                     
                     if col:
                         clean_val = val.replace("'", "''")
-                        if op == "==": where = f"TRIM(CAST(\"{col}\" AS VARCHAR)) = '{clean_val}'"
-                        elif op == "!=": where = f"(TRIM(CAST(\"{col}\" AS VARCHAR)) != '{clean_val}' OR \"{col}\" IS NULL)"
-                        elif op == "contains": where = f"CAST(\"{col}\" AS VARCHAR) ILIKE '%{clean_val}%'"
-                        elif op == "not_contains": where = f"(CAST(\"{col}\" AS VARCHAR) NOT ILIKE '%{clean_val}%' OR \"{col}\" IS NULL)"
-                        elif op == "starts_with": where = f"CAST(\"{col}\" AS VARCHAR) ILIKE '{clean_val}%'"
-                        elif op == "ends_with": where = f"CAST(\"{col}\" AS VARCHAR) ILIKE '%{clean_val}'"
-                        elif op == "is_null": where = f"(\"{col}\" IS NULL OR CAST(\"{col}\" AS VARCHAR) = '')"
-                        elif op == "is_not_null": where = f"(\"{col}\" IS NOT NULL AND CAST(\"{col}\" AS VARCHAR) != '')"
+                        qc = quote_identifier(col)
+                        if op == "==": where = f"TRIM(CAST({qc} AS VARCHAR)) = '{clean_val}'"
+                        elif op == "!=": where = f"(TRIM(CAST({qc} AS VARCHAR)) != '{clean_val}' OR {qc} IS NULL)"
+                        elif op == "contains": where = f"CAST({qc} AS VARCHAR) ILIKE '%{clean_val}%'"
+                        elif op == "not_contains": where = f"(TRIM(CAST({qc} AS VARCHAR)) NOT ILIKE '%{clean_val}%' OR {qc} IS NULL)"
+                        elif op == "starts_with": where = f"CAST({qc} AS VARCHAR) ILIKE '{clean_val}%'"
+                        elif op == "ends_with": where = f"CAST({qc} AS VARCHAR) ILIKE '%{clean_val}'"
+                        elif op == "is_null": where = f"({qc} IS NULL OR CAST({qc} AS VARCHAR) = '')"
+                        elif op == "is_not_null": where = f"({qc} IS NOT NULL AND CAST({qc} AS VARCHAR) != '')"
                         elif op == "in":
                             items = ["'" + v.strip().replace("'", "''") + "'" for v in val.split(',')]
-                            where = f"TRIM(CAST(\"{col}\" AS VARCHAR)) IN ({', '.join(items)})"
+                            where = f"TRIM(CAST({qc} AS VARCHAR)) IN ({', '.join(items)})"
                         elif op == "not_in":
                             items = ["'" + v.strip().replace("'", "''") + "'" for v in val.split(',')]
-                            where = f"(TRIM(CAST(\"{col}\" AS VARCHAR)) NOT IN ({', '.join(items)}) OR \"{col}\" IS NULL)"
+                            where = f"(TRIM(CAST({qc} AS VARCHAR)) NOT IN ({', '.join(items)}) OR {qc} IS NULL)"
                         elif op in [">", "<", ">=", "<="]:
                             num_val = clean_val.replace(',', '')
-                            where = f"TRY_CAST(REPLACE(CAST(\"{col}\" AS VARCHAR), ',', '') AS DOUBLE) {op} {num_val}"
+                            where = f"TRY_CAST(REPLACE(CAST({qc} AS VARCHAR), ',', '') AS DOUBLE) {op} {num_val}"
                 
                 if where:
                     conn.execute(f"CREATE TEMP TABLE {table_name} AS SELECT * FROM {prev_table} WHERE {where}")
@@ -217,7 +224,7 @@ async def execute_workflow_graph(
                 expr = config.get("expression")
                 alias = config.get("alias", "new_column")
                 if expr and alias:
-                    conn.execute(f"CREATE TEMP TABLE {table_name} AS SELECT *, {expr} AS \"{alias}\" FROM {prev_table}")
+                    conn.execute(f"CREATE TEMP TABLE {table_name} AS SELECT *, {expr} AS {quote_identifier(alias)} FROM {prev_table}")
                     node_to_table[node_id] = table_name
                 else:
                     node_to_table[node_id] = prev_table
@@ -226,7 +233,9 @@ async def execute_workflow_graph(
                 raw_sql = config.get("sql", "")
                 if raw_sql:
                     input_table = prev_table if prev_table else "read_csv_auto('')"
-                    processed_sql = raw_sql.replace("{{input}}", input_table)
+                    # Auto-convert backticks to double quotes for standard DuckDB support
+                    # This helps with AI-generated or user-pasted MySQL-style queries
+                    processed_sql = raw_sql.replace("{{input}}", input_table).replace("`", "\"")
                     conn.execute(f"CREATE TEMP TABLE {table_name} AS {processed_sql}")
                     node_to_table[node_id] = table_name
                 else:
@@ -236,7 +245,7 @@ async def execute_workflow_graph(
                 if not prev_table: continue
                 cols_raw = config.get("columns", "")
                 if cols_raw:
-                    cols = [f"\"{c.strip()}\"" for c in cols_raw.split(',') if c.strip()]
+                    cols = [quote_identifier(c.strip()) for c in cols_raw.split(',') if c.strip()]
                     conn.execute(f"CREATE TEMP TABLE {table_name} AS SELECT DISTINCT {', '.join(cols)} FROM {prev_table}")
                 else:
                     conn.execute(f"CREATE TEMP TABLE {table_name} AS SELECT DISTINCT * FROM {prev_table}")
@@ -248,7 +257,7 @@ async def execute_workflow_graph(
                 if mappings:
                     all_cols = conn.execute(f"DESCRIBE {prev_table}").df()['column_name'].tolist()
                     renamed_map = {m['old']: m['new'] for m in mappings if m.get('old') and m.get('new')}
-                    select_items = [f"\"{col}\" AS \"{renamed_map[col]}\"" if col in renamed_map else f"\"{col}\"" for col in all_cols]
+                    select_items = [f"{quote_identifier(col)} AS {quote_identifier(renamed_map[col])}" if col in renamed_map else quote_identifier(col) for col in all_cols]
                     conn.execute(f"CREATE TEMP TABLE {table_name} AS SELECT {', '.join(select_items)} FROM {prev_table}")
                     node_to_table[node_id] = table_name
                 else:
@@ -274,7 +283,7 @@ async def execute_workflow_graph(
                     for c in conditions:
                         w, t = c.get('when'), c.get('then')
                         if w and t: case_parts.append(f"WHEN {w} THEN {sql_val(t)}")
-                    case_parts.append(f"ELSE {sql_val(else_val_raw)} END AS \"{alias}\"")
+                    case_parts.append(f"ELSE {sql_val(else_val_raw)} END AS {quote_identifier(alias)}")
                     conn.execute(f"CREATE TEMP TABLE {table_name} AS SELECT *, {' '.join(case_parts)} FROM {prev_table}")
                     node_to_table[node_id] = table_name
                 else:
@@ -307,19 +316,19 @@ async def execute_workflow_graph(
                     func_call = f"{func_name}()"
                 else:
                     if value_col:
-                        func_call = f"{func_name}(\"{value_col}\")"
+                        func_call = f"{func_name}({quote_identifier(value_col)})"
                     else:
                         logger.warning(f"Window function {func_name} requires a valueColumn — skipping node")
                         node_to_table[node_id] = prev_table
                         continue
 
                 over_parts = []
-                if partition: over_parts.append(f"PARTITION BY \"{partition}\"")
-                if order: over_parts.append(f"ORDER BY \"{order}\" {direction}")
+                if partition: over_parts.append(f"PARTITION BY {quote_identifier(partition)}")
+                if order: over_parts.append(f"ORDER BY {quote_identifier(order)} {direction}")
 
                 sql = (
                     f"CREATE TEMP TABLE {table_name} AS "
-                    f"SELECT *, {func_call} OVER ({' '.join(over_parts)}) AS \"{alias}\" "
+                    f"SELECT *, {func_call} OVER ({' '.join(over_parts)}) AS {quote_identifier(alias)} "
                     f"FROM {prev_table}"
                 )
                 logger.info(f"Window SQL: {sql}")
@@ -331,7 +340,7 @@ async def execute_workflow_graph(
                 col = config.get("column")
                 direction = config.get("direction", "asc").upper()
                 if col:
-                    conn.execute(f"CREATE TEMP TABLE {table_name} AS SELECT * FROM {prev_table} ORDER BY \"{col}\" {direction}")
+                    conn.execute(f"CREATE TEMP TABLE {table_name} AS SELECT * FROM {prev_table} ORDER BY {quote_identifier(col)} {direction}")
                     node_to_table[node_id] = table_name
                 else:
                     node_to_table[node_id] = prev_table
@@ -346,14 +355,14 @@ async def execute_workflow_graph(
                 if not prev_table: continue
                 col, op = config.get("column"), config.get("operation", "trim")
                 if col:
-                    expr = f"\"{col}\""
-                    if op == "trim": expr = f"TRIM(CAST(\"{col}\" AS VARCHAR))"
-                    elif op == "upper": expr = f"UPPER(CAST(\"{col}\" AS VARCHAR))"
-                    elif op == "lower": expr = f"LOWER(CAST(\"{col}\" AS VARCHAR))"
-                    elif op == "numeric": expr = f"REGEXP_REPLACE(CAST(\"{col}\" AS VARCHAR), '[^0-9.]', '', 'g')"
-                    elif op == "replace_null": expr = f"COALESCE(NULLIF(CAST(\"{col}\" AS VARCHAR), ''), '{config.get('newValue', '')}')"
-                    elif op == "to_date": expr = f"TRY_CAST(\"{col}\" AS DATE)"
-                    conn.execute(f"CREATE TEMP TABLE {table_name} AS SELECT * REPLACE ({expr} AS \"{col}\") FROM {prev_table}")
+                    expr = quote_identifier(col)
+                    if op == "trim": expr = f"TRIM(CAST({quote_identifier(col)} AS VARCHAR))"
+                    elif op == "upper": expr = f"UPPER(CAST({quote_identifier(col)} AS VARCHAR))"
+                    elif op == "lower": expr = f"LOWER(CAST({quote_identifier(col)} AS VARCHAR))"
+                    elif op == "numeric": expr = f"REGEXP_REPLACE(CAST({quote_identifier(col)} AS VARCHAR), '[^0-9.]', '', 'g')"
+                    elif op == "replace_null": expr = f"COALESCE(NULLIF(CAST({quote_identifier(col)} AS VARCHAR), ''), '{config.get('newValue', '')}')"
+                    elif op == "to_date": expr = f"TRY_CAST({quote_identifier(col)} AS DATE)"
+                    conn.execute(f"CREATE TEMP TABLE {table_name} AS SELECT * REPLACE ({expr} AS {quote_identifier(col)}) FROM {prev_table}")
                     node_to_table[node_id] = table_name
                 else:
                     node_to_table[node_id] = prev_table
@@ -362,7 +371,7 @@ async def execute_workflow_graph(
                 if not prev_table: continue
                 cols = [c.strip() for c in config.get("columns", "").split(',') if c.strip()]
                 if cols:
-                    conn.execute(f"CREATE TEMP TABLE {table_name} AS SELECT {', '.join([f'\"{c}\"' for c in cols])} FROM {prev_table}")
+                    conn.execute(f"CREATE TEMP TABLE {table_name} AS SELECT {', '.join([quote_identifier(c) for c in cols])} FROM {prev_table}")
                     node_to_table[node_id] = table_name
                 else:
                     node_to_table[node_id] = prev_table
@@ -383,7 +392,7 @@ async def execute_workflow_graph(
                             # Handle JOIN (combining columns)
                             lc, rc = config.get("leftColumn"), config.get("rightColumn")
                             if lc and rc:
-                                conn.execute(f"CREATE TEMP TABLE {table_name} AS SELECT * FROM {left} {join_type} JOIN {right} ON {left}.\"{lc}\" = {right}.\"{rc}\"")
+                                conn.execute(f"CREATE TEMP TABLE {table_name} AS SELECT * FROM {left} {join_type} JOIN {right} ON {left}.{quote_identifier(lc)} = {right}.{quote_identifier(rc)}")
                                 node_to_table[node_id] = table_name
                             else:
                                 node_to_table[node_id] = left
@@ -402,15 +411,17 @@ async def execute_workflow_graph(
                     c, f = a.get("column"), a.get("operation", "sum").upper()
                     al = a.get("alias") or f"{f.lower()}_{c}"
                     if c:
-                        clean = f"TRY_CAST(REPLACE(CAST(\"{c}\" AS VARCHAR), ',', '') AS DOUBLE)"
-                        agg_parts.append(f"COUNT(\"{c}\") AS \"{al}\"" if f == "COUNT" else f"{f}({clean}) AS \"{al}\"")
+                        qc = quote_identifier(c)
+                        qa = quote_identifier(al)
+                        clean = f"TRY_CAST(REPLACE(CAST({qc} AS VARCHAR), ',', '') AS DOUBLE)"
+                        agg_parts.append(f"COUNT({qc}) AS {qa}" if f == "COUNT" else f"{f}({clean}) AS {qa}")
                     else:
-                        agg_parts.append(f"COUNT(*) AS \"{al}\"")
+                        agg_parts.append(f"COUNT(*) AS {quote_identifier(al)}")
 
                 sel = ", ".join(agg_parts)
-                if group_by: sel = f"{', '.join([f'\"{c}\"' for c in group_by])}, {sel}"
+                if group_by: sel = f"{', '.join([quote_identifier(c) for c in group_by])}, {sel}"
                 sql = f"CREATE TEMP TABLE {table_name} AS SELECT {sel} FROM {prev_table}"
-                if group_by: sql += f" GROUP BY {', '.join([f'\"{c}\"' for c in group_by])}"
+                if group_by: sql += f" GROUP BY {', '.join([quote_identifier(c) for c in group_by])}"
                 conn.execute(sql)
                 node_to_table[node_id] = table_name
 
@@ -767,7 +778,9 @@ async def inspect_node_dataset(request: InspectRequest):
                     elif subtype == "raw_sql":
                         raw_sql = config.get("sql", "")
                         if raw_sql:
-                            conn.execute(f"CREATE TEMP TABLE {table_name} AS {raw_sql.replace('{{input}}', prev_table)}")
+                            # Auto-convert backticks to double quotes for standard DuckDB support
+                            processed_sql = raw_sql.replace("{{input}}", prev_table).replace("`", "\"")
+                            conn.execute(f"CREATE TEMP TABLE {table_name} AS {processed_sql}")
                             node_to_table[node_id] = table_name
                         else: node_to_table[node_id] = prev_table
                     else:
@@ -823,8 +836,9 @@ async def inspect_node_dataset(request: InspectRequest):
                 })
             else:
                 try:
-                    cnt = conn.execute(f'SELECT COUNT("{col_name}") FROM {target_table}').fetchone()[0]
-                    dist = conn.execute(f'SELECT COUNT(DISTINCT "{col_name}") FROM {target_table}').fetchone()[0]
+                    qcn = quote_identifier(col_name)
+                    cnt = conn.execute(f"SELECT COUNT({qcn}) FROM {target_table}").fetchone()[0]
+                    dist = conn.execute(f"SELECT COUNT(DISTINCT {qcn}) FROM {target_table}").fetchone()[0]
                     stat.update({"count": cnt, "null_count": total_rows - cnt,
                                  "null_pct": round((total_rows - cnt) / total_rows * 100, 1) if total_rows else 0,
                                  "distinct": dist})

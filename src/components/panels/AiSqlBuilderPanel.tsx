@@ -14,8 +14,8 @@ const PROVIDERS: Provider[] = [
   {
     id: 'google', name: 'Google (Gemini)', baseUrl: 'https://generativelanguage.googleapis.com/v1beta/models', type: 'google',
     models: [
-      { id: 'gemini-2.0-flash', name: 'Gemini 2.5 Flash' },
-      { id: 'gemini-2.0-flash-lite', name: 'Gemini 2.0 Flash Lite' },
+      { id: 'gemini-2.0-flash-exp', name: 'Gemini 2.0 Flash (Exp)' },
+      { id: 'gemini-2.0-flash', name: 'Gemini 2.5 Flash (Latest)' },
       { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash' },
       { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro' },
     ],
@@ -75,11 +75,13 @@ Table Schema:
 ${schemaTxt}
 
 Important rules:
-- Use DuckDB SQL syntax (not PostgreSQL or MySQL)
-- Use double quotes around column names (e.g. "column_name")
+- Use standard DuckDB SQL syntax (Standard SQL, NOT MySQL/Backticks)
+- Use DOUBLE QUOTES (") for column and table names (e.g. "교인성명")
+- NEVER use backticks for identifiers.
+- DO NOT quote function calls like COUNT(), SUM(), etc.
+- ALWAYS use clear aliases (AS "alias") for all aggregations and expressions
 - Reference the input dataset using {{input}} as the table name
-- Return ONLY the raw SQL query — no markdown, no code fences, no explanations
-- Use TRY_CAST for numeric conversions where appropriate`;
+- Return ONLY the raw SQL query without explanations or markdown fences`;
 }
 
 async function callLLM(provider: Provider, model: string, apiKey: string, userPrompt: string, schema: ColumnTypeDef[]): Promise<string> {
