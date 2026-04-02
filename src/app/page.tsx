@@ -941,7 +941,9 @@ function Dashboard() {
                                     ...(selectedNode.data.config as any),
                                     file: uploadResult.filename,
                                     file_path: uploadResult.file_path,
-                                    availableColumns: uploadResult.available_columns
+                                    availableColumns: uploadResult.available_columns,
+                                    format: uploadResult.detected_format,
+                                    detectedFormat: uploadResult.detected_format
                                   }
                                 }
                               };
@@ -983,6 +985,29 @@ function Dashboard() {
                   <div>
                     <label className="block text-xs font-semibold text-[#6B778C] mb-1">Server Upload Path</label>
                     <input type="text" readOnly value={String((selectedNode.data.config as Record<string, unknown>)?.file_path || "None uploaded")} className="w-full bg-gray-50 border border-[#DFE1E6] rounded-md px-3 py-2 text-xs text-[#6B778C] font-mono" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-[#6B778C] mb-1">Parsing Format</label>
+                    <div className="flex flex-col gap-2">
+                       <select
+                         value={String((selectedNode.data.config as any)?.format || 'flat')}
+                         onChange={(e) => {
+                           const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), format: e.target.value } } };
+                           setSelectedNode(updatedNode);
+                           setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
+                         }}
+                         className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-sm text-[#171717] focus:ring-[#0052CC] focus:border-[#0052CC]"
+                       >
+                         <option value="flat">Standard Flat CSV (Rows & Columns)</option>
+                         <option value="kv">Key-Value Pairs (id, key:val, timestamp)</option>
+                       </select>
+                       {(selectedNode.data.config as any)?.detectedFormat && (
+                         <div className="flex items-center gap-1.5 px-2 py-1 bg-amber-50 border border-amber-200 rounded text-[10px] text-amber-700 font-medium animate-in fade-in zoom-in duration-300">
+                           <Microscope size={12} />
+                           Auto-detected: <span className="font-bold uppercase">{(selectedNode.data.config as any).detectedFormat}</span>
+                         </div>
+                       )}
+                    </div>
                   </div>
                 </div>
               )}

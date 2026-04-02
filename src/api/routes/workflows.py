@@ -261,9 +261,49 @@ async def execute_workflow_graph(
                 if not os.path.isabs(file_path):
                     file_path = os.path.abspath(file_path)
                 
-                sql = f"CREATE TEMP TABLE {table_name} AS SELECT * FROM read_csv_auto('{file_path}')"
-                conn.execute(sql)
-                node_to_table[node_id] = table_name
+                load_format = config.get("format", "flat")
+                if load_format == "kv":
+                    # Schema-discovery for KV format (Union of all detected keys)
+                    import csv
+                    records = []
+                    all_keys = set()
+                    with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                        reader = csv.reader(f)
+                        for row in reader:
+                            if not row: continue
+                            rec = {'id': row[0], 'timestamp': row[-1]}
+                            for item in row[1:-1]:
+                                if ':' in item:
+                                    k, _, v = item.partition(':')
+                                    rec[k.strip()] = v.strip()
+                                    all_keys.add(k.strip())
+                            records.append(rec)
+                    
+                    if records:
+                        # DDL
+                        columns = sorted(list(all_keys))
+                        col_defs = ", ".join([f'"{c}" VARCHAR' for c in columns])
+                        if col_defs: col_defs = ", " + col_defs
+                        conn.execute(f"CREATE TABLE {table_name} (id VARCHAR, timestamp VARCHAR {col_defs})")
+                        
+                        # Insert
+                        all_cols = ["id", "timestamp"] + columns
+                        placeholders = ", ".join(["?" for _ in all_cols])
+                        insert_sql = f"INSERT INTO {table_name} ({', '.join([f'\"{c}\"' for c in all_cols])}) VALUES ({placeholders})"
+                        
+                        for rec in records:
+                            vals = [rec.get(c, '') for c in all_cols]
+                            conn.execute(insert_sql, vals)
+                        
+                        node_to_table[node_id] = table_name
+                    else:
+                        conn.execute(f"CREATE TEMP TABLE {table_name} AS SELECT * FROM read_csv_auto('{file_path}')")
+                        node_to_table[node_id] = table_name
+                else:
+                    # Standard Flat loading
+                    sql = f"CREATE TEMP TABLE {table_name} AS SELECT * FROM read_csv_auto('{file_path}')"
+                    conn.execute(sql)
+                    node_to_table[node_id] = table_name
                 
             elif subtype == "filter" or "Filter" in label:
                 if not prev_table: continue

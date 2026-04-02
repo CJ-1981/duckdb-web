@@ -12,6 +12,35 @@ import uuid
 
 from src.api.auth.decorators import require_permission
 from src.api.auth.dependencies import get_current_user_with_role, authorize_endpoint
+import csv
+import io
+
+def _is_numeric(v: str) -> bool:
+    try:
+        float(v.strip())
+        return True
+    except ValueError:
+        return False
+
+def detect_kv(rows: list) -> bool:
+    """
+    Heuristic: k:v format if >50% of middle tokens (not first, not last)
+    contain a colon across sampled rows.
+    """
+    sample = rows[:20]
+    total = 0
+    kv_count = 0
+
+    for row in sample:
+        if len(row) < 3: continue
+        middle = row[1:-1]
+        for item in middle:
+            if item.strip():
+                total += 1
+                if ':' in item:
+                    kv_count += 1
+
+    return (kv_count / total) > 0.5 if total > 0 else False
 
 router = APIRouter(prefix="/api/v1/data", tags=["Data"])
 
@@ -32,16 +61,27 @@ async def upload_file(file: UploadFile = File(...)):
         # Using DESCRIBE for columns and COUNT for rows
         columns = conn.execute(f"DESCRIBE SELECT * FROM read_csv_auto('{file_path}')").df()['column_name'].tolist()
         row_count = conn.execute(f"SELECT COUNT(*) FROM read_csv_auto('{file_path}')").fetchone()[0]
+        
+        # Detect if it's KV format
+        with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+            sample_text = "".join([f.readline() for _ in range(25)])
+            reader = csv.reader(io.StringIO(sample_text))
+            sample_rows = [r for r in reader if r]
+            is_kv = detect_kv(sample_rows)
+            detected_format = "kv" if is_kv else "flat"
+            
     except Exception as e:
         columns = []
         row_count = 0
+        detected_format = "flat"
         
     return {
         "file_id": file_id, 
         "file_path": file_path, 
         "filename": file.filename,
         "available_columns": columns,
-        "total_rows": row_count
+        "total_rows": row_count,
+        "detected_format": detected_format
     }
 
 
