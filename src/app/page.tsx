@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import WorkspaceCanvas from '@/components/workflow/canvas';
 import { Database, Filter, ArrowRightLeft, Table, Settings, Play, Download, Search, LayoutDashboard, SlidersHorizontal, FileText, FileDown, Save, FolderOpen, Sigma, Eye, ChevronDown, ChevronRight, SortAsc, ListOrdered, Calculator, Code, Fingerprint, PenLine, GitBranch, BarChart3, Plus, Trash2, Wand2, Microscope, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { Node, useReactFlow, ReactFlowProvider } from '@xyflow/react';
-import { executeWorkflow, uploadFile, saveWorkflow, listSavedWorkflows, loadWorkflowGraph, generateReport, inspectNode } from '@/lib/api';
+import { executeWorkflow, uploadFile, saveWorkflow, listSavedWorkflows, loadWorkflowGraph, generateReport, inspectNode, renameWorkflow } from '@/lib/api';
 import DataInspectionPanel, { type ColumnTypeDef, type FullStats } from '@/components/panels/DataInspectionPanel';
 import AiSqlBuilderPanel from '@/components/panels/AiSqlBuilderPanel';
 
@@ -228,7 +228,10 @@ function Dashboard() {
 
   const [isSaveModalOpen, setIsSaveModalOpen] = useState(false);
   const [isLoadModalOpen, setIsLoadModalOpen] = useState(false);
+  const [isRenameModalOpen, setIsRenameModalOpen] = useState(false);
   const [workflowName, setWorkflowName] = useState("");
+  const [currentPipelineName, setCurrentPipelineName] = useState<string | null>(null);
+  const [newName, setNewName] = useState("");
   const [availableWorkflows, setAvailableWorkflows] = useState<string[]>([]);
   const [executionResult, setExecutionResult] = useState<any>(null);
   const [isExecuting, setIsExecuting] = useState(false);
@@ -371,10 +374,33 @@ function Dashboard() {
     }
   }, [selectedNode?.id, getNodes, getEdges]);
 
+  const handleNewWorkflow = () => {
+    if (confirm("Create a new pipeline? Current unsaved changes will be lost.")) {
+      setNodes([]);
+      setEdges([]);
+      setCurrentPipelineName(null);
+      setWorkflowName("");
+    }
+  };
+
+  const handleRenameWorkflow = async () => {
+    if (!currentPipelineName || !newName) return;
+    try {
+      await renameWorkflow(currentPipelineName, newName);
+      setCurrentPipelineName(newName);
+      setNewName("");
+      setIsRenameModalOpen(false);
+      alert("Pipeline renamed!");
+    } catch (e: any) {
+      alert(e.message || "Rename failed.");
+    }
+  };
+
   const handleSaveWorkflow = async () => {
     if (!workflowName) return;
     try {
       await saveWorkflow(workflowName, getNodes(), getEdges());
+      setCurrentPipelineName(workflowName);
       alert("Pipeline saved!");
       setIsSaveModalOpen(false);
       setWorkflowName("");
@@ -391,6 +417,7 @@ function Dashboard() {
       });
       setNodes(sanitizedNodes);
       setEdges(data.edges || []);
+      setCurrentPipelineName(name);
       setIsLoadModalOpen(false);
     } catch (e) { alert("Load failed."); console.error(e); }
   };
@@ -639,7 +666,10 @@ function Dashboard() {
       
       if (modifier) {
         const key = e.key.toLowerCase();
-        if (key === 'r') {
+        if (key === 'n' && modifier && e.shiftKey) { // ⌘+Shift+N
+          e.preventDefault();
+          handleNewWorkflow();
+        } else if (key === 'r') {
           e.preventDefault();
           handleExecute();
         } else if (key === 'o') {
@@ -647,6 +677,7 @@ function Dashboard() {
           openLoadModal();
         } else if (key === 's') {
           e.preventDefault();
+          setWorkflowName(currentPipelineName || "");
           setIsSaveModalOpen(true);
         } else if (key === 'b') {
           e.preventDefault();
@@ -679,12 +710,38 @@ function Dashboard() {
           <div className="p-2 bg-[#0052CC] text-white rounded-md">
             <LayoutDashboard size={20} />
           </div>
-          <h1 className="text-xl font-bold text-[#171717]">
-            Data Analyst Platform
-          </h1>
+          <div className="flex items-baseline gap-2">
+            <h1 className="text-xl font-bold text-[#171717]">
+              Data Analyst Platform
+            </h1>
+            {currentPipelineName && (
+              <button
+                onClick={() => {
+                  setNewName(currentPipelineName);
+                  setIsRenameModalOpen(true);
+                }}
+                onMouseEnter={(e) => showHeaderTooltip(e, 'Rename Pipeline', 'Click to change the name of this pipeline.')}
+                onMouseLeave={hideTooltip}
+                className="text-sm font-medium text-[#6B778C] border-l border-[#DFE1E6] pl-3 flex items-center gap-1.5 hover:bg-gray-50 rounded px-1.5 py-0.5 transition-colors group animate-in fade-in slide-in-from-left-2 duration-300"
+              >
+                <FileText size={14} className="text-[#0052CC]/70 group-hover:text-[#0052CC]" />
+                <span className="group-hover:text-[#172B4D]">{currentPipelineName}</span>
+                <PenLine size={12} className="opacity-0 group-hover:opacity-100 transition-opacity ml-1" />
+              </button>
+            )}
+          </div>
         </div>
 
         <div className="flex items-center space-x-3">
+          <button
+            onClick={handleNewWorkflow}
+            onMouseEnter={(e) => showHeaderTooltip(e, 'New Pipeline', `Clear the current workspace and start a fresh pipeline (${mod}Shift+N).`)}
+            onMouseLeave={hideTooltip}
+            className="flex items-center space-x-2 px-3 py-2 text-sm font-medium text-[#6B778C] bg-white border border-[#DFE1E6] hover:bg-gray-50 rounded-md transition-colors"
+          >
+            <Plus size={16} />
+            <span>New</span>
+          </button>
           <button
             onClick={handleBeautify}
             onMouseEnter={(e) => showHeaderTooltip(e, 'Beautify Layout', `Automatically organize nodes into a clean, hierarchical structure (${mod}B).`)}
@@ -695,7 +752,10 @@ function Dashboard() {
             <span>Beautify</span>
           </button>
           <button
-            onClick={() => setIsSaveModalOpen(true)}
+            onClick={() => {
+              setWorkflowName(currentPipelineName || "");
+              setIsSaveModalOpen(true);
+            }}
             onMouseEnter={(e) => showHeaderTooltip(e, 'Save Pipeline', `Save your current workflow configuration to the server (${mod}S).`)}
             onMouseLeave={hideTooltip}
             className="flex items-center space-x-2 px-3 py-2 text-sm font-medium text-[#6B778C] bg-white border border-[#DFE1E6] hover:bg-gray-50 rounded-md transition-colors"
@@ -2318,6 +2378,43 @@ function Dashboard() {
       )}
 
 
+
+      {/* Rename Modal */}
+      {isRenameModalOpen && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-6 border border-[#DFE1E6] animate-in fade-in zoom-in duration-200">
+            <h3 className="text-lg font-bold text-[#172B4D] mb-4">Rename Pipeline</h3>
+            <p className="text-sm text-[#6B778C] mb-4">Update the name of your data processing pipeline.</p>
+            <input
+              autoFocus
+              type="text"
+              className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-sm text-[#171717] focus:ring-[#0052CC] focus:border-[#0052CC] mb-6 outline-none"
+              placeholder="e.g., New Pipeline Name"
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') handleRenameWorkflow(); }}
+            />
+            <div className="flex justify-end space-x-3">
+              <button 
+                onClick={() => {
+                  setIsRenameModalOpen(false);
+                  setNewName("");
+                }} 
+                className="px-4 py-2 text-sm text-[#6B778C] hover:bg-gray-100 rounded-md transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleRenameWorkflow}
+                disabled={!newName || newName === currentPipelineName}
+                className="px-4 py-2 text-sm bg-[#0052CC] text-white font-medium rounded-md hover:bg-[#0065FF] disabled:opacity-50 transition-colors shadow-sm"
+              >
+                Rename Pipeline
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Save Modal */}
       {isSaveModalOpen && (

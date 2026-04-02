@@ -90,6 +90,29 @@ async def save_workflow_graph(
     
     return {"message": f"Workflow saved as {name}", "filename": f"{name}.json"}
 
+@router.post("/rename")
+async def rename_workflow(
+    old_name: str = Query(...),
+    new_name: str = Query(...)
+):
+    """Rename a saved workflow file."""
+    save_dir = "data/workflows"
+    # Protect against path traversal
+    old_safe = os.path.basename(old_name).replace(".json", "")
+    new_safe = os.path.basename(new_name).replace(".json", "")
+    
+    old_path = os.path.join(save_dir, f"{old_safe}.json")
+    new_path = os.path.join(save_dir, f"{new_safe}.json")
+    
+    if not os.path.exists(old_path):
+        raise HTTPException(status_code=404, detail="Original workflow not found")
+    
+    if os.path.exists(new_path):
+        raise HTTPException(status_code=400, detail="A workflow with the new name already exists")
+    
+    os.rename(old_path, new_path)
+    return {"message": f"Workflow renamed from {old_name} to {new_name}"}
+
 @router.get("/list")
 async def list_saved_workflows():
     """List all saved workflow graphs."""

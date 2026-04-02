@@ -62,6 +62,17 @@ export async function saveWorkflow(name: string, nodes: any[], edges: any[]) {
   return await response.json();
 }
 
+export async function renameWorkflow(oldName: string, newName: string) {
+  const response = await fetch(`${API_BASE_URL}/workflows/rename?old_name=${encodeURIComponent(oldName)}&new_name=${encodeURIComponent(newName)}`, {
+    method: 'POST',
+  });
+  if (!response.ok) {
+    const err = await response.json();
+    throw new Error(err.detail || "Rename failed");
+  }
+  return await response.json();
+}
+
 export async function listSavedWorkflows() {
   const responseArr = await fetch(`${API_BASE_URL}/workflows/list`);
   if (!responseArr.ok) throw new Error("List failed");
