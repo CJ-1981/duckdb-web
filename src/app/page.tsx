@@ -1070,6 +1070,8 @@ function Dashboard() {
               }
             }}
             layoutCounter={layoutCounter}
+            isBottomPanelVisible={isBottomPanelVisible && !!selectedNode}
+            bottomPanelHeight={previewHeight}
           >
             {/* Resizable Bottom Preview Panel - Now inside WorkspaceCanvas Panel */}
             {selectedNode && isBottomPanelVisible && (

@@ -119,6 +119,8 @@ interface WorkspaceCanvasProps {
   setEdges: any;
   onNodeSelect?: (node: Node | null) => void;
   layoutCounter?: number;
+  isBottomPanelVisible?: boolean;
+  bottomPanelHeight?: number;
   children?: React.ReactNode;
 }
 
@@ -131,20 +133,44 @@ function WorkspaceCanvas({
   setEdges, 
   onNodeSelect,
   layoutCounter = 0,
+  isBottomPanelVisible = false,
+  bottomPanelHeight = 0,
   children
 }: WorkspaceCanvasProps) {
   const [history, setHistory] = useState<{ nodes: Node[]; edges: Edge[] }[]>([]);
   const [redoStack, setRedoStack] = useState<{ nodes: Node[]; edges: Edge[] }[]>([]);
-  const { fitView } = useReactFlow();
+  const reactFlowWrapper = React.useRef<HTMLDivElement>(null);
+  const { fitView, screenToFlowPosition } = useReactFlow();
+
+  const fitOptions = React.useMemo(() => {
+    // We use ratios (0.1 = 10%) for padding.
+    // For the bottom panel, we calculate the ratio based on its pixel height.
+    const h = reactFlowWrapper.current?.offsetHeight || 800; // default to 800px if not yet rendered
+    const bottomRatio = isBottomPanelVisible ? (bottomPanelHeight / h) + 0.1 : 0.1;
+
+    const padding = {
+      top: 0.1,
+      right: 0.1,
+      bottom: Math.min(bottomRatio, 0.8), // Cap at 80% to avoid disappearing
+      left: 0.1,
+    };
+    
+    console.log('[DEBUG] fitOptions updated:', { isBottomPanelVisible, bottomPanelHeight, h, padding });
+    return {
+      padding,
+      duration: 600,
+    };
+  }, [isBottomPanelVisible, bottomPanelHeight]);
 
   // Refit view when layout changes (e.g. after beautify)
   React.useEffect(() => {
     if (layoutCounter > 0) {
-      setTimeout(() => {
-        fitView({ duration: 600, padding: 0.2 });
+      const timer = setTimeout(() => {
+        fitView(fitOptions);
       }, 50);
+      return () => clearTimeout(timer);
     }
-  }, [layoutCounter, fitView]);
+  }, [layoutCounter, fitView, fitOptions]);
 
   const takeSnapshot = useCallback(() => {
     setHistory((prev) => [...prev.slice(-49), { nodes: JSON.parse(JSON.stringify(nodes)), edges: JSON.parse(JSON.stringify(edges)) }]);
@@ -215,8 +241,6 @@ function WorkspaceCanvas({
     }
   }, [onNodeSelect]);
 
-  const reactFlowWrapper = React.useRef<HTMLDivElement>(null);
-  const { screenToFlowPosition } = useReactFlow();
 
   const onDragOver = useCallback((event: React.DragEvent) => {
     event.preventDefault();
@@ -291,11 +315,17 @@ function WorkspaceCanvas({
           style: { strokeWidth: 3, stroke: '#B1B1B7' } 
         }}
         fitView
+        fitViewOptions={fitOptions}
         className="bg-[#FAFBFC]"
       >
         <Background gap={16} size={1} color="#DFE1E6" />
         {children}
-        <Controls position="top-left" showInteractive={false} className="bg-white shadow-lg border border-[#DFE1E6] rounded-md" />
+        <Controls 
+          position="top-left" 
+          showInteractive={false} 
+          fitViewOptions={fitOptions}
+          className="bg-white shadow-lg border border-[#DFE1E6] rounded-md" 
+        />
         <MiniMap 
           position="top-right"
           pannable
