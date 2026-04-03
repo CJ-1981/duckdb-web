@@ -836,15 +836,6 @@ function Dashboard() {
 
         <div className="flex items-center space-x-3">
           <button
-            onClick={handleNewWorkflow}
-            onMouseEnter={(e) => showHeaderTooltip(e, 'New Pipeline', `Clear the current workspace and start a fresh pipeline (${mod}Shift+N).`)}
-            onMouseLeave={hideTooltip}
-            className="flex items-center space-x-2 px-3 py-2 text-sm font-medium text-[#6B778C] bg-white border border-[#DFE1E6] hover:bg-gray-50 rounded-md transition-colors"
-          >
-            <Plus size={16} />
-            <span>New</span>
-          </button>
-          <button
             onClick={handleBeautify}
             onMouseEnter={(e) => showHeaderTooltip(e, 'Beautify Layout', `Automatically organize nodes into a clean, hierarchical structure (${mod}B).`)}
             onMouseLeave={hideTooltip}
