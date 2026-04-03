@@ -36,15 +36,5 @@ If your tool focuses on getting to a final report or dashboard:
     *   **How it's similar**: Built specifically for the "DuckDB + SQL" era. You write SQL and Markdown to create professional-grade data reports.
 *   **[Rill Data](https://www.rilldata.com/) (Open Source Core)**
     *   **How it's similar**: An incredibly fast "BI-in-a-box" for DuckDB. It detects CSV/Parquet files and automatically builds a dashboard where you can filter and pivot data visually.
-
-### How your tool compares:
-Based on your recent progress (Undo/Redo, SQL beautification inside nodes, and group selection), your tool occupies a very specific niche: **a lightweight, visual "Data Engineering" IDE for DuckDB.**
-
-Most tools are either:
-1.  **Too heavy** (Enterprise ETL tools like NiFi).
-2.  **Too static** (Classic SQL editors like DuckDB-Studio).
-3.  **Too specific** (BI-only tools like Evidence).
-
-Your tool bridges the gap by making the *logic-building* visual while keeping the engine (DuckDB) fast and the code (SQL) front and center.
-
-**Are you looking to see how any of these specific tools handle a feature (like undo/redo or node-grouping) for inspiration?**
+*   **[DataGrip](https://www.jetbrains.com/datagrip/) (Commercial)**
+    *   **How it's similar**: A commercial IDE for data professionals. It provides a comprehensive set of tools for working with databases, including DuckDB. It offers features such as SQL editing, query execution, data visualization, and database management. 

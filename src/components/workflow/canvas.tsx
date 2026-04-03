@@ -103,12 +103,24 @@ const initialNodes: Node[] = [];
 const initialEdges: Edge[] = [];
 
 interface WorkspaceCanvasProps {
+  nodes: Node[];
+  edges: Edge[];
+  onNodesChange: any;
+  onEdgesChange: any;
+  setNodes: any;
+  setEdges: any;
   onNodeSelect?: (node: Node | null) => void;
 }
 
-function WorkspaceCanvas({ onNodeSelect }: WorkspaceCanvasProps) {
-  const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
-  const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
+function WorkspaceCanvas({ 
+  nodes, 
+  edges, 
+  onNodesChange, 
+  onEdgesChange, 
+  setNodes, 
+  setEdges, 
+  onNodeSelect 
+}: WorkspaceCanvasProps) {
   const [history, setHistory] = useState<{ nodes: Node[]; edges: Edge[] }[]>([]);
   const [redoStack, setRedoStack] = useState<{ nodes: Node[]; edges: Edge[] }[]>([]);
 
@@ -161,7 +173,7 @@ function WorkspaceCanvas({ onNodeSelect }: WorkspaceCanvasProps) {
   const onConnect = useCallback(
     (params: Connection | Edge) => {
       takeSnapshot();
-      setEdges((eds) => addEdge({ ...params, animated: true } as Edge, eds));
+      setEdges((eds: Edge[]) => addEdge({ ...params, animated: true } as Edge, eds));
     },
     [setEdges, takeSnapshot],
   );
@@ -175,7 +187,7 @@ function WorkspaceCanvas({ onNodeSelect }: WorkspaceCanvasProps) {
       // Task 1: Auto-select edges between selected nodes
       if (selectedNodes.length > 1) {
         const nodeIds = new Set(selectedNodes.map((n) => n.id));
-        setEdges((eds) =>
+        setEdges((eds: Edge[]) =>
           eds.map((e) => ({
             ...e,
             selected: nodeIds.has(e.source) && nodeIds.has(e.target),
@@ -220,7 +232,7 @@ function WorkspaceCanvas({ onNodeSelect }: WorkspaceCanvasProps) {
       };
 
       takeSnapshot();
-      setNodes((nds) => nds.concat(newNode));
+      setNodes((nds: Node[]) => nds.concat(newNode));
     },
     [screenToFlowPosition, setNodes, takeSnapshot]
   );

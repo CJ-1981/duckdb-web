@@ -2,13 +2,22 @@
 
 import React, { useState } from 'react';
 import WorkspaceCanvas from '@/components/workflow/canvas';
-import { Database, Filter, ArrowRightLeft, Table, Settings, Play, Download, Search, LayoutDashboard, SlidersHorizontal, FileText, FileDown, Save, FolderOpen, Sigma, Eye, ChevronDown, ChevronRight, SortAsc, ListOrdered, Calculator, Code, Fingerprint, PenLine, GitBranch, BarChart3, Plus, Trash2, Wand2, Microscope, PanelLeftClose, PanelLeftOpen, Copy } from 'lucide-react';
-import { Node, useReactFlow, ReactFlowProvider } from '@xyflow/react';
+import { Database, Filter, ArrowRightLeft, Table, Settings, Play, Download, Search, LayoutDashboard, SlidersHorizontal, FileText, FileDown, Save, FolderOpen, Sigma, Eye, ChevronDown, ChevronRight, SortAsc, ListOrdered, Calculator, Code, Fingerprint, PenLine, GitBranch, BarChart3, Plus, Trash2, Wand2, Microscope, PanelLeftClose, PanelLeftOpen, PanelBottomClose, Copy, X } from 'lucide-react';
+import { Node, Edge, useReactFlow, ReactFlowProvider, useNodesState, useEdgesState } from '@xyflow/react';
 import { executeWorkflow, uploadFile, saveWorkflow, listSavedWorkflows, loadWorkflowGraph, generateReport, inspectNode, renameWorkflow, validateSql } from '@/lib/api';
 import DataInspectionPanel, { type ColumnTypeDef, type FullStats } from '@/components/panels/DataInspectionPanel';
 import AiSqlBuilderPanel from '@/components/panels/AiSqlBuilderPanel';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000/api/v1';
+
+interface WorkflowTab {
+  id: string;
+  name: string;
+  nodes: Node[];
+  edges: Edge[];
+  nodeSamples: Record<string, any[]>;
+  nodeTypes: Record<string, ColumnTypeDef[]>;
+}
 
 // ─── SQL Preview helpers ──────────────────────────────────────────────────────
 function SqlPreview({ sql }: { sql: string }) {
@@ -224,7 +233,9 @@ function ExecuteButton() {
 
 function Dashboard() {
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
-  const { setNodes, setEdges, getNodes, getEdges } = useReactFlow();
+  const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
+  const { getNodes, getEdges } = useReactFlow();
 
   const [isSaveModalOpen, setIsSaveModalOpen] = useState(false);
   const [isLoadModalOpen, setIsLoadModalOpen] = useState(false);
@@ -246,11 +257,103 @@ function Dashboard() {
   const [searchQuery, setSearchQuery] = useState("");
   const [tooltip, setTooltip] = useState<{ label: string; text: string; x: number; y: number } | null>(null);
 
+  const [tabs, setTabs] = useState<WorkflowTab[]>([
+    { id: 'initial-workflow', name: 'New Pipeline', nodes: [], edges: [], nodeSamples: {}, nodeTypes: {} }
+  ]);
+  const [activeTabId, setActiveTabId] = useState<string | null>('initial-workflow');
+
   // DEBUG: State watcher
   React.useEffect(() => {
     console.log(`[DEBUG] State update - saveSuccess: ${saveSuccess}, isExecuting: ${isExecuting}, selectedNode: ${selectedNode?.id}`);
   }, [saveSuccess, isExecuting, selectedNode?.id]);
 
+  const switchTab = (tabId: string) => {
+    if (tabId === activeTabId) return;
+    
+    // 1. Save current state to the active tab
+    setTabs(prev => prev.map(t => t.id === activeTabId ? {
+      ...t,
+      nodes: getNodes(),
+      edges: getEdges(),
+      nodeSamples,
+      nodeTypes,
+      name: currentPipelineName || t.name
+    } : t));
+
+    // 2. Load the target tab's state
+    const targetTab = tabs.find(t => t.id === tabId);
+    if (targetTab) {
+      setNodes(targetTab.nodes);
+      setEdges(targetTab.edges);
+      setNodeSamples(targetTab.nodeSamples);
+      setNodeTypes(targetTab.nodeTypes);
+      setCurrentPipelineName(targetTab.name === 'New Pipeline' ? null : targetTab.name);
+      setActiveTabId(tabId);
+      setSelectedNode(null);
+    }
+  };
+
+  const addNewTab = () => {
+    const newId = `wf-${Date.now()}`;
+    const newTab: WorkflowTab = {
+      id: newId,
+      name: 'New Pipeline',
+      nodes: [],
+      edges: [],
+      nodeSamples: {},
+      nodeTypes: {}
+    };
+
+    // Save current before switching
+    if (activeTabId) {
+      setTabs(prev => prev.map(t => t.id === activeTabId ? {
+        ...t,
+        nodes: getNodes(),
+        edges: getEdges(),
+        nodeSamples,
+        nodeTypes,
+        name: currentPipelineName || t.name
+      } : t));
+    }
+
+    setTabs(prev => [...prev, newTab]);
+    setActiveTabId(newId);
+    setNodes([]);
+    setEdges([]);
+    setNodeSamples({});
+    setNodeTypes({});
+    setCurrentPipelineName(null);
+    setSelectedNode(null);
+  };
+
+  const closeTab = (tabId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (tabs.length <= 1) {
+      // If closing last tab, just clear it instead of removing
+      setNodes([]);
+      setEdges([]);
+      setNodeSamples({});
+      setNodeTypes({});
+      setCurrentPipelineName(null);
+      setTabs([{ id: 'initial-workflow', name: 'New Pipeline', nodes: [], edges: [], nodeSamples: {}, nodeTypes: {} }]);
+      setActiveTabId('initial-workflow');
+      return;
+    }
+
+    const tabIndex = tabs.findIndex(t => t.id === tabId);
+    const newTabs = tabs.filter(t => t.id !== tabId);
+    setTabs(newTabs);
+
+    if (activeTabId === tabId) {
+      const nextTab = newTabs[Math.max(0, tabIndex - 1)];
+      setActiveTabId(nextTab.id);
+      setNodes(nextTab.nodes);
+      setEdges(nextTab.edges);
+      setNodeSamples(nextTab.nodeSamples);
+      setNodeTypes(nextTab.nodeTypes);
+      setCurrentPipelineName(nextTab.name === 'New Pipeline' ? null : nextTab.name);
+    }
+  };
 
   const showTooltip = (e: React.MouseEvent, label: string, text: string) => {
     const rect = e.currentTarget.getBoundingClientRect();
@@ -376,11 +479,8 @@ function Dashboard() {
   }, [selectedNode?.id, getNodes, getEdges]);
 
   const handleNewWorkflow = () => {
-    if (confirm("Create a new pipeline? Current unsaved changes will be lost.")) {
-      setNodes([]);
-      setEdges([]);
-      setCurrentPipelineName(null);
-      setWorkflowName("");
+    if (confirm("Create a new pipeline? Current unsaved changes in this tab will be lost if you clear it, or we can open a new tab.")) {
+      addNewTab();
     }
   };
 
@@ -526,9 +626,9 @@ function Dashboard() {
   const saveNodeChanges = () => {
     if (!selectedNode) return;
     console.log('[DEBUG] saveNodeChanges triggered');
-    setNodes((nds) =>
-      nds.map((node) => {
-        if (node.id === selectedNode.id) {
+    setNodes((nds: Node[]) =>
+      nds.map((node: Node) => {
+        if (node.id === (selectedNode as Node).id) {
           // Return a brand new object to ensure React Flow triggers a re-render
           return {
             ...node,
@@ -558,7 +658,7 @@ function Dashboard() {
         setNodeTypes(result.node_types);
       }
 
-      setNodes((nds) => nds.map(node => ({
+      setNodes((nds: Node[]) => nds.map((node: Node) => ({
         ...node,
         data: {
           ...node.data,
@@ -633,7 +733,7 @@ function Dashboard() {
       position: { x, y },
       data: { label: 'AI SQL Query', subtype: 'raw_sql', config: { sql } },
     };
-    setNodes(nds => [...nds, newNode]);
+    setNodes((nds: Node[]) => [...nds, newNode]);
   };
 
   const handleFetchFullStats = async (nodeId: string): Promise<FullStats> => {
@@ -786,6 +886,41 @@ function Dashboard() {
         </div>
       </header>
 
+      {/* Workflow Tabs Bar */}
+      <div className="flex items-center px-2 bg-[#F4F5F7] border-b border-[#DFE1E6] h-9 shrink-0 overflow-x-auto no-scrollbar">
+        {tabs.map((tab) => {
+          const isActive = activeTabId === tab.id;
+          const displayName = isActive ? (currentPipelineName || tab.name) : tab.name;
+          return (
+            <div
+              key={tab.id}
+              onClick={() => switchTab(tab.id)}
+              className={`flex items-center gap-2 px-3 h-full text-[11px] font-bold cursor-pointer border-r border-[#DFE1E6] transition-all min-w-[100px] max-w-[180px] group relative ${
+                isActive 
+                  ? 'bg-white text-[#0052CC] shadow-[inset_0_-2px_0_#0052CC]' 
+                  : 'text-[#6B778C] hover:bg-[#EBECF0]'
+              }`}
+            >
+              <FileText size={12} className={isActive ? 'text-[#0052CC]' : 'text-[#6B778C]'} />
+              <span className="truncate flex-1 tracking-tight">{displayName}</span>
+              <button
+                onClick={(e) => closeTab(tab.id, e)}
+                className="p-0.5 rounded-full hover:bg-gray-200 text-[#6B778C] opacity-0 group-hover:opacity-100 transition-opacity"
+              >
+                <X size={10} />
+              </button>
+            </div>
+          );
+        })}
+        <button
+          onClick={addNewTab}
+          className="p-1.5 ml-1 text-[#6B778C] hover:text-[#0052CC] hover:bg-[#EBECF0] rounded-md transition-colors"
+          title="New Tab"
+        >
+          <Plus size={14} />
+        </button>
+      </div>
+
       <div className="flex flex-1 overflow-hidden">
         {/* Left Sidebar - Component Palette */}
         <aside
@@ -893,7 +1028,15 @@ function Dashboard() {
 
         {/* Main Canvas Area */}
         <main className="flex-1 relative flex flex-col h-[calc(100vh-4rem)]">
-          <WorkspaceCanvas onNodeSelect={setSelectedNode} />
+          <WorkspaceCanvas 
+            nodes={nodes}
+            edges={edges}
+            onNodesChange={onNodesChange}
+            onEdgesChange={onEdgesChange}
+            setNodes={setNodes}
+            setEdges={setEdges}
+            onNodeSelect={setSelectedNode} 
+          />
         </main>
 
         {/* Right Sidebar - Properties Panel */}
@@ -2279,7 +2422,7 @@ function Dashboard() {
                 className="p-1.5 text-[#6B778C] hover:bg-gray-200 rounded-md transition-colors"
                 title="Close Panel"
               >
-                <ChevronDown size={18} />
+                <PanelBottomClose size={18} />
               </button>
             </div>
           </div>
