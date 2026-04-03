@@ -16,8 +16,7 @@ const PROVIDERS: Provider[] = [
     id: 'google', name: 'Google (Gemini)', baseUrl: 'https://generativelanguage.googleapis.com/v1beta/models', type: 'google',
     apiKeyUrl: 'https://aistudio.google.com/app/apikey',
     models: [
-      { id: 'gemini-2.0-flash-exp', name: 'Gemini 2.0 Flash (Exp)' },
-      { id: 'gemini-2.0-flash', name: 'Gemini 2.5 Flash (Latest)' },
+      { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash' },
       { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash' },
       { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro' },
     ],
@@ -208,151 +207,156 @@ export default function AiSqlBuilderPanel({ schema, onInsertSql }: Props) {
   };
 
   return (
-    <div className="h-full flex flex-col overflow-auto p-4 gap-4">
-      {/* Provider + Model Selection */}
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label className="block text-[10px] font-bold text-[#6B778C] uppercase tracking-wider mb-1.5">Provider</label>
-          <div className="relative">
-            <select
-              value={providerId}
-              onChange={e => setProviderId(e.target.value)}
-              className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-sm text-[#171717] focus:ring-1 focus:ring-[#0052CC] focus:border-[#0052CC] appearance-none bg-white pr-8"
-            >
-              {PROVIDERS.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-            </select>
-            <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#6B778C] pointer-events-none" />
-          </div>
-        </div>
-        <div>
-          <label className="block text-[10px] font-bold text-[#6B778C] uppercase tracking-wider mb-1.5">Model</label>
-          <div className="relative">
-            <select
-              value={modelId}
-              onChange={e => setModelId(e.target.value)}
-              className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-sm text-[#171717] focus:ring-1 focus:ring-[#0052CC] focus:border-[#0052CC] appearance-none bg-white pr-8"
-            >
-              {provider.models.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-            </select>
-            <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#6B778C] pointer-events-none" />
-          </div>
-        </div>
-      </div>
-
-      {/* API Key */}
-      <div>
-        <div className="flex items-center justify-between mb-1.5">
-          <label className="block text-[10px] font-bold text-[#6B778C] uppercase tracking-wider">
-            API Key <span className="font-normal normal-case text-[#6B778C]">(stored locally)</span>
-          </label>
-          <a
-            href={provider.apiKeyUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-[10px] font-bold text-[#0052CC] hover:underline flex items-center gap-1"
-          >
-            Get Key <ExternalLink size={10} />
-          </a>
-        </div>
-        <div className="flex gap-2">
-          <input
-            type="password"
-            placeholder={`Enter ${provider.name} API key…`}
-            value={apiKey}
-            onChange={e => setApiKey(e.target.value)}
-            onBlur={handleSaveKey}
-            className="flex-1 border border-[#DFE1E6] rounded-md px-3 py-2 text-sm font-mono focus:ring-1 focus:ring-[#0052CC] focus:border-[#0052CC] outline-none"
-          />
-        </div>
-      </div>
-
-      {/* Schema Context */}
-      {schema.length > 0 && (
-        <div className="p-2.5 bg-[#1E1E2E] rounded-md transition-all duration-300">
-          <div className="flex items-center justify-between mb-1.5">
-            <div className="text-[9px] font-bold text-[#89DCEB] uppercase tracking-wider">Schema Context</div>
-            {schema.length > 8 && (
-              <button
-                onClick={() => setIsSchemaExpanded(!isSchemaExpanded)}
-                className="text-[9px] font-bold text-[#565f89] hover:text-[#89DCEB] transition-colors uppercase tracking-widest outline-none"
-              >
-                {isSchemaExpanded ? 'Collapse' : `+ ${schema.length - 8} more`}
-              </button>
-            )}
-          </div>
-          <div className="text-[10px] text-[#CDD6F4] font-mono leading-relaxed max-h-48 overflow-y-auto custom-scrollbar pr-2">
-            {visibleSchema.map(c => (
-              <div key={c.column_name} className="flex justify-between gap-4 py-0.5">
-                <span className="text-[#89DCEB] truncate">{c.column_name}</span>
-                <span className="text-[#6B778C] shrink-0 font-mono">{c.column_type}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-      {schema.length === 0 && (
-        <div className="p-3 bg-amber-50 border border-amber-200 rounded-md flex items-center gap-2">
-          <AlertCircle size={14} className="text-amber-600 shrink-0" />
-          <p className="text-[11px] text-amber-700">Execute the workflow first to load schema context for accurate SQL generation.</p>
-        </div>
-      )}
-
-      {/* Natural Language Input */}
-      <div>
-        <label className="block text-[10px] font-bold text-[#6B778C] uppercase tracking-wider mb-1.5">Your Request</label>
-        <textarea
-          rows={3}
-          placeholder={'e.g. "Show me the top 10 customers by total revenue, excluding nulls"'}
-          value={prompt}
-          onChange={e => setPrompt(e.target.value)}
-          onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleGenerate(); }}
-          className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-sm focus:ring-1 focus:ring-[#0052CC] focus:border-[#0052CC] outline-none resize-none"
-        />
-        <p className="text-[10px] text-[#6B778C] mt-1">Tip: Press Cmd/Ctrl+Enter to generate.</p>
-      </div>
-
-      {/* Generate Button */}
-      <button
-        onClick={handleGenerate}
-        disabled={isGenerating || !prompt.trim()}
-        className="w-full py-2.5 bg-gradient-to-r from-[#6554C0] to-[#0052CC] text-white font-bold text-sm rounded-md shadow-sm hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center justify-center gap-2"
-      >
-        {isGenerating ? <RefreshCw size={15} className="animate-spin" /> : <Wand2 size={15} />}
-        {isGenerating ? 'Generating SQL…' : 'Generate SQL'}
-      </button>
-
-      {/* Error Display */}
-      {error && (
-        <div className="p-3 bg-red-50 border border-red-200 rounded-md flex items-start gap-2">
-          <AlertCircle size={14} className="text-red-500 shrink-0 mt-0.5" />
+    <div className="h-full flex flex-col min-h-0 bg-white">
+      <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
+        {/* Provider + Model Selection */}
+        <div className="grid grid-cols-2 gap-3">
           <div>
-            <p className="text-xs font-bold text-red-700 mb-1">API Error</p>
-            <p className="text-[11px] text-red-600 font-mono break-all">{error}</p>
-          </div>
-        </div>
-      )}
-
-      {/* Generated SQL Result */}
-      {generatedSql && (
-        <div className="border border-[#DFE1E6] rounded-md overflow-hidden">
-          <div className="flex items-center justify-between px-3 py-2 bg-[#1E1E2E]">
-            <span className="text-[10px] font-bold text-[#89DCEB] uppercase tracking-wider">Generated SQL</span>
-            <div className="flex gap-2">
-              <button onClick={handleCopy}
-                className={`flex items-center gap-1 px-2 py-1 text-[10px] font-bold rounded transition-colors ${copied ? 'bg-[#36B37E] text-white' : 'bg-white/10 text-[#CDD6F4] hover:bg-white/20'}`}>
-                {copied ? <CheckCheck size={10} /> : <Copy size={10} />}
-                {copied ? 'Copied!' : 'Copy'}
-              </button>
-              <button onClick={handleInsert}
-                className={`flex items-center gap-1 px-2 py-1 text-[10px] font-bold rounded transition-colors ${inserted ? 'bg-[#36B37E] text-white' : 'bg-[#0052CC] text-white hover:bg-[#0065FF]'}`}>
-                <Plus size={10} />
-                {inserted ? 'Inserted!' : 'Insert as Node'}
-              </button>
+            <label className="block text-[10px] font-bold text-[#6B778C] uppercase tracking-wider mb-1.5">Provider</label>
+            <div className="relative">
+              <select
+                value={providerId}
+                onChange={e => setProviderId(e.target.value)}
+                className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-sm text-[#171717] focus:ring-1 focus:ring-[#0052CC] focus:border-[#0052CC] appearance-none bg-white pr-8"
+              >
+                {PROVIDERS.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+              <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#6B778C] pointer-events-none" />
             </div>
           </div>
-          <pre className="bg-[#1E1E2E] text-[#CDD6F4] text-xs p-3 font-mono overflow-x-auto whitespace-pre-wrap leading-relaxed border-t border-white/10">{generatedSql}</pre>
+          <div>
+            <label className="block text-[10px] font-bold text-[#6B778C] uppercase tracking-wider mb-1.5">Model</label>
+            <div className="relative">
+              <select
+                value={modelId}
+                onChange={e => setModelId(e.target.value)}
+                className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-sm text-[#171717] focus:ring-1 focus:ring-[#0052CC] focus:border-[#0052CC] appearance-none bg-white pr-8"
+              >
+                {provider.models.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+              </select>
+              <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#6B778C] pointer-events-none" />
+            </div>
+          </div>
         </div>
-      )}
+
+        {/* API Key */}
+        <div>
+          <div className="flex items-center justify-between mb-1.5">
+            <label className="block text-[10px] font-bold text-[#6B778C] uppercase tracking-wider">
+              API Key <span className="font-normal normal-case text-[#6B778C]">(stored locally)</span>
+            </label>
+            <a
+              href={provider.apiKeyUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-[10px] font-bold text-[#0052CC] hover:underline flex items-center gap-1"
+            >
+              Get Key <ExternalLink size={10} />
+            </a>
+          </div>
+          <div className="flex gap-2">
+            <input
+              type="password"
+              placeholder={`Enter ${provider.name} API key…`}
+              value={apiKey}
+              onChange={e => setApiKey(e.target.value)}
+              onBlur={handleSaveKey}
+              className="flex-1 border border-[#DFE1E6] rounded-md px-3 py-2 text-sm font-mono focus:ring-1 focus:ring-[#0052CC] focus:border-[#0052CC] outline-none"
+            />
+          </div>
+        </div>
+
+        {/* Schema Context */}
+        {schema.length > 0 && (
+          <div className="p-2.5 bg-[#1E1E2E] rounded-md transition-all duration-300">
+            <div className="flex items-center justify-between mb-1.5">
+              <div className="text-[9px] font-bold text-[#89DCEB] uppercase tracking-wider">Schema Context</div>
+              {schema.length > 8 && (
+                <button
+                  onClick={() => setIsSchemaExpanded(!isSchemaExpanded)}
+                  className="text-[9px] font-bold text-[#565f89] hover:text-[#89DCEB] transition-colors uppercase tracking-widest outline-none"
+                >
+                  {isSchemaExpanded ? 'Collapse' : `+ ${schema.length - 8} more`}
+                </button>
+              )}
+            </div>
+            <div className="text-[10px] text-[#CDD6F4] font-mono leading-relaxed max-h-48 overflow-y-auto custom-scrollbar pr-2">
+              {visibleSchema.map(c => (
+                <div key={c.column_name} className="flex justify-between gap-4 py-0.5">
+                  <span className="text-[#89DCEB] truncate">{c.column_name}</span>
+                  <span className="text-[#6B778C] shrink-0 font-mono">{c.column_type}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        {schema.length === 0 && (
+          <div className="p-3 bg-amber-50 border border-amber-200 rounded-md flex items-center gap-2">
+            <AlertCircle size={14} className="text-amber-600 shrink-0" />
+            <p className="text-[11px] text-amber-700">Execute the workflow first to load schema context for accurate SQL generation.</p>
+          </div>
+        )}
+
+        {/* Natural Language Input */}
+        <div>
+          <label className="block text-[10px] font-bold text-[#6B778C] uppercase tracking-wider mb-1.5">Your Request</label>
+          <textarea
+            rows={3}
+            placeholder={'e.g. "Show me the top 10 customers by total revenue, excluding nulls"'}
+            value={prompt}
+            onChange={e => setPrompt(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleGenerate(); }}
+            className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-sm focus:ring-1 focus:ring-[#0052CC] focus:border-[#0052CC] outline-none resize-none"
+          />
+          <p className="text-[10px] text-[#6B778C] mt-1">Tip: Press Cmd/Ctrl+Enter to generate.</p>
+        </div>
+
+        {/* Generate Button */}
+        <button
+          onClick={handleGenerate}
+          disabled={isGenerating || !prompt.trim()}
+          className="w-full py-2.5 bg-gradient-to-r from-[#6554C0] to-[#0052CC] text-white font-bold text-sm rounded-md shadow-sm hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center justify-center gap-2"
+        >
+          {isGenerating ? <RefreshCw size={15} className="animate-spin" /> : <Wand2 size={15} />}
+          {isGenerating ? 'Generating SQL…' : 'Generate SQL'}
+        </button>
+
+        {/* Error Display */}
+        {error && (
+          <div className="p-3 bg-red-50 border border-red-200 rounded-md flex items-start gap-2">
+            <AlertCircle size={14} className="text-red-500 shrink-0 mt-0.5" />
+            <div>
+              <p className="text-xs font-bold text-red-700 mb-1">API Error</p>
+              <p className="text-[11px] text-red-600 font-mono break-all">{error}</p>
+            </div>
+          </div>
+        )}
+
+        {/* Generated SQL Result */}
+        {generatedSql && (
+          <div className="border border-[#DFE1E6] rounded-md overflow-hidden pb-4">
+            <div className="flex items-center justify-between px-3 py-2 bg-[#1E1E2E]">
+              <span className="text-[10px] font-bold text-[#89DCEB] uppercase tracking-wider">Generated SQL</span>
+              <div className="flex gap-2">
+                <button onClick={handleCopy}
+                  className={`flex items-center gap-1 px-2 py-1 text-[10px] font-bold rounded transition-colors ${copied ? 'bg-[#36B37E] text-white' : 'bg-white/10 text-[#CDD6F4] hover:bg-white/20'}`}>
+                  {copied ? <CheckCheck size={10} /> : <Copy size={10} />}
+                  {copied ? 'Copied!' : 'Copy'}
+                </button>
+                <button onClick={handleInsert}
+                  className={`flex items-center gap-1 px-2 py-1 text-[10px] font-bold rounded transition-colors ${inserted ? 'bg-[#36B37E] text-white' : 'bg-[#0052CC] text-white hover:bg-[#0065FF]'}`}>
+                  <Plus size={10} />
+                  {inserted ? 'Inserted!' : 'Insert as Node'}
+                </button>
+              </div>
+            </div>
+            <pre className="bg-[#1E1E2E] text-[#CDD6F4] text-xs p-3 font-mono overflow-x-auto whitespace-pre-wrap leading-relaxed border-t border-white/10">{generatedSql}</pre>
+          </div>
+        )}
+        
+        {/* Extra Bottom Spacing for Scrolling */}
+        <div className="h-16 shrink-0" />
+      </div>
     </div>
   );
 }

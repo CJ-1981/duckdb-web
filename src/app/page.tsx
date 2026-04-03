@@ -236,6 +236,7 @@ function Dashboard() {
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const { getNodes, getEdges } = useReactFlow();
+  const [layoutCounter, setLayoutCounter] = useState(0);
 
   const [isSaveModalOpen, setIsSaveModalOpen] = useState(false);
   const [isLoadModalOpen, setIsLoadModalOpen] = useState(false);
@@ -705,29 +706,53 @@ function Dashboard() {
       nodes.forEach(node => {
         const predecessors = incoming(node.id);
         if (predecessors.length > 0) {
-          const maxPrevDepth = Math.max(...predecessors.map(e => depths[e.source]));
-          if (depths[node.id] !== maxPrevDepth + 1) { depths[node.id] = maxPrevDepth + 1; changed = true; }
+          const maxPrevDepth = Math.max(...predecessors.map(e => depths[e.source] ?? 0));
+          if (!isNaN(maxPrevDepth) && depths[node.id] !== maxPrevDepth + 1) { 
+            depths[node.id] = maxPrevDepth + 1; 
+            changed = true; 
+          }
         }
       });
     }
     const depthGroups: Record<number, string[]> = {};
-    Object.entries(depths).forEach(([id, depth]) => { if (!depthGroups[depth]) depthGroups[depth] = []; depthGroups[depth].push(id); });
-    const HORIZONTAL_GAP = 280, VERTICAL_GAP = 180, CANVAS_CENTER_X = 400;
+    Object.entries(depths).forEach(([id, depth]) => { 
+      const d = isNaN(depth) ? 0 : depth;
+      if (!depthGroups[d]) depthGroups[d] = []; 
+      depthGroups[d].push(id); 
+    });
+    const HORIZONTAL_GAP = 280, VERTICAL_GAP = 180, CANVAS_CENTER_X = 250;
     const newNodes = nodes.map(node => {
-      const depth = depths[node.id];
-      const group = depthGroups[depth];
+      const depth = depths[node.id] ?? 0;
+      const cleanDepth = isNaN(depth) ? 0 : depth;
+      const group = depthGroups[cleanDepth] || [node.id];
       const indexInGroup = group.indexOf(node.id);
       const totalInGroup = group.length;
       const xOffset = (indexInGroup - (totalInGroup - 1) / 2) * HORIZONTAL_GAP;
-      return { ...node, position: { x: CANVAS_CENTER_X + xOffset, y: 50 + depth * VERTICAL_GAP } };
+      
+      // Safety check for existing positions if they are NaN
+      const currentX = isNaN(node.position?.x) ? CANVAS_CENTER_X : node.position.x;
+      const currentY = isNaN(node.position?.y) ? 50 : node.position.y;
+
+      return { 
+        ...node, 
+        position: { 
+          x: CANVAS_CENTER_X + (isNaN(xOffset) ? 0 : xOffset), 
+          y: 100 + cleanDepth * VERTICAL_GAP 
+        } 
+      };
     });
     setNodes(newNodes);
+    setLayoutCounter(c => c + 1);
   };
 
   const handleInsertSql = (sql: string) => {
     const currentNodes = getNodes();
-    const x = currentNodes.length > 0 ? Math.max(...currentNodes.map(n => n.position.x)) + 300 : 400;
-    const y = currentNodes.length > 0 ? Math.min(...currentNodes.map(n => n.position.y)) : 100;
+    const x = currentNodes.length > 0 
+      ? Math.max(...currentNodes.filter(n => !isNaN(n.position.x)).map(n => n.position.x), 100) + 300 
+      : 400;
+    const y = currentNodes.length > 0 
+      ? Math.min(...currentNodes.filter(n => !isNaN(n.position.y)).map(n => n.position.y), 100) 
+      : 100;
     const newNode = {
       id: `raw_sql_${Date.now()}`,
       type: 'default',
@@ -1042,6 +1067,7 @@ function Dashboard() {
                 if (node) setIsBottomPanelVisible(true);
               }
             }}
+            layoutCounter={layoutCounter}
           >
             {/* Resizable Bottom Preview Panel - Now inside WorkspaceCanvas Panel */}
             {selectedNode && isBottomPanelVisible && (
@@ -1126,7 +1152,7 @@ function Dashboard() {
                   </div>
 
                   {/* Tab Content */}
-                  <div className="flex-1 overflow-hidden bg-white">
+                  <div className="flex-1 overflow-hidden bg-white flex flex-col">
                     {/* Tab 0: Data Preview */}
                     {activeBottomTab === 0 && (
                       <div className="h-full overflow-auto">
@@ -1176,10 +1202,12 @@ function Dashboard() {
 
                     {/* Tab 2: AI SQL Builder */}
                     {activeBottomTab === 2 && (
-                      <AiSqlBuilderPanel
-                        schema={nodeTypes[selectedNode.id] || []}
-                        onInsertSql={handleInsertSql}
-                      />
+                      <div className="h-full min-h-0 flex flex-col overflow-hidden">
+                        <AiSqlBuilderPanel
+                          schema={nodeTypes[selectedNode.id] || []}
+                          onInsertSql={handleInsertSql}
+                        />
+                      </div>
                     )}
                   </div>
                 </div>

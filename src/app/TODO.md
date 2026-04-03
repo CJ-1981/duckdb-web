@@ -14,3 +14,4 @@
 [x] add 'x' button to clear the search bar in left panel.
 [x] move bottom right overview window to top right corner.
 [x] delete 'Execution Engine Ready' text on top right corner.
+[ ] fix if single node displayed, clicking beautify button will make the node disappear from view.

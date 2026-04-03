@@ -118,6 +118,7 @@ interface WorkspaceCanvasProps {
   setNodes: any;
   setEdges: any;
   onNodeSelect?: (node: Node | null) => void;
+  layoutCounter?: number;
   children?: React.ReactNode;
 }
 
@@ -129,10 +130,21 @@ function WorkspaceCanvas({
   setNodes, 
   setEdges, 
   onNodeSelect,
+  layoutCounter = 0,
   children
 }: WorkspaceCanvasProps) {
   const [history, setHistory] = useState<{ nodes: Node[]; edges: Edge[] }[]>([]);
   const [redoStack, setRedoStack] = useState<{ nodes: Node[]; edges: Edge[] }[]>([]);
+  const { fitView } = useReactFlow();
+
+  // Refit view when layout changes (e.g. after beautify)
+  React.useEffect(() => {
+    if (layoutCounter > 0) {
+      setTimeout(() => {
+        fitView({ duration: 600, padding: 0.2 });
+      }, 50);
+    }
+  }, [layoutCounter, fitView]);
 
   const takeSnapshot = useCallback(() => {
     setHistory((prev) => [...prev.slice(-49), { nodes: JSON.parse(JSON.stringify(nodes)), edges: JSON.parse(JSON.stringify(edges)) }]);
