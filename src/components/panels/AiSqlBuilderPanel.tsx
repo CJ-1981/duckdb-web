@@ -1,11 +1,12 @@
 'use client';
 import React, { useState, useEffect } from 'react';
-import { Wand2, Copy, CheckCheck, AlertCircle, Plus, RefreshCw, ChevronDown } from 'lucide-react';
+import { Wand2, Copy, CheckCheck, AlertCircle, Plus, RefreshCw, ChevronDown, ExternalLink } from 'lucide-react';
 import type { ColumnTypeDef } from './DataInspectionPanel';
 
 interface Provider {
   id: string; name: string; baseUrl: string;
   type: 'openai' | 'anthropic' | 'google';
+  apiKeyUrl: string;
   extraHeaders?: Record<string, string>;
   models: { id: string; name: string }[];
 }
@@ -13,6 +14,7 @@ interface Provider {
 const PROVIDERS: Provider[] = [
   {
     id: 'google', name: 'Google (Gemini)', baseUrl: 'https://generativelanguage.googleapis.com/v1beta/models', type: 'google',
+    apiKeyUrl: 'https://aistudio.google.com/app/apikey',
     models: [
       { id: 'gemini-2.0-flash-exp', name: 'Gemini 2.0 Flash (Exp)' },
       { id: 'gemini-2.0-flash', name: 'Gemini 2.5 Flash (Latest)' },
@@ -22,6 +24,7 @@ const PROVIDERS: Provider[] = [
   },
   {
     id: 'groq', name: 'Groq', baseUrl: 'https://api.groq.com/openai/v1/chat/completions', type: 'openai',
+    apiKeyUrl: 'https://console.groq.com/keys',
     models: [
       { id: 'llama-3.3-70b-versatile', name: 'Llama 3.3 70B Versatile' },
       { id: 'llama-3.1-8b-instant', name: 'Llama 3.1 8B Instant' },
@@ -31,6 +34,7 @@ const PROVIDERS: Provider[] = [
   },
   {
     id: 'cerebras', name: 'Cerebras', baseUrl: 'https://api.cerebras.ai/v1/chat/completions', type: 'openai',
+    apiKeyUrl: 'https://cloud.cerebras.ai/',
     models: [
       { id: 'llama-3.3-70b', name: 'Llama 3.3 70B' },
       { id: 'llama3.1-8b', name: 'Llama 3.1 8B' },
@@ -38,6 +42,7 @@ const PROVIDERS: Provider[] = [
   },
   {
     id: 'openrouter', name: 'OpenRouter', baseUrl: 'https://openrouter.ai/api/v1/chat/completions', type: 'openai',
+    apiKeyUrl: 'https://openrouter.ai/keys',
     extraHeaders: { 'HTTP-Referer': 'https://duckdb-platform.local', 'X-Title': 'DuckDB AI SQL Builder' },
     models: [
       { id: 'anthropic/claude-3.5-sonnet', name: 'Claude 3.5 Sonnet' },
@@ -51,6 +56,7 @@ const PROVIDERS: Provider[] = [
   },
   {
     id: 'openai', name: 'OpenAI', baseUrl: 'https://api.openai.com/v1/chat/completions', type: 'openai',
+    apiKeyUrl: 'https://platform.openai.com/api-keys',
     models: [
       { id: 'gpt-4o', name: 'GPT-4o' },
       { id: 'gpt-4o-mini', name: 'GPT-4o mini' },
@@ -59,6 +65,7 @@ const PROVIDERS: Provider[] = [
   },
   {
     id: 'anthropic', name: 'Anthropic', baseUrl: 'https://api.anthropic.com/v1/messages', type: 'anthropic',
+    apiKeyUrl: 'https://console.anthropic.com/settings/keys',
     models: [
       { id: 'claude-3-5-sonnet-20241022', name: 'Claude 3.5 Sonnet' },
       { id: 'claude-3-5-haiku-20241022', name: 'Claude 3.5 Haiku' },
@@ -234,9 +241,19 @@ export default function AiSqlBuilderPanel({ schema, onInsertSql }: Props) {
 
       {/* API Key */}
       <div>
-        <label className="block text-[10px] font-bold text-[#6B778C] uppercase tracking-wider mb-1.5">
-          API Key <span className="font-normal normal-case text-[#6B778C]">(stored locally in your browser)</span>
-        </label>
+        <div className="flex items-center justify-between mb-1.5">
+          <label className="block text-[10px] font-bold text-[#6B778C] uppercase tracking-wider">
+            API Key <span className="font-normal normal-case text-[#6B778C]">(stored locally)</span>
+          </label>
+          <a
+            href={provider.apiKeyUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[10px] font-bold text-[#0052CC] hover:underline flex items-center gap-1"
+          >
+            Get Key <ExternalLink size={10} />
+          </a>
+        </div>
         <div className="flex gap-2">
           <input
             type="password"
