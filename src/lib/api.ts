@@ -11,7 +11,8 @@ export async function executeWorkflow(nodes: any[], edges: any[], previewLimit: 
     });
 
     if (!response.ok) {
-      throw new Error(`API error: ${response.statusText}`);
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.detail || `API error: ${response.statusText}`);
     }
 
     return await response.json();

@@ -218,13 +218,22 @@ async def execute_workflow_graph(
             adj[src].append(target)
             predecessors[target].append(src)
             
-    # 2. Topological Sort
+    # 2. Topological Sort with Cycle Detection
     sorted_nodes = []
     visited = set()
+    currently_visiting = set()
+    
     def sort_nodes(node_id):
-        if node_id in visited: return
-        for p_id in predecessors[node_id]:
+        if node_id in currently_visiting:
+            raise HTTPException(status_code=400, detail=f"Circular dependency detected at node '{node_id}'.")
+        if node_id in visited:
+            return
+            
+        currently_visiting.add(node_id)
+        for p_id in predecessors.get(node_id, []):
             sort_nodes(p_id)
+        currently_visiting.remove(node_id)
+        
         visited.add(node_id)
         node_obj = next((n for n in request.nodes if n["id"] == node_id), None)
         if node_obj:
@@ -297,13 +306,13 @@ async def execute_workflow_graph(
                         
                         node_to_table[node_id] = table_name
                     else:
-                        conn.execute(f"CREATE TEMP TABLE {table_name} AS SELECT * FROM read_csv_auto('{file_path}')")
+                        conn.execute(f"CREATE TEMP TABLE {table_name} AS SELECT * FROM read_csv_auto(?)", [file_path])
                         node_to_table[node_id] = table_name
                 else:
-                    # Standard Flat loading
-                    sql = f"CREATE TEMP TABLE {table_name} AS SELECT * FROM read_csv_auto('{file_path}')"
-                    conn.execute(sql)
-                    node_to_table[node_id] = table_name
+                        # Standard Flat loading
+                        sql = f"CREATE TEMP TABLE {table_name} AS SELECT * FROM read_csv_auto(?)"
+                        conn.execute(sql, [file_path])
+                        node_to_table[node_id] = table_name
                 
             elif subtype == "filter" or "Filter" in label:
                 if not prev_table: continue
@@ -530,7 +539,9 @@ async def execute_workflow_graph(
                 group_by = [c.strip() for c in config.get("groupBy", "").split(',') if c.strip()]
                 aggs = config.get("aggregations", [])
                 if not aggs:
-                    aggs = [{"column": config.get("column"), "operation": config.get("operation", "sum").upper(), "alias": config.get("alias")}]
+                    op_raw = config.get("operation") or "sum"
+                    op = str(op_raw).upper()
+                    aggs = [{"column": config.get("column"), "operation": op, "alias": config.get("alias")}]
 
                 agg_parts = []
                 for a in aggs:
