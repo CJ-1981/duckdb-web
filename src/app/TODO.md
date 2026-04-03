@@ -13,3 +13,4 @@
 [x] add a button to reopen the closed bottom panel. currently user has to reselect node box to reopen it.
 [x] add 'x' button to clear the search bar in left panel.
 [x] move bottom right overview window to top right corner.
+[ ] delete 'Execution Engine Ready' text on top right corner.
