@@ -29,7 +29,7 @@ const CustomNode = ({ data, type, selected }: any) => {
 
   return (
     <div 
-      className={`bg-white border-2 rounded-md p-3 shadow-lg font-medium text-gray-800 text-sm flex items-center justify-between min-w-[200px] transition-all duration-200 ${selected ? 'ring-2 ring-[#0052CC] ring-offset-2 shadow-xl border-[#0052CC]' : ''}`} 
+      className={`bg-white border-2 rounded-md shadow-lg font-medium text-gray-800 text-sm transition-all duration-200 relative min-w-[200px] ${selected ? 'ring-2 ring-[#0052CC] ring-offset-2 shadow-xl border-[#0052CC]' : ''}`} 
       style={{ borderColor }}
     >
       <style>{`
@@ -42,12 +42,17 @@ const CustomNode = ({ data, type, selected }: any) => {
         .react-flow__handle {
           width: 14px !important;
           height: 14px !important;
-          transform: translate(-50%, -50%) !important;
           background: #B1B1B7 !important;
           border: 3px solid white !important;
           box-shadow: 0 1px 4px rgba(0,0,0,0.15);
           transition: background 0.2s, box-shadow 0.2s, border-color 0.2s;
           z-index: 10;
+        }
+        .react-flow__handle-top {
+          top: -7px !important;
+        }
+        .react-flow__handle-bottom {
+          bottom: -7px !important;
         }
         .react-flow__handle:hover {
           background: #0052CC !important;
@@ -74,21 +79,23 @@ const CustomNode = ({ data, type, selected }: any) => {
            animation: react-flow__dashdraw 0.5s linear infinite;
         }
       `}</style>
-      <Handle type="target" position={Position.Top} style={{ left: '50%' }} />
-      <div className="flex flex-col items-center space-y-1.5 p-1 w-full">
-        <div className="flex items-center space-x-2">
-          {type === 'input' && <span className="w-1.5 h-6 bg-[#0052CC] rounded-full"></span>}
-          {type === 'output' && <span className="w-1.5 h-6 bg-[#36B37E] rounded-full"></span>}
-          <span className="text-sm font-bold tracking-tight text-center">{data.label}</span>
-        </div>
-        {data.rowCount !== undefined && (
-          <div className="flex items-center space-x-1.5 bg-[#EAE6FF] text-[#403294] px-3 py-1 rounded-full font-bold shadow-sm border border-[#D1CAFF]">
-            <span className="text-[10px] uppercase opacity-60">Rows</span>
-            <span className="text-xs">{data.rowCount.toLocaleString()}</span>
+      <Handle type="target" position={Position.Top} style={{ left: '50%', transform: 'translateX(-50%)' }} />
+      <div className="flex items-center justify-between p-3 w-full">
+        <div className="flex flex-col items-center space-y-1.5 p-1 w-full">
+          <div className="flex items-center space-x-2">
+            {type === 'input' && <span className="w-1.5 h-6 bg-[#0052CC] rounded-full"></span>}
+            {type === 'output' && <span className="w-1.5 h-6 bg-[#36B37E] rounded-full"></span>}
+            <span className="text-sm font-bold tracking-tight text-center">{data.label}</span>
           </div>
-        )}
+          {data.rowCount !== undefined && (
+            <div className="flex items-center space-x-1.5 bg-[#EAE6FF] text-[#403294] px-3 py-1 rounded-full font-bold shadow-sm border border-[#D1CAFF]">
+              <span className="text-[10px] uppercase opacity-60">Rows</span>
+              <span className="text-xs">{data.rowCount.toLocaleString()}</span>
+            </div>
+          )}
+        </div>
       </div>
-      <Handle type="source" position={Position.Bottom} style={{ left: '50%' }} />
+      <Handle type="source" position={Position.Bottom} style={{ left: '50%', transform: 'translateX(-50%)' }} />
     </div>
   );
 };
