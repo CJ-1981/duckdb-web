@@ -81,7 +81,7 @@ export default function DataInspectionPanel({ nodeId, nodeSamples, nodeTypes, on
     } else {
       text = `CREATE TABLE example (\n${types.map(t => `  "${t.column_name}" ${t.column_type},`).join('\n')}\n)`;
     }
-    navigator.clipboard.writeText(text).then(() => { setCopied(format); setTimeout(() => setCopied(null), 2000); });
+    navigator.clipboard.writeText(text).then(() => { setCopied(format); setTimeout(() => setCopied(null), 4000); });
   };
 
   const handleFetchFullStats = async () => {

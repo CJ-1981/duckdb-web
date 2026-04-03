@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import WorkspaceCanvas from '@/components/workflow/canvas';
-import { Database, Filter, ArrowRightLeft, Table, Settings, Play, Download, Search, LayoutDashboard, SlidersHorizontal, FileText, FileDown, Save, FolderOpen, Sigma, Eye, ChevronDown, ChevronRight, SortAsc, ListOrdered, Calculator, Code, Fingerprint, PenLine, GitBranch, BarChart3, Plus, Trash2, Wand2, Microscope, PanelLeftClose, PanelLeftOpen, PanelBottomClose, Copy, X } from 'lucide-react';
+import { Database, Filter, ArrowRightLeft, Table, Settings, Play, Download, Search, LayoutDashboard, SlidersHorizontal, FileText, FileDown, Save, FolderOpen, Sigma, Eye, ChevronDown, ChevronRight, SortAsc, ListOrdered, Calculator, Code, Fingerprint, PenLine, GitBranch, BarChart3, Plus, Trash2, Wand2, Microscope, PanelLeftClose, PanelLeftOpen, PanelBottomClose, Copy, X, CheckCheck, AlertCircle } from 'lucide-react';
 import { Node, Edge, useReactFlow, ReactFlowProvider, useNodesState, useEdgesState, Panel } from '@xyflow/react';
 import { executeWorkflow, uploadFile, saveWorkflow, listSavedWorkflows, loadWorkflowGraph, generateReport, inspectNode, renameWorkflow, validateSql } from '@/lib/api';
 import DataInspectionPanel, { type ColumnTypeDef, type FullStats } from '@/components/panels/DataInspectionPanel';
@@ -249,6 +249,7 @@ function Dashboard() {
   const [isExecuting, setIsExecuting] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [executionSuccess, setExecutionSuccess] = useState(false);
+  const [executionMessage, setExecutionMessage] = useState<{ title: string; detail: string; type: 'success' | 'error' | 'info' } | null>(null);
   const [previewHeight, setPreviewHeight] = useState(280);
   const [previewLimit, setPreviewLimit] = useState(50);
   const [nodeSamples, setNodeSamples] = useState<Record<string, any[]>>({});
@@ -641,11 +642,11 @@ function Dashboard() {
       })
     );
     setSaveSuccess(true);
-    console.log('[DEBUG] saveSuccess set to TRUE, starting 2000ms timer');
+    console.log('[DEBUG] saveSuccess set to TRUE, starting 4000ms timer');
     setTimeout(() => {
-      console.log('[DEBUG] 2000ms timer ended - resetting saveSuccess');
+      console.log('[DEBUG] 4000ms timer ended - resetting saveSuccess');
       setSaveSuccess(false);
-    }, 2000);
+    }, 4000);
   };
 
   const handleExecute = async () => {
@@ -674,11 +675,12 @@ function Dashboard() {
 
       console.log('[DEBUG] Execution success result:', result);
       setExecutionSuccess(true);
-      console.log('[DEBUG] setExecutionSuccess(true), starting 2000ms timer');
+      console.log('[DEBUG] setExecutionSuccess(true), starting 4000ms timer');
       setTimeout(() => {
         console.log('[DEBUG] ExecutionSuccess timer ended - resetting state');
         setExecutionSuccess(false);
-      }, 2000);
+        setExecutionMessage(null);
+      }, 4000);
 
       // Keep the alert for now as a fallback, or we can remove it if preferred
       // alert(`Success! Processed ${result.row_count} rows.`);
@@ -1854,12 +1856,18 @@ function Dashboard() {
                                   
                                   const result = await validateSql(sql, 'input_table', preparedColumns);
                                   if (result.status === 'success') {
-                                    alert("✅ SQL is valid!");
+                                    setExecutionMessage({ title: "SQL Valid", detail: "Query structure is correct.", type: 'success' });
+                                    setExecutionSuccess(true);
+                                    setTimeout(() => { setExecutionSuccess(false); setExecutionMessage(null); }, 4000);
                                   } else {
-                                    alert("❌ SQL Error: " + result.message);
+                                    setExecutionMessage({ title: "SQL Error", detail: result.message, type: 'error' });
+                                    setExecutionSuccess(true);
+                                    setTimeout(() => { setExecutionSuccess(false); setExecutionMessage(null); }, 6000); // Errors stay longer
                                   }
                                 } catch (e: any) {
-                                  alert("Error validating SQL: " + e.message);
+                                  setExecutionMessage({ title: "Validation Error", detail: e.message, type: 'error' });
+                                  setExecutionSuccess(true);
+                                  setTimeout(() => { setExecutionSuccess(false); setExecutionMessage(null); }, 6000);
                                 }
                               }}
                               className="text-[10px] bg-[#F4F5F7] hover:bg-[#EBECF0] text-[#42526E] px-2 py-1 rounded font-bold transition-all flex items-center gap-1.5"
@@ -1871,7 +1879,9 @@ function Dashboard() {
                               onClick={() => {
                                 const sql = (selectedNode.data.config as any)?.sql || '';
                                 navigator.clipboard.writeText(sql);
-                                alert("Copied to clipboard!");
+                                setExecutionMessage({ title: "Copied!", detail: "SQL query copied to clipboard.", type: 'success' });
+                                setExecutionSuccess(true);
+                                setTimeout(() => { setExecutionSuccess(false); setExecutionMessage(null); }, 4000);
                               }}
                               className="text-[10px] bg-[#F4F5F7] hover:bg-[#EBECF0] text-[#42526E] px-2 py-1 rounded font-bold transition-all flex items-center gap-1.5"
                             >
@@ -1901,6 +1911,9 @@ function Dashboard() {
                                 const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), sql: beautified } } };
                                 setSelectedNode(updatedNode);
                                 setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
+                                setExecutionMessage({ title: "Beautified!", detail: "SQL query has been formatted.", type: 'success' });
+                                setExecutionSuccess(true);
+                                setTimeout(() => { setExecutionSuccess(false); setExecutionMessage(null); }, 4000);
                               }}
                               className="text-[10px] bg-[#F4F5F7] hover:bg-[#EBECF0] text-[#42526E] px-2 py-1 rounded font-bold transition-all flex items-center gap-1.5"
                             >
@@ -2513,10 +2526,13 @@ function Dashboard() {
                           link.click();
                           document.body.removeChild(link);
                         }
+                        setExecutionMessage({ title: "Report Generated", detail: "The file is being downloaded.", type: 'success' });
                         setExecutionSuccess(true);
-                        setTimeout(() => setExecutionSuccess(false), 2000);
+                        setTimeout(() => { setExecutionSuccess(false); setExecutionMessage(null); }, 4000);
                       } catch (err) {
-                        alert("Report generation failed!");
+                        setExecutionMessage({ title: "Report Failed", detail: (err as any).message || "Report generation failed!", type: 'error' });
+                        setExecutionSuccess(true);
+                        setTimeout(() => { setExecutionSuccess(false); setExecutionMessage(null); }, 6000);
                         console.error(err);
                       }
                     }}
@@ -2680,14 +2696,32 @@ function Dashboard() {
       {/* Success Notification for Query Execution */}
       {executionSuccess && (
         <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[100] animate-in slide-in-from-bottom-4 duration-300">
-          <div className="bg-[#36B37E] text-white px-6 py-3 rounded-full shadow-2xl flex items-center space-x-3 border-2 border-white/20 backdrop-blur-md">
+          <div className={`${executionMessage?.type === 'error' ? 'bg-[#FF5630]' : 'bg-[#36B37E]'} text-white px-6 py-3 rounded-full shadow-2xl flex items-center space-x-3 border-2 border-white/20 backdrop-blur-md`}>
             <div className="bg-white/20 p-1.5 rounded-full">
-              <Play size={16} fill="white" />
+              {(() => {
+                const title = executionMessage?.title || "";
+                if (executionMessage?.type === 'error') return <AlertCircle size={16} />;
+                if (title.includes('Copied')) return <Copy size={16} />;
+                if (title.includes('SQL Valid')) return <CheckCheck size={16} />;
+                if (title.includes('Beautified')) return <SlidersHorizontal size={16} />;
+                if (title.includes('Saved')) return <Save size={16} />;
+                if (title.includes('Report')) return <FileText size={16} />;
+                return <Play size={16} fill="white" />;
+              })()}
             </div>
             <div className="flex flex-col">
-              <span className="text-xs font-bold leading-none mb-0.5 uppercase tracking-wider">Query Successful</span>
-              <span className="text-[10px] opacity-90 text-white/80">Processed {executionResult?.row_count?.toLocaleString()} rows successfully</span>
+              <span className="text-xs font-bold leading-none mb-0.5 uppercase tracking-wider">
+                {executionMessage?.title || (executionMessage?.type === 'error' ? 'Execution Error' : 'Query Successful')}
+              </span>
+              <span className="text-[10px] opacity-90 text-white/80 max-w-xs truncate">
+                {executionMessage?.detail || (executionMessage?.type === 'error' ? 'Something went wrong.' : `Processed ${executionResult?.row_count?.toLocaleString()} rows successfully`)}
+              </span>
             </div>
+            {executionMessage?.type === 'error' && (
+               <button onClick={() => { setExecutionSuccess(false); setExecutionMessage(null); }} className="hover:bg-white/20 p-1 rounded transition-colors ml-1">
+                 <X size={14} />
+               </button>
+            )}
           </div>
         </div>
       )}

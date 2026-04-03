@@ -197,13 +197,13 @@ export default function AiSqlBuilderPanel({ schema, onInsertSql }: Props) {
 
   const handleCopy = () => {
     navigator.clipboard.writeText(generatedSql).then(() => {
-      setCopied(true); setTimeout(() => setCopied(false), 2000);
+      setCopied(true); setTimeout(() => setCopied(false), 4000);
     });
   };
 
   const handleInsert = () => {
     onInsertSql(generatedSql);
-    setInserted(true); setTimeout(() => setInserted(false), 2000);
+    setInserted(true); setTimeout(() => setInserted(false), 4000);
   };
 
   return (
