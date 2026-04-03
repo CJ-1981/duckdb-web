@@ -40,10 +40,11 @@ const CustomNode = ({ data, type, selected }: any) => {
           padding: 0 !important;
         }
         .react-flow__handle {
-          width: 28px !important;
-          height: 28px !important;
+          width: 14px !important;
+          height: 14px !important;
+          transform: translate(-50%, -50%) !important;
           background: #B1B1B7 !important;
-          border: 4px solid white !important;
+          border: 3px solid white !important;
           box-shadow: 0 1px 4px rgba(0,0,0,0.15);
           transition: background 0.2s, box-shadow 0.2s, border-color 0.2s;
           z-index: 10;
@@ -73,7 +74,7 @@ const CustomNode = ({ data, type, selected }: any) => {
            animation: react-flow__dashdraw 0.5s linear infinite;
         }
       `}</style>
-      <Handle type="target" position={Position.Top} style={{ top: '-14px' }} />
+      <Handle type="target" position={Position.Top} style={{ left: '50%' }} />
       <div className="flex flex-col items-center space-y-1.5 p-1 w-full">
         <div className="flex items-center space-x-2">
           {type === 'input' && <span className="w-1.5 h-6 bg-[#0052CC] rounded-full"></span>}
@@ -87,7 +88,7 @@ const CustomNode = ({ data, type, selected }: any) => {
           </div>
         )}
       </div>
-      <Handle type="source" position={Position.Bottom} style={{ bottom: '-14px' }} />
+      <Handle type="source" position={Position.Bottom} style={{ left: '50%' }} />
     </div>
   );
 };
@@ -110,6 +111,7 @@ interface WorkspaceCanvasProps {
   setNodes: any;
   setEdges: any;
   onNodeSelect?: (node: Node | null) => void;
+  children?: React.ReactNode;
 }
 
 function WorkspaceCanvas({ 
@@ -119,7 +121,8 @@ function WorkspaceCanvas({
   onEdgesChange, 
   setNodes, 
   setEdges, 
-  onNodeSelect 
+  onNodeSelect,
+  children
 }: WorkspaceCanvasProps) {
   const [history, setHistory] = useState<{ nodes: Node[]; edges: Edge[] }[]>([]);
   const [redoStack, setRedoStack] = useState<{ nodes: Node[]; edges: Edge[] }[]>([]);
@@ -183,20 +186,15 @@ function WorkspaceCanvas({
       if (onNodeSelect) {
         onNodeSelect(selectedNodes.length > 0 ? selectedNodes[0] : null);
       }
-
-      // Task 1: Auto-select edges between selected nodes
-      if (selectedNodes.length > 1) {
-        const nodeIds = new Set(selectedNodes.map((n) => n.id));
-        setEdges((eds: Edge[]) =>
-          eds.map((e) => ({
-            ...e,
-            selected: nodeIds.has(e.source) && nodeIds.has(e.target),
-          }))
-        );
-      }
     },
-    [onNodeSelect, setEdges]
+    [onNodeSelect]
   );
+
+  const onNodeClick = useCallback((event: React.MouseEvent, node: Node) => {
+    if (onNodeSelect) {
+      onNodeSelect(node);
+    }
+  }, [onNodeSelect]);
 
   const reactFlowWrapper = React.useRef<HTMLDivElement>(null);
   const { screenToFlowPosition } = useReactFlow();
@@ -258,6 +256,7 @@ function WorkspaceCanvas({
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
         onSelectionChange={onSelectionChange}
+        onNodeClick={onNodeClick}
         onDrop={onDrop}
         onDragOver={onDragOver}
         onNodesDelete={onNodesDelete}
@@ -276,8 +275,11 @@ function WorkspaceCanvas({
         className="bg-[#FAFBFC]"
       >
         <Background gap={16} size={1} color="#DFE1E6" />
-        <Controls showInteractive={false} className="bg-white shadow-lg border border-[#DFE1E6] rounded-md" />
+        {children}
+        <Controls position="top-left" showInteractive={false} className="bg-white shadow-lg border border-[#DFE1E6] rounded-md" />
         <MiniMap 
+          pannable
+          zoomable
           nodeStrokeColor={(n) => {
             if (n.type === 'input') return '#0052CC';
             if (n.type === 'output') return '#36B37E';

@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import WorkspaceCanvas from '@/components/workflow/canvas';
 import { Database, Filter, ArrowRightLeft, Table, Settings, Play, Download, Search, LayoutDashboard, SlidersHorizontal, FileText, FileDown, Save, FolderOpen, Sigma, Eye, ChevronDown, ChevronRight, SortAsc, ListOrdered, Calculator, Code, Fingerprint, PenLine, GitBranch, BarChart3, Plus, Trash2, Wand2, Microscope, PanelLeftClose, PanelLeftOpen, PanelBottomClose, Copy, X } from 'lucide-react';
-import { Node, Edge, useReactFlow, ReactFlowProvider, useNodesState, useEdgesState } from '@xyflow/react';
+import { Node, Edge, useReactFlow, ReactFlowProvider, useNodesState, useEdgesState, Panel } from '@xyflow/react';
 import { executeWorkflow, uploadFile, saveWorkflow, listSavedWorkflows, loadWorkflowGraph, generateReport, inspectNode, renameWorkflow, validateSql } from '@/lib/api';
 import DataInspectionPanel, { type ColumnTypeDef, type FullStats } from '@/components/panels/DataInspectionPanel';
 import AiSqlBuilderPanel from '@/components/panels/AiSqlBuilderPanel';
@@ -256,6 +256,7 @@ function Dashboard() {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [tooltip, setTooltip] = useState<{ label: string; text: string; x: number; y: number } | null>(null);
+  const [isBottomPanelVisible, setIsBottomPanelVisible] = useState(true);
 
   const [tabs, setTabs] = useState<WorkflowTab[]>([
     { id: 'initial-workflow', name: 'New Pipeline', nodes: [], edges: [], nodeSamples: {}, nodeTypes: {} }
@@ -1035,8 +1036,176 @@ function Dashboard() {
             onEdgesChange={onEdgesChange}
             setNodes={setNodes}
             setEdges={setEdges}
-            onNodeSelect={setSelectedNode} 
-          />
+            onNodeSelect={(node) => {
+              if (node?.id !== selectedNode?.id) {
+                setSelectedNode(node);
+                if (node) setIsBottomPanelVisible(true);
+              }
+            }}
+          >
+            {/* Resizable Bottom Preview Panel - Now inside WorkspaceCanvas Panel */}
+            {selectedNode && isBottomPanelVisible && (
+              <Panel position="bottom-left" style={{ width: '100%', margin: 0 }}>
+                <div
+                  style={{ height: `${previewHeight}px` }}
+                  className="bg-white border-t border-[#DFE1E6] flex flex-col relative z-[60] shadow-[0_-4px_12px_rgba(0,0,0,0.05)] transition-all duration-300"
+                  onPointerDown={(e) => e.stopPropagation()}
+                >
+                  {/* Resize Handle */}
+                  <div 
+                    className="absolute -top-1.5 left-0 right-0 h-3 cursor-row-resize z-50 flex items-center justify-center group"
+                    onMouseDown={(e) => {
+                      const startY = e.clientY;
+                      const startHeight = previewHeight;
+                      const onMouseMove = (moveEvent: MouseEvent) => {
+                        const deltaY = startY - moveEvent.clientY;
+                        setPreviewHeight(Math.max(150, Math.min(800, startHeight + deltaY)));
+                      };
+                      const onMouseUp = () => {
+                        document.removeEventListener('mousemove', onMouseMove);
+                        document.removeEventListener('mouseup', onMouseUp);
+                      };
+                      document.addEventListener('mousemove', onMouseMove);
+                      document.addEventListener('mouseup', onMouseUp);
+                    }}
+                  >
+                    <div className="w-16 h-1 bg-[#DFE1E6] rounded-full group-hover:bg-[#0052CC] transition-colors" />
+                  </div>
+                  
+                  {/* Tab Header inside Panel */}
+                  <div className="flex items-center justify-between px-4 py-2 bg-[#FAFBFC] border-b border-[#DFE1E6] h-12 select-none">
+                    <div className="flex items-center space-x-1">
+                      {[
+                        { icon: <Table size={14} />, label: 'Data Preview' },
+                        { icon: <Microscope size={14} />, label: 'Data Inspection' },
+                        { icon: <Code size={14} />, label: 'AI SQL Builder' }
+                      ].map((tab, idx) => (
+                        <button
+                          key={idx}
+                          onClick={() => setActiveBottomTab(idx)}
+                          className={`flex items-center space-x-2 px-4 py-2 rounded-md font-bold text-xs transition-all ${
+                            activeBottomTab === idx 
+                              ? 'bg-white text-[#0052CC] shadow-sm ring-1 ring-[#DFE1E6] scale-105 z-10' 
+                              : 'text-[#6B778C] hover:bg-gray-100 hover:text-[#172B4D]'
+                          }`}
+                        >
+                          <span className={activeBottomTab === idx ? 'text-[#0052CC]' : 'text-[#6B778C]'}>{tab.icon}</span>
+                          <span>{tab.label}</span>
+                        </button>
+                      ))}
+                    </div>
+                    
+                    <div className="flex items-center gap-4 pr-2">
+                       <div className="flex items-center !space-x-1.5 px-2.5 py-1 rounded-md border border-[#DFE1E6] bg-white/50 hover:bg-white transition-colors">
+                        <span className="text-[10px] font-bold text-[#6B778C] uppercase tracking-tighter">rows:</span>
+                        <select
+                          value={previewLimit}
+                          onChange={(e) => setPreviewLimit(Number(e.target.value))}
+                          className="bg-transparent text-[10px] font-bold text-[#171717] focus:outline-none border-none cursor-pointer pr-1"
+                        >
+                          <option value={50}>50</option>
+                          <option value={100}>100</option>
+                          <option value={200}>200</option>
+                          <option value={500}>500</option>
+                          <option value={1000}>1000</option>
+                        </select>
+                      </div>
+                      <span className="text-xs font-semibold text-[#172B4D] bg-[#F4F5F7] px-2 py-0.5 rounded border border-[#DFE1E6] whitespace-nowrap">{String(selectedNode.data.label)}</span>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          e.preventDefault();
+                          setIsBottomPanelVisible(false);
+                        }}
+                        className="p-1.5 text-[#6B778C] hover:bg-gray-200 hover:text-[#171717] rounded-md transition-all border border-transparent hover:border-[#DFE1E6] bg-white shadow-sm cursor-pointer"
+                        title="Close Panel"
+                      >
+                        <PanelBottomClose size={18} />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Tab Content */}
+                  <div className="flex-1 overflow-hidden bg-white">
+                    {/* Tab 0: Data Preview */}
+                    {activeBottomTab === 0 && (
+                      <div className="h-full overflow-auto">
+                        {nodeSamples[selectedNode.id] && nodeSamples[selectedNode.id].length > 0 ? (
+                          <table className="w-full text-left border-collapse min-w-max">
+                            <thead className="sticky top-0 bg-[#FAFBFC] z-10 border-b border-[#DFE1E6]">
+                              <tr>
+                                {Object.keys(nodeSamples[selectedNode.id][0]).map((key) => (
+                                  <th key={key} className="px-4 py-2.5 text-[11px] font-bold text-[#6B778C] uppercase tracking-wider border-r border-[#DFE1E6] last:border-0">{key}</th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {nodeSamples[selectedNode.id].slice(0, previewLimit).map((row, i) => (
+                                <tr key={i} className="border-b border-[#F0F2F5] hover:bg-[#F8FAFC] transition-colors group">
+                                  {Object.values(row).map((val: any, j) => (
+                                    <td key={j} className="px-4 py-2 text-xs text-[#172B4D] font-medium border-r border-[#F0F2F5] last:border-0 truncate max-w-[200px] group-hover:text-[#0052CC]">
+                                      {val === null ? <span className="text-[#A5ADBA] italic font-normal text-[10px]">NULL</span> : String(val)}
+                                    </td>
+                                  ))}
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        ) : (
+                          <div className="flex flex-col items-center justify-center h-full py-12 px-6 text-center">
+                            <div className="w-12 h-12 bg-[#F4F5F7] rounded-full flex items-center justify-center mb-3">
+                              <Table size={24} className="text-[#A5ADBA]" />
+                            </div>
+                            <p className="text-sm font-semibold text-[#172B4D]">No preview data available for this node.</p>
+                            <p className="text-xs text-[#6B778C] mt-1">Execute the workflow to generate sample data for all nodes.</p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Tab 1: Data Inspection */}
+                    {activeBottomTab === 1 && (
+                      <DataInspectionPanel
+                        nodeId={selectedNode.id}
+                        nodeLabel={String(selectedNode.data.label)}
+                        nodeSamples={nodeSamples}
+                        nodeTypes={nodeTypes}
+                        onFetchFullStats={handleFetchFullStats}
+                      />
+                    )}
+
+                    {/* Tab 2: AI SQL Builder */}
+                    {activeBottomTab === 2 && (
+                      <AiSqlBuilderPanel
+                        schema={nodeTypes[selectedNode.id] || []}
+                        onInsertSql={handleInsertSql}
+                      />
+                    )}
+                  </div>
+                </div>
+              </Panel>
+            )}
+
+            {/* Reopen Bottom Panel Button - Now inside Panel */}
+            {selectedNode && !isBottomPanelVisible && (
+              <Panel position="bottom-center">
+                <div className="mb-8 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      e.preventDefault();
+                      setIsBottomPanelVisible(true);
+                    }}
+                    className="flex items-center space-x-2 px-5 py-3 bg-[#0052CC] text-white font-bold text-sm rounded-full shadow-[0_4px_20px_rgba(0,82,204,0.4)] hover:bg-[#0047B3] transition-all group scale-110 active:scale-105 cursor-pointer"
+                  >
+                    <Eye size={16} className="group-hover:scale-110 transition-transform" />
+                    <span>Show Preview: {String(selectedNode.data.label)}</span>
+                    <ChevronRight size={16} className="-rotate-90 ml-1" />
+                  </button>
+                </div>
+              </Panel>
+            )}
+          </WorkspaceCanvas>
         </main>
 
         {/* Right Sidebar - Properties Panel */}
@@ -2351,139 +2520,7 @@ function Dashboard() {
         )}
       </div>
 
-      {/* Resizable Bottom Preview Panel */}
-      {selectedNode && (
-        <div
-          style={{ height: `${previewHeight}px` }}
-          className="bg-white border-t border-[#DFE1E6] flex flex-col relative z-20 shadow-[0_-4px_12px_rgba(0,0,0,0.05)] transition-all duration-300"
-        >
-          {/* Resize Handle */}
-          <div
-            className="absolute -top-1.5 left-0 right-0 h-3 cursor-ns-resize hover:bg-[#0052CC]/10 transition-colors z-30 flex items-center justify-center group"
-            onMouseDown={(e) => {
-              const startY = e.clientY;
-              const startHeight = previewHeight;
-              const onMouseMove = (moveEvent: MouseEvent) => {
-                const delta = startY - moveEvent.clientY;
-                setPreviewHeight(Math.max(100, Math.min(800, startHeight + delta)));
-              };
-              const onMouseUp = () => {
-                document.removeEventListener('mousemove', onMouseMove);
-                document.removeEventListener('mouseup', onMouseUp);
-              };
-              document.addEventListener('mousemove', onMouseMove);
-              document.addEventListener('mouseup', onMouseUp);
-            }}
-          >
-            <div className="w-12 h-1 bg-[#DFE1E6] rounded-full group-hover:bg-[#0052CC] transition-colors"></div>
-          </div>
-
-          {/* Tab Header */}
-          <div className="flex items-center justify-between border-b border-[#DFE1E6] bg-[#FAFBFC] shrink-0 px-4">
-            <div className="flex items-center">
-              {[
-                { icon: <Eye size={13} />, label: 'Data Preview', color: 'text-[#FF8B00]' },
-                { icon: <Microscope size={13} />, label: 'Data Inspection', color: 'text-[#6554C0]' },
-                { icon: <Wand2 size={13} />, label: 'AI SQL Builder', color: 'text-[#0052CC]' },
-              ].map((tab, idx) => (
-                <button
-                  key={idx}
-                  onClick={() => setActiveBottomTab(idx)}
-                  className={`flex items-center gap-1.5 px-4 py-2.5 text-xs font-bold border-b-2 transition-all mr-1 ${activeBottomTab === idx ? 'border-[#0052CC] text-[#0052CC]' : 'border-transparent text-[#6B778C] hover:text-[#171717] hover:border-gray-300'}`}
-                >
-                  <span className={activeBottomTab === idx ? 'text-[#0052CC]' : tab.color}>{tab.icon}</span>
-                  {tab.label}
-                  {idx === 0 && nodeSamples[selectedNode.id] && (
-                    <span className="ml-1 text-[9px] bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded-full font-bold">
-                      {nodeSamples[selectedNode.id].length} rows
-                    </span>
-                  )}
-                </button>
-              ))}
-            </div>
-            <div className="flex items-center gap-3">
-              <div className="flex items-center !space-x-1.5 px-2.5 py-1 rounded-md border border-[#DFE1E6] bg-white/50 hover:bg-white transition-colors">
-                <span className="text-[10px] font-bold text-[#6B778C] uppercase tracking-tighter">rows:</span>
-                <select
-                  value={previewLimit}
-                  onChange={(e) => setPreviewLimit(Number(e.target.value))}
-                  className="bg-transparent text-[10px] font-bold text-[#171717] focus:outline-none border-none cursor-pointer pr-1"
-                >
-                  <option value={50}>50</option>
-                  <option value={100}>100</option>
-                  <option value={200}>200</option>
-                  <option value={500}>500</option>
-                  <option value={1000}>1000</option>
-                </select>
-              </div>
-              <span className="text-xs font-medium text-[#6B778C]">{String(selectedNode.data.label)}</span>
-              <button
-                onClick={() => setSelectedNode(null)}
-                className="p-1.5 text-[#6B778C] hover:bg-gray-200 rounded-md transition-colors"
-                title="Close Panel"
-              >
-                <PanelBottomClose size={18} />
-              </button>
-            </div>
-          </div>
-
-          {/* Tab Content */}
-          <div className="flex-1 overflow-hidden bg-white">
-            {/* Tab 0: Data Preview */}
-            {activeBottomTab === 0 && (
-              <div className="h-full overflow-auto">
-                {nodeSamples[selectedNode.id] && nodeSamples[selectedNode.id].length > 0 ? (
-                  <table className="w-full text-left border-collapse min-w-max">
-                    <thead className="sticky top-0 bg-[#FAFBFC] z-10 border-b border-[#DFE1E6]">
-                      <tr>
-                        {Object.keys(nodeSamples[selectedNode.id][0]).map((key) => (
-                          <th key={key} className="px-4 py-2.5 text-[11px] font-bold text-[#6B778C] uppercase tracking-wider border-r border-[#DFE1E6] last:border-0">{key}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-[#DFE1E6]">
-                      {nodeSamples[selectedNode.id].map((row: any, i: number) => (
-                        <tr key={i} className="hover:bg-blue-50/50 transition-colors">
-                          {Object.values(row).map((val: any, j: number) => (
-                            <td key={j} className="px-4 py-2 text-sm text-[#171717] border-r border-[#DFE1E6] last:border-0 max-w-[300px] truncate">
-                              {String(val)}
-                            </td>
-                          ))}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                ) : (
-                  <div className="h-full flex flex-col items-center justify-center text-[#6B778C] space-y-3 bg-[#FAFBFC]/50">
-                    <div className="p-3 bg-gray-100 rounded-full"><Table size={24} className="opacity-40" /></div>
-                    <p className="text-sm font-medium">No preview data available for this node.</p>
-                    <p className="text-xs">Execute the workflow to generate sample data for all nodes.</p>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Tab 1: Data Inspection */}
-            {activeBottomTab === 1 && (
-              <DataInspectionPanel
-                nodeId={selectedNode.id}
-                nodeLabel={String(selectedNode.data.label)}
-                nodeSamples={nodeSamples}
-                nodeTypes={nodeTypes}
-                onFetchFullStats={handleFetchFullStats}
-              />
-            )}
-
-            {/* Tab 2: AI SQL Builder */}
-            {activeBottomTab === 2 && (
-              <AiSqlBuilderPanel
-                schema={nodeTypes[selectedNode.id] || []}
-                onInsertSql={handleInsertSql}
-              />
-            )}
-          </div>
-        </div>
-      )}
+      {/* Modals & Global Overlays - Still inside the root div */}
 
 
 
@@ -2592,23 +2629,26 @@ function Dashboard() {
           style={{
             left: tooltip.x,
             top: tooltip.y,
-            transform: (tooltip as any).isHeader ? 'translate(-50%, 0)' : 'translate(0, -50%)'
+            transform: (tooltip as any).isHeader ? 'translateX(-50%)' : 'translate(0, -50%)'
           }}
         >
-          <div className="relative bg-[#1E1E2E] text-white p-3 rounded-lg shadow-2xl border border-[#313244] w-64 font-inter">
-            {/* Arrow */}
-            <div className={`absolute border-[8px] border-transparent ${(tooltip as any).isHeader
-                ? 'border-b-[#1E1E2E] -top-[16px] left-1/2'
-                : 'border-r-[#1E1E2E] -left-[16px] top-1/2 -translate-y-1/2'
-              }`}
-              style={(tooltip as any).isHeader ? { transform: `translateX(calc(-50% + ${(tooltip as any).arrowOffset || 0}px))` } : {}}
-            />
+            <div className="relative bg-[#1E1E2E] text-white p-3 rounded-lg shadow-2xl border border-[#313244] w-64 font-inter">
+              {/* Arrow */}
+              <div className={`absolute border-[8px] border-transparent ${(tooltip as any).isHeader
+                  ? 'border-b-[#1E1E2E] -top-[16px] left-1/2'
+                  : 'border-r-[#1E1E2E] -left-[16px] top-1/2 -translate-y-1/2'
+                }`}
+                style={(tooltip as any).isHeader ? { transform: `translateX(calc(-50% + ${(tooltip as any).arrowOffset || 0}px))` } : {}}
+              />
 
-            <div className="text-[10px] font-bold text-[#89DCEB] mb-1 uppercase tracking-wider">{tooltip.label}</div>
-            <div className="text-[11px] leading-relaxed text-[#CDD6F4]">{tooltip.text}</div>
+              <div className="text-[10px] font-bold text-[#89DCEB] mb-1 uppercase tracking-wider">{tooltip.label}</div>
+              <div className="text-[11px] leading-relaxed text-[#CDD6F4]">{tooltip.text}</div>
+            </div>
           </div>
-        </div>
-      )}
+        )
+      }
+
+
       {/* Success Notification for Query Execution */}
       {executionSuccess && (
         <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[100] animate-in slide-in-from-bottom-4 duration-300">
