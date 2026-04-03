@@ -12,3 +12,4 @@
 [x] fix close panel button on bottom panel - it's not working.
 [x] add a button to reopen the closed bottom panel. currently user has to reselect node box to reopen it.
 [x] add 'x' button to clear the search bar in left panel.
+[x] move bottom right overview window to top right corner.
