@@ -297,10 +297,7 @@ function WorkspaceCanvas({
           nodeBorderRadius={4}
           className="bg-white shadow-lg border border-[#DFE1E6] rounded-md !m-4"
         />
-        <Panel position="top-right" className="bg-white p-3 rounded-md shadow-md border border-[#DFE1E6] flex items-center space-x-2 m-4">
-           <div className="w-3 h-3 rounded-full bg-[#36B37E] animate-pulse"></div>
-           <span className="text-sm font-semibold text-gray-700">Execution Engine Ready</span>
-        </Panel>
+
         
         {nodes.length === 0 && (
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
