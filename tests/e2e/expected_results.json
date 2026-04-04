@@ -1,0 +1,842 @@
+{
+  "metadata": {
+    "version": "1.0.0",
+    "last_updated": "2026-04-04",
+    "description": "Expected results for E2E test cases"
+  },
+  "test_results": {
+    "smoke_tests": {
+      "TC-001": {
+        "test_id": "TC-001",
+        "test_name": "API Health Check",
+        "expected_status_code": 200,
+        "expected_response": {
+          "status": "ok"
+        },
+        "expected_row_count": null,
+        "validation_criteria": [
+          "Response received within 1 second",
+          "Status code is 200",
+          "Response contains status field"
+        ]
+      },
+      "TC-002": {
+        "test_id": "TC-002",
+        "test_name": "Simple CSV Upload",
+        "expected_status_code": 200,
+        "expected_response": {
+          "file_path": "uploads/*.csv"
+        },
+        "expected_row_count": null,
+        "validation_criteria": [
+          "Upload succeeds",
+          "File path returned",
+          "No error messages"
+        ]
+      },
+      "TC-003": {
+        "test_id": "TC-003",
+        "test_name": "Single Filter Node",
+        "expected_status_code": 200,
+        "expected_response": {
+          "row_count": 2,
+          "preview": [
+            {"id": 1, "name": "Alice", "value": 100},
+            {"id": 2, "name": "Bob", "value": 200}
+          ]
+        },
+        "expected_row_count": 2,
+        "expected_schema": {
+          "id": "INTEGER",
+          "name": "VARCHAR",
+          "value": "INTEGER"
+        },
+        "validation_criteria": [
+          "Execution succeeds",
+          "row_count is accurate",
+          "Preview data matches filter condition (value > 100 filtered out values <= 100)"
+        ]
+      },
+      "TC-004": {
+        "test_id": "TC-004",
+        "test_name": "Single Aggregate Node",
+        "expected_status_code": 200,
+        "expected_response": {
+          "row_count": 1,
+          "preview": [
+            {"category": "all", "sum_value": 450}
+          ]
+        },
+        "expected_row_count": 1,
+        "expected_schema": {
+          "category": "VARCHAR",
+          "sum_value": "DOUBLE"
+        },
+        "validation_criteria": [
+          "Execution succeeds",
+          "SUM values are correct (450)",
+          "Categories are grouped properly"
+        ]
+      },
+      "TC-005": {
+        "test_id": "TC-005",
+        "test_name": "Basic Join Operation",
+        "expected_status_code": 200,
+        "expected_response": {
+          "row_count": 3,
+          "preview": [
+            {"id": 1, "name": "Alice", "value": 100, "location": "NYC"},
+            {"id": 2, "name": "Bob", "value": 200, "location": "LA"},
+            {"id": 3, "name": "Charlie", "value": 150, "location": "CHI"}
+          ]
+        },
+        "expected_row_count": 3,
+        "expected_schema": {
+          "id": "INTEGER",
+          "name": "VARCHAR",
+          "value": "INTEGER",
+          "location": "VARCHAR"
+        },
+        "validation_criteria": [
+          "Execution succeeds",
+          "Columns from both sources present",
+          "Row count is correct for inner join"
+        ]
+      },
+      "TC-006": {
+        "test_id": "TC-006",
+        "test_name": "Raw SQL Node",
+        "expected_status_code": 200,
+        "expected_response": {
+          "row_count": 2
+        },
+        "expected_row_count": 2,
+        "validation_criteria": [
+          "SQL executes successfully",
+          "Results are as expected",
+          "No SQL syntax errors"
+        ]
+      },
+      "TC-007": {
+        "test_id": "TC-007",
+        "test_name": "CSV Export",
+        "expected_status_code": 200,
+        "expected_response": {
+          "format": "CSV"
+        },
+        "expected_row_count": 2,
+        "validation_criteria": [
+          "Export succeeds",
+          "CSV format is valid",
+          "Data integrity maintained"
+        ]
+      },
+      "TC-008": {
+        "test_id": "TC-008",
+        "test_name": "JSON Export",
+        "expected_status_code": 200,
+        "expected_response": {
+          "format": "JSON"
+        },
+        "expected_row_count": 2,
+        "validation_criteria": [
+          "Export succeeds",
+          "JSON format is valid",
+          "Data integrity maintained"
+        ]
+      }
+    },
+    "happy_path": {
+      "TC-101": {
+        "test_id": "TC-101",
+        "test_name": "Multi-Step Data Pipeline",
+        "expected_status_code": 200,
+        "expected_row_count": 5,
+        "expected_transformations": [
+          "Clean node removes spaces",
+          "Filter node applies condition",
+          "Aggregate node groups correctly"
+        ],
+        "validation_criteria": [
+          "Clean removes leading/trailing spaces",
+          "Filter reduces row count",
+          "Aggregate produces grouped results"
+        ]
+      },
+      "TC-102": {
+        "test_id": "TC-102",
+        "test_name": "Chained Filters",
+        "expected_status_code": 200,
+        "expected_row_count": 3,
+        "validation_criteria": [
+          "All filters execute",
+          "Cumulative effect is correct",
+          "Row count is accurate"
+        ]
+      },
+      "TC-103": {
+        "test_id": "TC-103",
+        "test_name": "Multiple Aggregations",
+        "expected_status_code": 200,
+        "expected_row_count": 5,
+        "expected_aggregations": {
+          "SUM": "sum_value",
+          "AVG": "avg_value",
+          "COUNT": "count_value"
+        },
+        "validation_criteria": [
+          "SUM is correct",
+          "AVG is correct",
+          "COUNT is correct",
+          "Categories are preserved"
+        ]
+      },
+      "TC-104": {
+        "test_id": "TC-104",
+        "test_name": "Left Join Handling",
+        "expected_status_code": 200,
+        "expected_row_count": 10,
+        "validation_criteria": [
+          "All left rows present",
+          "NULL values for unmatched",
+          "Matched data is correct"
+        ]
+      },
+      "TC-105": {
+        "test_id": "TC-105",
+        "test_name": "Self-Join Pattern",
+        "expected_status_code": 200,
+        "expected_row_count": 5,
+        "validation_criteria": [
+          "Self-join executes",
+          "Relationships are correct",
+          "No infinite loops"
+        ]
+      },
+      "TC-106": {
+        "test_id": "TC-106",
+        "test_name": "Case When Transformation",
+        "expected_status_code": 200,
+        "expected_row_count": 50,
+        "expected_column": "tier",
+        "expected_values": ["High", "Low"],
+        "validation_criteria": [
+          "New column exists",
+          "High values marked correctly",
+          "Low values marked correctly",
+          "NULL values handled"
+        ]
+      },
+      "TC-107": {
+        "test_id": "TC-107",
+        "test_name": "Computed Column",
+        "expected_status_code": 200,
+        "expected_row_count": 50,
+        "expected_column": "computed",
+        "validation_criteria": [
+          "Column added",
+          "Values are correct",
+          "NULL inputs handled"
+        ]
+      },
+      "TC-108": {
+        "test_id": "TC-108",
+        "test_name": "Window Function",
+        "expected_status_code": 200,
+        "expected_row_count": 20,
+        "expected_column": "row_number",
+        "validation_criteria": [
+          "Row numbers sequential",
+          "Partitions restart counting",
+          "Order is correct"
+        ]
+      },
+      "TC-109": {
+        "test_id": "TC-109",
+        "test_name": "Distinct Operation",
+        "expected_status_code": 200,
+        "expected_row_count": 6,
+        "validation_criteria": [
+          "Duplicates removed",
+          "Unique rows preserved",
+          "Count is correct"
+        ]
+      },
+      "TC-110": {
+        "test_id": "TC-110",
+        "test_name": "Column Rename",
+        "expected_status_code": 200,
+        "expected_row_count": 10,
+        "expected_columns": ["first_name", "last_name", "email"],
+        "validation_criteria": [
+          "All columns renamed",
+          "Data unchanged",
+          "New names in output"
+        ]
+      },
+      "TC-111": {
+        "test_id": "TC-111",
+        "test_name": "Sort Operation",
+        "expected_status_code": 200,
+        "expected_row_count": 20,
+        "validation_criteria": [
+          "Data is sorted",
+          "Order is ASC",
+          "NULLs handled"
+        ]
+      },
+      "TC-112": {
+        "test_id": "TC-112",
+        "test_name": "Multi-Column Sort",
+        "expected_status_code": 200,
+        "expected_row_count": 30,
+        "validation_criteria": [
+          "Primary sort correct",
+          "Secondary sort correct",
+          "Directions respected"
+        ]
+      },
+      "TC-113": {
+        "test_id": "TC-113",
+        "test_name": "Limit Operation",
+        "expected_status_code": 200,
+        "expected_row_count": 100,
+        "validation_criteria": [
+          "Row count is 100",
+          "Data is correct subset",
+          "No truncation errors"
+        ]
+      },
+      "TC-114": {
+        "test_id": "TC-114",
+        "test_name": "Select Columns",
+        "expected_status_code": 200,
+        "expected_row_count": 10,
+        "expected_columns": ["col1", "col2", "col3"],
+        "validation_criteria": [
+          "Only selected columns",
+          "All selected present",
+          "Data unchanged"
+        ]
+      },
+      "TC-115": {
+        "test_id": "TC-115",
+        "test_name": "Clean Trim Operation",
+        "expected_status_code": 200,
+        "expected_row_count": 10,
+        "validation_criteria": [
+          "Leading spaces gone",
+          "Trailing spaces gone",
+          "Internal spaces kept"
+        ]
+      },
+      "TC-116": {
+        "test_id": "TC-116",
+        "test_name": "Clean Numeric Operation",
+        "expected_status_code": 200,
+        "expected_row_count": 10,
+        "validation_criteria": [
+          "Symbols removed",
+          "Commats removed",
+          "Values are numeric"
+        ]
+      }
+    },
+    "edge_cases": {
+      "TC-201": {
+        "test_id": "TC-201",
+        "test_name": "NULL Value Handling in Filter",
+        "expected_status_code": 200,
+        "expected_row_count": 8,
+        "validation_criteria": [
+          "NULLs excluded",
+          "Non-NULLs included",
+          "Count correct"
+        ]
+      },
+      "TC-202": {
+        "test_id": "TC-202",
+        "test_name": "NULL Value Handling in Aggregate",
+        "expected_status_code": 200,
+        "expected_row_count": 1,
+        "validation_criteria": [
+          "SUM ignores NULLs",
+          "COUNT excludes NULLs",
+          "AVG correct"
+        ]
+      },
+      "TC-203": {
+        "test_id": "TC-203",
+        "test_name": "NULL Value Handling in Join",
+        "expected_status_code": 200,
+        "expected_row_count": 3,
+        "validation_criteria": [
+          "NULL keys unmatched",
+          "Non-NULL keys matched",
+          "Join semantics correct"
+        ]
+      },
+      "TC-204": {
+        "test_id": "TC-204",
+        "test_name": "Special Characters in Column Names",
+        "expected_status_code": 200,
+        "expected_row_count": 5,
+        "validation_criteria": [
+          "Names quoted",
+          "Accessible in filter",
+          "Accessible in aggregate"
+        ]
+      },
+      "TC-205": {
+        "test_id": "TC-205",
+        "test_name": "Special Characters in Data",
+        "expected_status_code": 200,
+        "expected_row_count": 10,
+        "validation_criteria": [
+          "Quotes preserved",
+          "Commas not split",
+          "Newlines handled"
+        ]
+      },
+      "TC-206": {
+        "test_id": "TC-206",
+        "test_name": "Empty CSV File",
+        "expected_status_code": 200,
+        "expected_row_count": 0,
+        "validation_criteria": [
+          "Upload succeeds",
+          "Execution succeeds",
+          "Row count 0",
+          "No errors"
+        ]
+      },
+      "TC-207": {
+        "test_id": "TC-207",
+        "test_name": "Single Row CSV",
+        "expected_status_code": 200,
+        "expected_row_count": 1,
+        "validation_criteria": [
+          "Aggregation works",
+          "Results correct",
+          "No errors"
+        ]
+      },
+      "TC-208": {
+        "test_id": "TC-208",
+        "test_name": "Very Long String Values",
+        "expected_status_code": 200,
+        "expected_row_count": 5,
+        "validation_criteria": [
+          "Strings preserved",
+          "No truncation",
+          "Operations work"
+        ]
+      },
+      "TC-209": {
+        "test_id": "TC-209",
+        "test_name": "Unicode and Emoji Characters",
+        "expected_status_code": 200,
+        "expected_row_count": 10,
+        "validation_criteria": [
+          "Unicode preserved",
+          "Emoji preserved",
+          "No corruption"
+        ]
+      },
+      "TC-210": {
+        "test_id": "TC-210",
+        "test_name": "Date Format Variations",
+        "expected_status_code": 200,
+        "expected_row_count": 12,
+        "validation_criteria": [
+          "ISO dates work",
+          "US format works",
+          "EU format works",
+          "Invalid handled"
+        ]
+      },
+      "TC-211": {
+        "test_id": "TC-211",
+        "test_name": "Numeric Precision",
+        "expected_status_code": 200,
+        "expected_row_count": 10,
+        "validation_criteria": [
+          "Precision maintained",
+          "No float errors",
+          "Rounding correct"
+        ]
+      },
+      "TC-212": {
+        "test_id": "TC-212",
+        "test_name": "Scientific Notation",
+        "expected_status_code": 200,
+        "expected_row_count": 10,
+        "validation_criteria": [
+          "Parsed correctly",
+          "Calculations correct",
+          "Format appropriate"
+        ]
+      },
+      "TC-213": {
+        "test_id": "TC-213",
+        "test_name": "Boolean Values",
+        "expected_status_code": 200,
+        "expected_row_count": 10,
+        "validation_criteria": [
+          "true/false works",
+          "1/0 works",
+          "yes/no works",
+          "Filtering correct"
+        ]
+      },
+      "TC-214": {
+        "test_id": "TC-214",
+        "test_name": "Large Integer Values",
+        "expected_status_code": 200,
+        "expected_row_count": 5,
+        "validation_criteria": [
+          "No overflow",
+          "Values correct",
+          "Calculations correct"
+        ]
+      },
+      "TC-215": {
+        "test_id": "TC-215",
+        "test_name": "Mixed Data Types in Column",
+        "expected_status_code": 200,
+        "expected_row_count": 10,
+        "validation_criteria": [
+          "Non-numeric NULL",
+          "Numeric processed",
+          "No crashes"
+        ]
+      },
+      "TC-216": {
+        "test_id": "TC-216",
+        "test_name": "Duplicate Column Names",
+        "expected_status_code": 200,
+        "expected_row_count": 5,
+        "validation_criteria": [
+          "Duplicates handled",
+          "Accessible with qualifier",
+          "No ambiguity"
+        ]
+      },
+      "TC-217": {
+        "test_id": "TC-217",
+        "test_name": "Missing Columns",
+        "expected_status_code": 400,
+        "validation_criteria": [
+          "Error message clear",
+          "No crash",
+          "Column identified"
+        ]
+      },
+      "TC-218": {
+        "test_id": "TC-218",
+        "test_name": "All NULL Column",
+        "expected_status_code": 200,
+        "expected_row_count": 1,
+        "validation_criteria": [
+          "Returns NULL/0",
+          "No errors",
+          "Other columns OK"
+        ]
+      },
+      "TC-219": {
+        "test_id": "TC-219",
+        "test_name": "Inconsistent Row Lengths",
+        "expected_status_code": 200,
+        "expected_row_count": 10,
+        "validation_criteria": [
+          "Short rows padded",
+          "Long rows truncated",
+          "No crashes"
+        ]
+      },
+      "TC-220": {
+        "test_id": "TC-220",
+        "test_name": "Different Line Endings",
+        "expected_status_code": 200,
+        "expected_row_count": 5,
+        "validation_criteria": [
+          "All endings handled",
+          "Count correct",
+          "No parse errors"
+        ]
+      }
+    },
+    "negative_tests": {
+      "TC-301": {
+        "test_id": "TC-301",
+        "test_name": "Invalid File Format",
+        "expected_status_code": 400,
+        "validation_criteria": [
+          "Upload rejected",
+          "Error clear",
+          "No processing"
+        ]
+      },
+      "TC-302": {
+        "test_id": "TC-302",
+        "test_name": "Corrupted CSV Data",
+        "expected_status_code": 400,
+        "validation_criteria": [
+          "Error returned",
+          "System stable",
+          "No partial load"
+        ]
+      },
+      "TC-303": {
+        "test_id": "TC-303",
+        "test_name": "Invalid SQL Syntax",
+        "expected_status_code": 400,
+        "validation_criteria": [
+          "SQL error clear",
+          "Graceful failure",
+          "System responsive"
+        ]
+      },
+      "TC-304": {
+        "test_id": "TC-304",
+        "test_name": "Invalid Column Reference",
+        "expected_status_code": 400,
+        "validation_criteria": [
+          "Error clear",
+          "Column identified",
+          "No crash"
+        ]
+      },
+      "TC-305": {
+        "test_id": "TC-305",
+        "test_name": "Invalid Filter Operator",
+        "expected_status_code": 400,
+        "validation_criteria": [
+          "Error clear",
+          "Operators listed",
+          "No crash"
+        ]
+      },
+      "TC-306": {
+        "test_id": "TC-306",
+        "test_name": "Division by Zero in Computed Column",
+        "expected_status_code": 200,
+        "expected_row_count": 5,
+        "validation_criteria": [
+          "Returns NULL/inf",
+          "No crash",
+          "Result clear"
+        ]
+      },
+      "TC-307": {
+        "test_id": "TC-307",
+        "test_name": "Invalid Join Key",
+        "expected_status_code": 400,
+        "validation_criteria": [
+          "Error clear",
+          "Tables identified",
+          "No crash"
+        ]
+      },
+      "TC-308": {
+        "test_id": "TC-308",
+        "test_name": "Invalid Aggregation Function",
+        "expected_status_code": 400,
+        "validation_criteria": [
+          "Error clear",
+          "Functions listed",
+          "No crash"
+        ]
+      },
+      "TC-309": {
+        "test_id": "TC-309",
+        "test_name": "Circular Workflow",
+        "expected_status_code": 400,
+        "validation_criteria": [
+          "Cycle detected",
+          "Path identified",
+          "No infinite loop"
+        ]
+      },
+      "TC-310": {
+        "test_id": "TC-310",
+        "test_name": "Multiple Input Nodes",
+        "expected_status_code": 200,
+        "validation_criteria": [
+          "Connected processed",
+          "Orphan handled",
+          "Behavior clear"
+        ]
+      }
+    },
+    "performance_tests": {
+      "TC-401": {
+        "test_id": "TC-401",
+        "test_name": "Large Dataset Processing",
+        "expected_status_code": 200,
+        "expected_execution_time": 30,
+        "expected_row_count": 100000,
+        "validation_criteria": [
+          "Completes in 30s",
+          "Memory reasonable",
+          "Results accurate"
+        ]
+      },
+      "TC-402": {
+        "test_id": "TC-402",
+        "test_name": "Complex Workflow Execution",
+        "expected_status_code": 200,
+        "expected_execution_time": 60,
+        "validation_criteria": [
+          "All nodes execute",
+          "Time reasonable",
+          "No leaks"
+        ]
+      },
+      "TC-403": {
+        "test_id": "TC-403",
+        "test_name": "Concurrent Workflow Execution",
+        "expected_status_code": 200,
+        "expected_concurrent_requests": 5,
+        "validation_criteria": [
+          "All execute",
+          "No conflicts",
+          "Results accurate"
+        ]
+      },
+      "TC-404": {
+        "test_id": "TC-404",
+        "test_name": "Memory Efficiency",
+        "expected_status_code": 200,
+        "expected_max_memory_mb": 512,
+        "validation_criteria": [
+          "Usage bounded",
+          "Memory released",
+          "No leaks"
+        ]
+      }
+    }
+  },
+  "node_types": {
+    "input": {
+      "description": "CSV upload and schema detection",
+      "test_coverage": [
+        "TC-002",
+        "TC-201",
+        "TC-204",
+        "TC-205",
+        "TC-206",
+        "TC-207"
+      ]
+    },
+    "filter": {
+      "description": "Single/multiple conditions, null handling",
+      "test_coverage": [
+        "TC-003",
+        "TC-102",
+        "TC-201",
+        "TC-304",
+        "TC-305"
+      ]
+    },
+    "aggregate": {
+      "description": "SUM, AVG, COUNT, GROUP BY",
+      "test_coverage": [
+        "TC-004",
+        "TC-103",
+        "TC-202",
+        "TC-207",
+        "TC-308"
+      ]
+    },
+    "join": {
+      "description": "inner, left, self-join, multiple keys",
+      "test_coverage": [
+        "TC-005",
+        "TC-104",
+        "TC-105",
+        "TC-203",
+        "TC-307"
+      ]
+    },
+    "sql": {
+      "description": "Custom queries, subqueries",
+      "test_coverage": [
+        "TC-006",
+        "TC-303"
+      ]
+    },
+    "output": {
+      "description": "CSV/JSON export",
+      "test_coverage": [
+        "TC-007",
+        "TC-008"
+      ]
+    },
+    "clean": {
+      "description": "Trim, numeric conversion",
+      "test_coverage": [
+        "TC-101",
+        "TC-115",
+        "TC-116"
+      ]
+    },
+    "computed": {
+      "description": "Derived columns with expressions",
+      "test_coverage": [
+        "TC-107",
+        "TC-306"
+      ]
+    },
+    "case_when": {
+      "description": "Conditional logic",
+      "test_coverage": [
+        "TC-106"
+      ]
+    },
+    "window": {
+      "description": "Window functions",
+      "test_coverage": [
+        "TC-108"
+      ]
+    },
+    "distinct": {
+      "description": "Remove duplicates",
+      "test_coverage": [
+        "TC-109"
+      ]
+    },
+    "rename": {
+      "description": "Column renaming",
+      "test_coverage": [
+        "TC-110"
+      ]
+    },
+    "sort": {
+      "description": "Single and multi-column sorting",
+      "test_coverage": [
+        "TC-111",
+        "TC-112"
+      ]
+    },
+    "limit": {
+      "description": "Result set limiting",
+      "test_coverage": [
+        "TC-113"
+      ]
+    },
+    "select": {
+      "description": "Column selection",
+      "test_coverage": [
+        "TC-114"
+      ]
+    }
+  },
+  "validation_criteria": {
+    "row_count_accuracy": "Actual row count must match expected within 5% tolerance",
+    "schema_validation": "Output schema must match expected column names and types",
+    "data_integrity": "Data values must be preserved through transformations",
+    "error_handling": "Errors must be clear, specific, and non-crashing",
+    "performance": "Execution time within specified limits"
+  }
+}

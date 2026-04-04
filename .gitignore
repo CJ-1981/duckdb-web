@@ -56,6 +56,11 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
+# Playwright E2E Tests
+test-results/
+playwright-report/
+playwright/.cache/
+
 # OS / IDE
 .DS_Store
 Thumbs.db
