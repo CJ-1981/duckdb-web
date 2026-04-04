@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import WorkspaceCanvas from '@/components/workflow/canvas';
-import { Database, Filter, ArrowRightLeft, Table, Settings, Play, Download, Search, LayoutDashboard, SlidersHorizontal, FileText, FileDown, Save, FolderOpen, Sigma, Eye, ChevronDown, ChevronRight, SortAsc, ListOrdered, Calculator, Code, Fingerprint, PenLine, GitBranch, BarChart3, Plus, Trash2, Wand2, Microscope, PanelLeftClose, PanelLeftOpen, PanelBottomClose, Copy, X, CheckCheck, AlertCircle } from 'lucide-react';
+import { Database, Filter, ArrowRightLeft, Table, Settings, Play, Download, Search, LayoutDashboard, SlidersHorizontal, FileText, FileDown, Save, FolderOpen, Sigma, Eye, ChevronDown, ChevronRight, SortAsc, ListOrdered, Calculator, Code, Fingerprint, PenLine, GitBranch, BarChart3, Plus, Trash2, Wand2, Microscope, PanelLeftClose, PanelLeftOpen, PanelBottomClose, Copy, X, CheckCheck, AlertCircle, CheckCircle } from 'lucide-react';
 import { Node, Edge, useReactFlow, ReactFlowProvider, useNodesState, useEdgesState, Panel } from '@xyflow/react';
 import { executeWorkflow, uploadFile, saveWorkflow, listSavedWorkflows, loadWorkflowGraph, generateReport, inspectNode, renameWorkflow, validateSql } from '@/lib/api';
 import DataInspectionPanel, { type ColumnTypeDef, type FullStats } from '@/components/panels/DataInspectionPanel';
@@ -151,85 +151,6 @@ function getConditionSql(col: string, op: string, val: string): string {
 }
 // ─────────────────────────────────────────────────────────────────────────────
 
-function ExecuteButton() {
-  const { getNodes, getEdges, setNodes } = useReactFlow();
-
-  const handleExecute = async () => {
-    try {
-      const nodes = getNodes();
-      const edges = getEdges();
-      console.log('--- Workflow Execution Start ---');
-      console.log('Nodes structure:', JSON.stringify(nodes, null, 2));
-      console.log('Executing workflow with', nodes.length, 'nodes');
-      const result = await executeWorkflow(nodes, edges);
-
-      // Update any filter nodes with the discovered columns so the user can select them
-      if (result.columns) {
-        setNodes((nds) => nds.map((node) => {
-          if (node.id.includes('Filter') || node.type === 'default') {
-            return {
-              ...node,
-              data: {
-                ...node.data,
-                config: {
-                  ...(node.data.config as any || {}),
-                  availableColumns: result.columns
-                }
-              }
-            };
-          }
-          return node;
-        }));
-      }
-
-      alert(`Success! processed ${result.row_count} rows.`);
-
-      // If there's an export file, trigger browser download
-      if (result.export_url) {
-        const downloadUrl = `http://localhost:8000${result.export_url}`;
-        const link = document.createElement('a');
-        link.href = downloadUrl;
-        link.setAttribute('download', '');
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        console.log('Export triggered for:', downloadUrl);
-
-        // Update the output node in the UI to show the new path
-        setNodes((nds) => nds.map((node) => {
-          if (node.type === 'output') {
-            return {
-              ...node,
-              data: {
-                ...node.data,
-                config: {
-                  ...(node.data.config as any || {}),
-                  file_path: result.export_url
-                }
-              }
-            };
-          }
-          return node;
-        }));
-      }
-
-      console.log('Preview data:', result.preview);
-    } catch (error) {
-      console.error(error);
-      alert('Execution failed. Trace: ' + (error instanceof Error ? error.message : String(error)));
-    }
-  };
-
-  return (
-    <button
-      onClick={handleExecute}
-      className="flex items-center space-x-2 px-4 py-2 text-sm font-medium text-white bg-[#0052CC] hover:bg-[#0065FF] rounded-md transition-colors shadow-sm"
-    >
-      <Play size={16} fill="currentColor" />
-      <span>Execute Workflow</span>
-    </button>
-  );
-}
 
 function Dashboard() {
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
@@ -250,6 +171,7 @@ function Dashboard() {
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [executionSuccess, setExecutionSuccess] = useState(false);
   const [executionMessage, setExecutionMessage] = useState<{ title: string; detail: string; type: 'success' | 'error' | 'info' } | null>(null);
+  const [aiSqlInitialPrompt, setAiSqlInitialPrompt] = useState<string>('');
   const [previewHeight, setPreviewHeight] = useState(280);
   const [previewLimit, setPreviewLimit] = useState(50);
   const [nodeSamples, setNodeSamples] = useState<Record<string, any[]>>({});
@@ -265,15 +187,9 @@ function Dashboard() {
   ]);
   const [activeTabId, setActiveTabId] = useState<string | null>('initial-workflow');
 
-  // DEBUG: State watcher
-  React.useEffect(() => {
-    console.log(`[DEBUG] State update - saveSuccess: ${saveSuccess}, isExecuting: ${isExecuting}, selectedNode: ${selectedNode?.id}`);
-  }, [saveSuccess, isExecuting, selectedNode?.id]);
-
   const switchTab = (tabId: string) => {
     if (tabId === activeTabId) return;
     
-    // 1. Save current state to the active tab
     setTabs(prev => prev.map(t => t.id === activeTabId ? {
       ...t,
       nodes: getNodes(),
@@ -283,7 +199,6 @@ function Dashboard() {
       name: currentPipelineName || t.name
     } : t));
 
-    // 2. Load the target tab's state
     const targetTab = tabs.find(t => t.id === tabId);
     if (targetTab) {
       setNodes(targetTab.nodes);
@@ -307,7 +222,6 @@ function Dashboard() {
       nodeTypes: {}
     };
 
-    // Save current before switching
     if (activeTabId) {
       setTabs(prev => prev.map(t => t.id === activeTabId ? {
         ...t,
@@ -332,7 +246,6 @@ function Dashboard() {
   const closeTab = (tabId: string, e: React.MouseEvent) => {
     e.stopPropagation();
     if (tabs.length <= 1) {
-      // If closing last tab, just clear it instead of removing
       setNodes([]);
       setEdges([]);
       setNodeSamples({});
@@ -488,33 +401,39 @@ function Dashboard() {
   };
 
   const handleRenameWorkflow = async () => {
-    if (!currentPipelineName || !newName) return;
     try {
-      await renameWorkflow(currentPipelineName, newName);
+      await renameWorkflow(currentPipelineName || "", newName);
       setCurrentPipelineName(newName);
       setNewName("");
       setIsRenameModalOpen(false);
-      alert("Pipeline renamed!");
+      setExecutionMessage({ title: "Pipeline renamed!", detail: `Algorithm was renamed to ${newName}.`, type: 'success' });
+      setExecutionSuccess(true);
+      setTimeout(() => { setExecutionSuccess(false); setExecutionMessage(null); }, 4000);
     } catch (e: any) {
-      alert(e.message || "Rename failed.");
+      setExecutionMessage({ title: "Rename failed.", detail: e.message || "Something went wrong.", type: 'error' });
+      setExecutionSuccess(true);
     }
   };
 
   const handleSaveWorkflow = async () => {
-    if (!workflowName) return;
     try {
       await saveWorkflow(workflowName, getNodes(), getEdges());
       setCurrentPipelineName(workflowName);
-      alert("Pipeline saved!");
       setIsSaveModalOpen(false);
       setWorkflowName("");
-    } catch (e) { alert("Save failed."); console.error(e); }
+      setExecutionMessage({ title: "Pipeline saved!", detail: `Workflow '${workflowName}' has been secured.`, type: 'success' });
+      setExecutionSuccess(true);
+      setTimeout(() => { setExecutionSuccess(false); setExecutionMessage(null); }, 4000);
+    } catch (e: any) { 
+      setExecutionMessage({ title: "Save failed.", detail: e.message || "Could not save workflow.", type: 'error' });
+      setExecutionSuccess(true);
+      console.error(e); 
+    }
   };
 
   const handleLoadWorkflow = async (name: string) => {
     try {
       const data = await loadWorkflowGraph(name);
-      // Strip any legacy 'className' that causes double-rendering
       const sanitizedNodes = (data.nodes || []).map((n: any) => {
         const { className, ...rest } = n;
         return rest;
@@ -523,7 +442,14 @@ function Dashboard() {
       setEdges(data.edges || []);
       setCurrentPipelineName(name);
       setIsLoadModalOpen(false);
-    } catch (e) { alert("Load failed."); console.error(e); }
+      setExecutionMessage({ title: "Pipeline loaded!", detail: `Fetched '${name}' and reconstructed 100% of the graph.`, type: 'success' });
+      setExecutionSuccess(true);
+      setTimeout(() => { setExecutionSuccess(false); setExecutionMessage(null); }, 4000);
+    } catch (e: any) { 
+      setExecutionMessage({ title: "Load failed.", detail: e.message || "Could not load workflow.", type: 'error' });
+      setExecutionSuccess(true);
+      console.error(e); 
+    }
   };
 
   const openLoadModal = async () => {
@@ -531,7 +457,7 @@ function Dashboard() {
       const { workflows } = await listSavedWorkflows();
       setAvailableWorkflows(workflows || []);
       setIsLoadModalOpen(true);
-    } catch (e) { alert("Error fetching workflows."); }
+    } catch (e) { setExecutionMessage({ title: "Error", detail: "Could not fetch workflows.", type: 'error' }); setExecutionSuccess(true); }
   };
 
   const getUpstreamColumns = (nodeId: string) => {
@@ -548,7 +474,6 @@ function Dashboard() {
       const config = node.data?.config as any;
       const subtype = node.data?.subtype;
 
-      // 1. If it's an aggregate node, it creates a new schema
       if (subtype === 'aggregate') {
         const predictedCols = new Set<string>();
         const groupBy = (config?.groupBy || "").split(',').map((c: string) => c.trim()).filter((c: string) => c);
@@ -570,7 +495,6 @@ function Dashboard() {
         return Array.from(predictedCols) as string[];
       }
 
-      // 1b. Schema modifiers
       if (['computed', 'window', 'case_when'].includes(subtype as string)) {
         const upstream = edges.filter(e => e.target === nId).map(e => getNodeOutputColumns(e.source, visited)).flat();
         const predicted = new Set(upstream);
@@ -587,25 +511,21 @@ function Dashboard() {
         return Array.from(mapped);
       }
 
-      // 2. Select node reduction
       if (subtype === 'select') {
         const cols = (config?.columns || "").split(',').map((c: string) => c.trim()).filter((c: string) => c);
         if (cols.length > 0) return cols;
       }
 
-      // 2. If it's an input node, use its columns
       if (node.type === 'input') {
         return config?.availableColumns || [];
       }
 
-      // 3. Otherwise (Filter, Clean, etc.), trace upstream
       const incoming = edges.filter(e => e.target === nId);
       const upstreamCols = new Set<string>();
       for (const edge of incoming) {
         getNodeOutputColumns(edge.source, visited).forEach(c => upstreamCols.add(c));
       }
 
-      // If we have real columns from execution, they are most accurate
       if (Array.isArray(config?.availableColumns) && config.availableColumns.length > 0) {
         return config.availableColumns;
       }
@@ -628,11 +548,9 @@ function Dashboard() {
 
   const saveNodeChanges = () => {
     if (!selectedNode) return;
-    console.log('[DEBUG] saveNodeChanges triggered');
     setNodes((nds: Node[]) =>
       nds.map((node: Node) => {
         if (node.id === (selectedNode as Node).id) {
-          // Return a brand new object to ensure React Flow triggers a re-render
           return {
             ...node,
             data: { ...selectedNode.data }
@@ -642,9 +560,7 @@ function Dashboard() {
       })
     );
     setSaveSuccess(true);
-    console.log('[DEBUG] saveSuccess set to TRUE, starting 4000ms timer');
     setTimeout(() => {
-      console.log('[DEBUG] 4000ms timer ended - resetting saveSuccess');
       setSaveSuccess(false);
     }, 4000);
   };
@@ -673,21 +589,15 @@ function Dashboard() {
         }
       })));
 
-      console.log('[DEBUG] Execution success result:', result);
       setExecutionSuccess(true);
-      console.log('[DEBUG] setExecutionSuccess(true), starting 4000ms timer');
       setTimeout(() => {
-        console.log('[DEBUG] ExecutionSuccess timer ended - resetting state');
         setExecutionSuccess(false);
         setExecutionMessage(null);
       }, 4000);
 
-      // Keep the alert for now as a fallback, or we can remove it if preferred
-      // alert(`Success! Processed ${result.row_count} rows.`);
-
-    } catch (e) {
-      alert("Execution failed.");
-      console.error(e);
+    } catch (e: any) {
+      setExecutionMessage({ title: "Execution failed.", detail: e.message || String(e), type: 'error' });
+      setExecutionSuccess(true);
     } finally {
       setIsExecuting(false);
     }
@@ -731,7 +641,6 @@ function Dashboard() {
       const totalInGroup = group.length;
       const xOffset = (indexInGroup - (totalInGroup - 1) / 2) * HORIZONTAL_GAP;
       
-      // Safety check for existing positions if they are NaN
       const currentX = isNaN(node.position?.x) ? CANVAS_CENTER_X : node.position.x;
       const currentY = isNaN(node.position?.y) ? 50 : node.position.y;
 
@@ -767,20 +676,17 @@ function Dashboard() {
   const handleFetchFullStats = async (nodeId: string): Promise<FullStats> => {
     const rawNodes = getNodes();
     const rawEdges = getEdges();
-    // Strip React Flow internal properties to avoid JSON serialization issues
     const nodes = rawNodes.map(n => ({ id: n.id, type: n.type, position: n.position, data: n.data }));
     const edges = rawEdges.map(e => ({ id: e.id, source: e.source, target: e.target }));
     const result = await inspectNode(nodes, edges, nodeId);
     return result as FullStats;
   };
 
-  // ─── Keyboard Shortcuts ───────────────────────────────────────────────────
   const isMac = typeof window !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.userAgent);
   const mod = isMac ? '⌘' : 'Ctrl+';
 
   React.useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Don't trigger if user is typing in an input, textarea, or select
       const activeElement = document.activeElement;
       if (
         activeElement instanceof HTMLInputElement ||
@@ -795,7 +701,7 @@ function Dashboard() {
       
       if (modifier) {
         const key = e.key.toLowerCase();
-        if (key === 'n' && modifier && e.shiftKey) { // ⌘+Shift+N
+        if (key === 'n' && modifier && e.shiftKey) { 
           e.preventDefault();
           handleNewWorkflow();
         } else if (key === 'r') {
@@ -824,7 +730,6 @@ function Dashboard() {
 
   return (
     <div className="flex flex-col h-screen bg-[#FAFBFC] overflow-hidden text-[#171717]">
-      {/* Top Header */}
       <header className="h-16 flex items-center justify-between px-6 bg-white border-b border-[#DFE1E6] shrink-0">
         <div className="flex items-center space-x-3">
           <button
@@ -832,7 +737,6 @@ function Dashboard() {
             onMouseEnter={(e) => showHeaderTooltip(e, isSidebarCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar', `Toggle the component palette sidebar (${isMac ? '⌘' : 'Ctrl'}+[).`)}
             onMouseLeave={hideTooltip}
             className="p-2 text-[#6B778C] hover:bg-gray-100 rounded-md transition-colors mr-1"
-            title={isSidebarCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
           >
             {isSidebarCollapsed ? <PanelLeftOpen size={20} /> : <PanelLeftClose size={20} />}
           </button>
@@ -905,7 +809,6 @@ function Dashboard() {
         </div>
       </header>
 
-      {/* Workflow Tabs Bar */}
       <div className="flex items-center px-2 bg-[#F4F5F7] border-b border-[#DFE1E6] h-9 shrink-0 overflow-x-auto no-scrollbar">
         {tabs.map((tab) => {
           const isActive = activeTabId === tab.id;
@@ -941,7 +844,6 @@ function Dashboard() {
       </div>
 
       <div className="flex flex-1 overflow-hidden">
-        {/* Left Sidebar - Component Palette */}
         <aside
           className={`${isSidebarCollapsed ? 'w-0 opacity-0 -translate-x-full border-none overflow-hidden' : 'w-64 opacity-100 translate-x-0 border-r overflow-y-auto'} bg-white border-[#DFE1E6] flex flex-col transition-all duration-300 ease-in-out shrink-0`}
         >
@@ -1054,7 +956,6 @@ function Dashboard() {
           </div>
         </aside>
 
-        {/* Main Canvas Area */}
         <main className="flex-1 relative flex flex-col h-[calc(100vh-4rem)]">
           <WorkspaceCanvas 
             nodes={nodes}
@@ -1073,7 +974,6 @@ function Dashboard() {
             isBottomPanelVisible={isBottomPanelVisible && !!selectedNode}
             bottomPanelHeight={previewHeight}
           >
-            {/* Resizable Bottom Preview Panel - Now inside WorkspaceCanvas Panel */}
             {selectedNode && isBottomPanelVisible && (
               <Panel position="bottom-left" style={{ width: '100%', margin: 0 }}>
                 <div
@@ -1081,7 +981,6 @@ function Dashboard() {
                   className="bg-white border-t border-[#DFE1E6] flex flex-col relative z-[60] shadow-[0_-4px_12px_rgba(0,0,0,0.05)] transition-all duration-300"
                   onPointerDown={(e) => e.stopPropagation()}
                 >
-                  {/* Resize Handle */}
                   <div 
                     className="absolute -top-1.5 left-0 right-0 h-3 cursor-row-resize z-50 flex items-center justify-center group"
                     onMouseDown={(e) => {
@@ -1102,7 +1001,6 @@ function Dashboard() {
                     <div className="w-16 h-1 bg-[#DFE1E6] rounded-full group-hover:bg-[#0052CC] transition-colors" />
                   </div>
                   
-                  {/* Tab Header inside Panel */}
                   <div className="flex items-center justify-between px-4 py-2 bg-[#FAFBFC] border-b border-[#DFE1E6] h-12 select-none">
                     <div className="flex items-center space-x-1">
                       {[
@@ -1155,9 +1053,7 @@ function Dashboard() {
                     </div>
                   </div>
 
-                  {/* Tab Content */}
                   <div className="flex-1 overflow-hidden bg-white flex flex-col">
-                    {/* Tab 0: Data Preview */}
                     {activeBottomTab === 0 && (
                       <div className="h-full overflow-auto">
                         {nodeSamples[selectedNode.id] && nodeSamples[selectedNode.id].length > 0 ? (
@@ -1193,7 +1089,6 @@ function Dashboard() {
                       </div>
                     )}
 
-                    {/* Tab 1: Data Inspection */}
                     {activeBottomTab === 1 && (
                       <DataInspectionPanel
                         nodeId={selectedNode.id}
@@ -1204,12 +1099,12 @@ function Dashboard() {
                       />
                     )}
 
-                    {/* Tab 2: AI SQL Builder */}
                     {activeBottomTab === 2 && (
                       <div className="h-full min-h-0 flex flex-col overflow-hidden">
                         <AiSqlBuilderPanel
                           schema={nodeTypes[selectedNode.id] || []}
                           onInsertSql={handleInsertSql}
+                          initialPrompt={aiSqlInitialPrompt}
                         />
                       </div>
                     )}
@@ -1307,15 +1202,28 @@ function Dashboard() {
                                     }
                                   };
                                 }
-                                return n;
-                              }));
-                            } catch (err) {
-                              alert("File upload failed!");
-                              console.error(err);
+                                  return n;
+                                }));
+                                
+                                if (uploadResult.column_types && selectedNode) {
+                                  setNodeTypes(prev => ({
+                                    ...prev,
+                                    [selectedNode.id]: uploadResult.column_types
+                                  }));
+                                }
+
+                                setExecutionMessage({ title: "File uploaded!", detail: `${file.name} ready for analysis. Discovered ${uploadResult.available_columns?.length || 0} columns and ${uploadResult.total_rows?.toLocaleString() || 0} rows.`, type: 'success' });
+                                setExecutionSuccess(true);
+                                setTimeout(() => { setExecutionSuccess(false); setExecutionMessage(null); }, 4000);
+
+                              } catch (err) {
+                                setExecutionMessage({ title: "File upload failed!", detail: String(err), type: 'error' });
+                                setExecutionSuccess(true);
+                                console.error(err);
+                              }
                             }
-                          }
-                        }}
-                      />
+                          }}
+                        />
                       <div className="space-y-1 text-center">
                         <FileText className="mx-auto h-8 w-8 text-[#6B778C]" />
                         <div className="flex justify-center text-sm text-gray-600">
@@ -1327,7 +1235,39 @@ function Dashboard() {
                     </label>
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-[#6B778C] mb-1">Server Upload Path</label>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-xs font-semibold text-[#6B778C]">Server Upload Path</label>
+                      <button
+                        onClick={async () => {
+                          if (selectedNode) {
+                            try {
+                              setExecutionMessage({ title: "Connecting to server...", detail: `Fetching schema and samples for ${selectedNode.data?.label || 'node'}.`, type: 'info' });
+                              setExecutionSuccess(true);
+                              
+                              // Trigger inspection
+                              const res = await inspectNode(getNodes(), getEdges(), selectedNode.id);
+                              
+                              // Populate samples if returned
+                              if (res.node_samples) {
+                                setNodeSamples(prev => ({ ...prev, [selectedNode.id]: res.node_samples }));
+                              }
+                              
+                              setActiveBottomTab(1); // Data Inspection
+                              setIsBottomPanelVisible(true);
+                              setExecutionMessage({ title: "Ready for Inspection", detail: `Successfully loaded ${res.total_rows?.toLocaleString() || 0} rows and ${res.total_columns || 0} columns.`, type: 'success' });
+                              setTimeout(() => { setExecutionSuccess(false); setExecutionMessage(null); }, 4000);
+                            } catch (e: any) {
+                              setExecutionMessage({ title: "Inspection failed.", detail: e.message || "Could not fetch data sample.", type: 'error' });
+                              setExecutionSuccess(true);
+                            }
+                          }
+                        }}
+                        className="text-[10px] font-bold text-[#0052CC] hover:text-white hover:bg-[#0052CC] flex items-center gap-1 bg-[#0052CC]/5 px-2.5 py-1 rounded transition-all shadow-sm active:scale-95 border border-[#0052CC]/10 hover:border-[#0052CC] hover:shadow-md focus:outline-none focus:ring-1 focus:ring-[#0052CC]/30"
+                      >
+                        <Microscope size={12} />
+                        INSPECT
+                      </button>
+                    </div>
                     <input type="text" readOnly value={String((selectedNode.data.config as Record<string, unknown>)?.file_path || "None uploaded")} className="w-full bg-gray-50 border border-[#DFE1E6] rounded-md px-3 py-2 text-xs text-[#6B778C] font-mono" />
                   </div>
                   <div>
@@ -1862,9 +1802,13 @@ function Dashboard() {
                                     setExecutionSuccess(true);
                                     setTimeout(() => { setExecutionSuccess(false); setExecutionMessage(null); }, 4000);
                                   } else {
-                                    setExecutionMessage({ title: "SQL Error", detail: result.message, type: 'error' });
+                                    let message = result.message;
+                                    if (message.includes('sum(VARCHAR)') || message.includes('No function matches the given name and argument types')) {
+                                      message += '\n\nTIP: Try RUNNING the pipeline first to update the schema metadata, or use explicit casting: SUM(TRY_CAST(col AS DOUBLE)).';
+                                    }
+                                    setExecutionMessage({ title: "SQL Error", detail: message, type: 'error' });
                                     setExecutionSuccess(true);
-                                    setTimeout(() => { setExecutionSuccess(false); setExecutionMessage(null); }, 6000); // Errors stay longer
+                                    setTimeout(() => { setExecutionSuccess(false); setExecutionMessage(null); }, 8000); 
                                   }
                                 } catch (e: any) {
                                   setExecutionMessage({ title: "Validation Error", detail: e.message, type: 'error' });
@@ -1876,6 +1820,44 @@ function Dashboard() {
                             >
                               <Search size={12} className="text-[#6B778C]" />
                               VALIDATE
+                            </button>
+                            {/* FIX WITH AI BUTTON */}
+                            <button
+                              onClick={async () => {
+                                const currentSql = (selectedNode.data.config as any)?.sql || '';
+                                if (!currentSql) return;
+                                
+                                setExecutionMessage({ title: "AI Fixing...", detail: "Asking AI to fix your SQL query structure.", type: 'info' });
+                                setExecutionSuccess(true);
+
+                                try {
+                                  // Reuse AI credentials from localStorage (matching AiSqlBuilderPanel logic)
+                                  const providerId = localStorage.getItem('ai_sql_provider') || 'google';
+                                  const apiKey = localStorage.getItem(`ai_sql_key_${providerId}`);
+                                  if (!apiKey) throw new Error("No AI API key found. Please set one in the AI SQL Builder sidebar.");
+                                  
+                                  const cols = getUpstreamColumns(selectedNode.id);
+                                  const promptText = `My DuckDB SQL query is failing with an error. 
+Current SQL: ${currentSql}
+Schema: ${cols.join(', ')}
+Please fix the SQL. Return ONLY the raw SQL query.`;
+
+                                  setAiSqlInitialPrompt(promptText);
+                                  setActiveBottomTab(2); // AI SQL Builder
+                                  setIsBottomPanelVisible(true);
+                                  
+                                  setExecutionMessage({ title: "Focusing AI Builder", detail: "SQL and context description moved to AI SQL Builder sidebar.", type: 'success' });
+                                  setExecutionSuccess(true);
+                                  setTimeout(() => { setExecutionSuccess(false); setExecutionMessage(null); }, 4000);
+                                } catch (e: any) {
+                                  setExecutionMessage({ title: "Fix Failed", detail: e.message, type: 'error' });
+                                  setExecutionSuccess(true);
+                                }
+                              }}
+                              className="text-[10px] bg-[#EBF4FF] hover:bg-[#B3D4FF] text-[#0052CC] px-2 py-1 rounded font-bold transition-all flex items-center gap-1.5"
+                            >
+                              <Wand2 size={12} className="text-[#0052CC]" />
+                              FIX WITH AI
                             </button>
                             <button
                               onClick={() => {
@@ -2690,9 +2672,8 @@ function Dashboard() {
               <div className="text-[10px] font-bold text-[#89DCEB] mb-1 uppercase tracking-wider">{tooltip.label}</div>
               <div className="text-[11px] leading-relaxed text-[#CDD6F4]">{tooltip.text}</div>
             </div>
-          </div>
-        )
-      }
+        </div>
+      )}
 
 
       {/* Success Notification for Query Execution */}
@@ -2715,14 +2696,27 @@ function Dashboard() {
               <span className="text-xs font-bold leading-none mb-0.5 uppercase tracking-wider">
                 {executionMessage?.title || (executionMessage?.type === 'error' ? 'Execution Error' : 'Query Successful')}
               </span>
-              <span className="text-[10px] opacity-90 text-white/80 max-w-xs truncate">
+              <span className={`text-[10px] opacity-90 text-white/80 ${executionMessage?.type === 'error' ? 'max-w-md line-clamp-2' : 'max-w-xs truncate'}`}>
                 {executionMessage?.detail || (executionMessage?.type === 'error' ? 'Something went wrong.' : `Processed ${executionResult?.row_count?.toLocaleString()} rows successfully`)}
               </span>
             </div>
             {executionMessage?.type === 'error' && (
-               <button onClick={() => { setExecutionSuccess(false); setExecutionMessage(null); }} className="hover:bg-white/20 p-1 rounded transition-colors ml-1">
-                 <X size={14} />
-               </button>
+               <div className="flex items-center gap-1 ml-2">
+                 <button 
+                  onClick={() => {
+                    navigator.clipboard.writeText(executionMessage.detail);
+                    setExecutionMessage({ ...executionMessage, title: "Copied to clipboard!", type: 'success' });
+                    setTimeout(() => { setExecutionSuccess(false); setExecutionMessage(null); }, 2000);
+                  }}
+                  className="hover:bg-white/20 p-1.5 rounded transition-colors group relative"
+                  title="Copy full error message"
+                 >
+                   <Copy size={14} />
+                 </button>
+                 <button onClick={() => { setExecutionSuccess(false); setExecutionMessage(null); }} className="hover:bg-white/20 p-1.5 rounded transition-colors">
+                   <X size={14} />
+                 </button>
+               </div>
             )}
           </div>
         </div>

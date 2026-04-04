@@ -40,6 +40,17 @@ from src.api.services.workflow import WorkflowService
 
 router = APIRouter(prefix="/api/v1/workflows", tags=["Workflows"])
 
+# Global State for Incremental Caching
+# node_id -> { "hash": str, "table_name": str, "timestamp": float }
+_NODE_CACHE: Dict[str, Dict[str, Any]] = {}
+_GLOBAL_CONN: Optional[duckdb.DuckDBPyConnection] = None
+
+def get_connection():
+    global _GLOBAL_CONN
+    if _GLOBAL_CONN is None:
+        _GLOBAL_CONN = duckdb.connect(database=':memory:')
+    return _GLOBAL_CONN
+
 def quote_identifier(name: str) -> str:
     """Quote a SQL identifier and escape internal double quotes for DuckDB/Standard SQL."""
     if not name:
@@ -170,7 +181,7 @@ async def validate_sql(
             if not cols_def:
                 cols_def = ["1 as id"]
                 
-            create_sql = f"CREATE TABLE \"{input_table.replace('\"', '\"\"')}\" AS SELECT {', '.join(cols_def)} WHERE 1=0"
+            create_sql = f"CREATE OR REPLACE TABLE \"{input_table.replace('\"', '\"\"')}\" AS SELECT {', '.join(cols_def)} WHERE 1=0"
             logger.info(f">>> [VALIDATE] Schema SQL: {create_sql}")
             conn.execute(create_sql)
         
@@ -242,13 +253,13 @@ async def execute_workflow_graph(
     for node in request.nodes:
         sort_nodes(node["id"])
         
-    # 3. Build Query node by node
+    # 3. Build Query node by node with Incremental Caching
     node_to_table = {} 
     
     logger.info(f"--- Workflow Execution Start: {len(sorted_nodes)} nodes ---")
     
     try:
-        conn = duckdb.connect(database=':memory:')
+        conn = get_connection()
         
         for i, node in enumerate(sorted_nodes):
             node_id = node["id"]
@@ -259,9 +270,28 @@ async def execute_workflow_graph(
             label = node_data.get("label", "")
             config = node_data.get("config", {})
             
-            preds = predecessors[node_id]
+            preds = predecessors.get(node_id, [])
             prev_table = node_to_table.get(preds[0]) if preds else None
             
+            # --- Incremental Caching Logic ---
+            # Generate a hash for this node based on its config and its predecessor tables/hashes
+            input_hashes = [f"{p}:{_NODE_CACHE.get(p, {}).get('hash', 'root')}" for p in preds]
+            node_state_str = json.dumps({"config": config, "inputs": input_hashes, "subtype": subtype, "type": node["type"]}, sort_keys=True)
+            node_hash = str(hash(node_state_str))
+            
+            # Check cache
+            cached = _NODE_CACHE.get(node_id)
+            if cached and cached["hash"] == node_hash:
+                # Table should already exist in memory
+                try:
+                    conn.execute(f"SELECT 1 FROM {cached['table_name']} LIMIT 0")
+                    logger.info(f"Node {label} (ID: {node_id}) recovered from cache.")
+                    node_to_table[node_id] = cached["table_name"]
+                    continue
+                except:
+                    logger.info(f"Cache hit but table {cached['table_name']} missing. Re-executing...")
+            
+            # If not cached, execute and update cache
             logger.info(f"Processing node {i+1}/{len(sorted_nodes)}: {label}")
             
             if node["type"] == "input":
@@ -293,7 +323,7 @@ async def execute_workflow_graph(
                         columns = sorted(list(all_keys))
                         col_defs = ", ".join([f'"{c}" VARCHAR' for c in columns])
                         if col_defs: col_defs = ", " + col_defs
-                        conn.execute(f"CREATE TABLE {table_name} (id VARCHAR, timestamp VARCHAR {col_defs})")
+                        conn.execute(f"CREATE OR REPLACE TABLE {table_name} (id VARCHAR, timestamp VARCHAR {col_defs})")
                         
                         # Insert
                         all_cols = ["id", "timestamp"] + columns
@@ -306,11 +336,11 @@ async def execute_workflow_graph(
                         
                         node_to_table[node_id] = table_name
                     else:
-                        conn.execute(f"CREATE TEMP TABLE {table_name} AS SELECT * FROM read_csv_auto(?)", [file_path])
+                        conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT * FROM read_csv_auto(?)", [file_path])
                         node_to_table[node_id] = table_name
                 else:
                         # Standard Flat loading
-                        sql = f"CREATE TEMP TABLE {table_name} AS SELECT * FROM read_csv_auto(?)"
+                        sql = f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT * FROM read_csv_auto(?)"
                         conn.execute(sql, [file_path])
                         node_to_table[node_id] = table_name
                 
@@ -349,7 +379,7 @@ async def execute_workflow_graph(
                             where = f"TRY_CAST(REPLACE(CAST({qc} AS VARCHAR), ',', '') AS DOUBLE) {op} {num_val}"
                 
                 if where:
-                    conn.execute(f"CREATE TEMP TABLE {table_name} AS SELECT * FROM {prev_table} WHERE {where}")
+                    conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT * FROM {prev_table} WHERE {where}")
                     node_to_table[node_id] = table_name
                 else:
                     node_to_table[node_id] = prev_table
@@ -359,7 +389,7 @@ async def execute_workflow_graph(
                 expr = config.get("expression")
                 alias = config.get("alias", "new_column")
                 if expr and alias:
-                    conn.execute(f"CREATE TEMP TABLE {table_name} AS SELECT *, {expr} AS {quote_identifier(alias)} FROM {prev_table}")
+                    conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT *, {expr} AS {quote_identifier(alias)} FROM {prev_table}")
                     node_to_table[node_id] = table_name
                 else:
                     node_to_table[node_id] = prev_table
@@ -371,7 +401,7 @@ async def execute_workflow_graph(
                     # Auto-convert backticks to double quotes for standard DuckDB support
                     # This helps with AI-generated or user-pasted MySQL-style queries
                     processed_sql = raw_sql.replace("{{input}}", input_table).replace("`", "\"")
-                    conn.execute(f"CREATE TEMP TABLE {table_name} AS {processed_sql}")
+                    conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS {processed_sql}")
                     node_to_table[node_id] = table_name
                 else:
                     node_to_table[node_id] = prev_table
@@ -381,9 +411,9 @@ async def execute_workflow_graph(
                 cols_raw = config.get("columns", "")
                 if cols_raw:
                     cols = [quote_identifier(c.strip()) for c in cols_raw.split(',') if c.strip()]
-                    conn.execute(f"CREATE TEMP TABLE {table_name} AS SELECT DISTINCT {', '.join(cols)} FROM {prev_table}")
+                    conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT DISTINCT {', '.join(cols)} FROM {prev_table}")
                 else:
-                    conn.execute(f"CREATE TEMP TABLE {table_name} AS SELECT DISTINCT * FROM {prev_table}")
+                    conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT DISTINCT * FROM {prev_table}")
                 node_to_table[node_id] = table_name
 
             elif subtype == "rename":
@@ -393,7 +423,7 @@ async def execute_workflow_graph(
                     all_cols = conn.execute(f"DESCRIBE {prev_table}").df()['column_name'].tolist()
                     renamed_map = {m['old']: m['new'] for m in mappings if m.get('old') and m.get('new')}
                     select_items = [f"{quote_identifier(col)} AS {quote_identifier(renamed_map[col])}" if col in renamed_map else quote_identifier(col) for col in all_cols]
-                    conn.execute(f"CREATE TEMP TABLE {table_name} AS SELECT {', '.join(select_items)} FROM {prev_table}")
+                    conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT {', '.join(select_items)} FROM {prev_table}")
                     node_to_table[node_id] = table_name
                 else:
                     node_to_table[node_id] = prev_table
@@ -419,7 +449,7 @@ async def execute_workflow_graph(
                         w, t = c.get('when'), c.get('then')
                         if w and t: case_parts.append(f"WHEN {w} THEN {sql_val(t)}")
                     case_parts.append(f"ELSE {sql_val(else_val_raw)} END AS {quote_identifier(alias)}")
-                    conn.execute(f"CREATE TEMP TABLE {table_name} AS SELECT *, {' '.join(case_parts)} FROM {prev_table}")
+                    conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT *, {' '.join(case_parts)} FROM {prev_table}")
                     node_to_table[node_id] = table_name
                 else:
                     node_to_table[node_id] = prev_table
@@ -462,7 +492,7 @@ async def execute_workflow_graph(
                 if order: over_parts.append(f"ORDER BY {quote_identifier(order)} {direction}")
 
                 sql = (
-                    f"CREATE TEMP TABLE {table_name} AS "
+                    f"CREATE OR REPLACE TEMP TABLE {table_name} AS "
                     f"SELECT *, {func_call} OVER ({' '.join(over_parts)}) AS {quote_identifier(alias)} "
                     f"FROM {prev_table}"
                 )
@@ -475,7 +505,7 @@ async def execute_workflow_graph(
                 col = config.get("column")
                 direction = config.get("direction", "asc").upper()
                 if col:
-                    conn.execute(f"CREATE TEMP TABLE {table_name} AS SELECT * FROM {prev_table} ORDER BY {quote_identifier(col)} {direction}")
+                    conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT * FROM {prev_table} ORDER BY {quote_identifier(col)} {direction}")
                     node_to_table[node_id] = table_name
                 else:
                     node_to_table[node_id] = prev_table
@@ -483,7 +513,7 @@ async def execute_workflow_graph(
             elif subtype == "limit" or "Limit" in label:
                 if not prev_table: continue
                 count = int(config.get("count", 100))
-                conn.execute(f"CREATE TEMP TABLE {table_name} AS SELECT * FROM {prev_table} LIMIT {count}")
+                conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT * FROM {prev_table} LIMIT {count}")
                 node_to_table[node_id] = table_name
                 
             elif subtype == "clean" or "Clean" in label:
@@ -497,7 +527,7 @@ async def execute_workflow_graph(
                     elif op == "numeric": expr = f"REGEXP_REPLACE(CAST({quote_identifier(col)} AS VARCHAR), '[^0-9.]', '', 'g')"
                     elif op == "replace_null": expr = f"COALESCE(NULLIF(CAST({quote_identifier(col)} AS VARCHAR), ''), '{config.get('newValue', '')}')"
                     elif op == "to_date": expr = f"TRY_CAST({quote_identifier(col)} AS DATE)"
-                    conn.execute(f"CREATE TEMP TABLE {table_name} AS SELECT * REPLACE ({expr} AS {quote_identifier(col)}) FROM {prev_table}")
+                    conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT * REPLACE ({expr} AS {quote_identifier(col)}) FROM {prev_table}")
                     node_to_table[node_id] = table_name
                 else:
                     node_to_table[node_id] = prev_table
@@ -506,7 +536,7 @@ async def execute_workflow_graph(
                 if not prev_table: continue
                 cols = [c.strip() for c in config.get("columns", "").split(',') if c.strip()]
                 if cols:
-                    conn.execute(f"CREATE TEMP TABLE {table_name} AS SELECT {', '.join([quote_identifier(c) for c in cols])} FROM {prev_table}")
+                    conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT {', '.join([quote_identifier(c) for c in cols])} FROM {prev_table}")
                     node_to_table[node_id] = table_name
                 else:
                     node_to_table[node_id] = prev_table
@@ -521,13 +551,13 @@ async def execute_workflow_graph(
                         if join_type in ["UNION", "UNION_ALL", "APPEND"]:
                             # Handle UNION (combining rows)
                             op = "UNION ALL" if join_type in ["UNION_ALL", "APPEND"] else "UNION"
-                            conn.execute(f"CREATE TEMP TABLE {table_name} AS SELECT * FROM {left} {op} SELECT * FROM {right}")
+                            conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT * FROM {left} {op} SELECT * FROM {right}")
                             node_to_table[node_id] = table_name
                         else:
                             # Handle JOIN (combining columns)
                             lc, rc = config.get("leftColumn"), config.get("rightColumn")
                             if lc and rc:
-                                conn.execute(f"CREATE TEMP TABLE {table_name} AS SELECT * FROM {left} {join_type} JOIN {right} ON {left}.{quote_identifier(lc)} = {right}.{quote_identifier(rc)}")
+                                conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT * FROM {left} {join_type} JOIN {right} ON {left}.{quote_identifier(lc)} = {right}.{quote_identifier(rc)}")
                                 node_to_table[node_id] = table_name
                             else:
                                 node_to_table[node_id] = left
@@ -557,7 +587,7 @@ async def execute_workflow_graph(
 
                 sel = ", ".join(agg_parts)
                 if group_by: sel = f"{', '.join([quote_identifier(c) for c in group_by])}, {sel}"
-                sql = f"CREATE TEMP TABLE {table_name} AS SELECT {sel} FROM {prev_table}"
+                sql = f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT {sel} FROM {prev_table}"
                 if group_by: sql += f" GROUP BY {', '.join([quote_identifier(c) for c in group_by])}"
                 conn.execute(sql)
                 node_to_table[node_id] = table_name
@@ -567,6 +597,16 @@ async def execute_workflow_graph(
 
             if node_id not in node_to_table and prev_table:
                 node_to_table[node_id] = prev_table
+
+            # Finalize Cached State
+            final_table = node_to_table.get(node_id)
+            if final_table:
+                import time
+                _NODE_CACHE[node_id] = {
+                    "hash": node_hash,
+                    "table_name": final_table,
+                    "timestamp": time.time()
+                }
 
         if not sorted_nodes:
             return {
@@ -857,7 +897,7 @@ async def inspect_node_dataset(request: InspectRequest):
                     fp = config.get("file_path")
                     if not fp: continue
                     if not os.path.isabs(fp): fp = os.path.abspath(fp)
-                    conn.execute(f"CREATE TEMP TABLE {table_name} AS SELECT * FROM read_csv_auto('{fp}')")
+                    conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT * FROM read_csv_auto('{fp}')")
                     node_to_table[node_id] = table_name
                 elif prev_table:
                     # Pass-through execution for all transformation nodes
@@ -879,13 +919,13 @@ async def inspect_node_dataset(request: InspectRequest):
                                 elif op == "is_not_null": where = f"(\"{col}\" IS NOT NULL AND CAST(\"{col}\" AS VARCHAR) != '')"
                                 elif op in [">", "<", ">=", "<="]: where = f"TRY_CAST(REPLACE(CAST(\"{col}\" AS VARCHAR), ',', '') AS DOUBLE) {op} {cv.replace(',', '')}"
                         if where:
-                            conn.execute(f"CREATE TEMP TABLE {table_name} AS SELECT * FROM {prev_table} WHERE {where}")
+                            conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT * FROM {prev_table} WHERE {where}")
                             node_to_table[node_id] = table_name
                         else: node_to_table[node_id] = prev_table
                     elif subtype == "select" or "Select" in label:
                         cols = [c.strip() for c in config.get("columns", "").split(',') if c.strip()]
                         if cols:
-                            conn.execute(f"CREATE TEMP TABLE {table_name} AS SELECT {', '.join([f'\"{c}\"' for c in cols])} FROM {prev_table}")
+                            conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT {', '.join([f'\"{c}\"' for c in cols])} FROM {prev_table}")
                             node_to_table[node_id] = table_name
                         else: node_to_table[node_id] = prev_table
                     elif subtype == "aggregate" or "Aggregate" in label:
@@ -900,24 +940,25 @@ async def inspect_node_dataset(request: InspectRequest):
                             else: agg_parts.append(f"COUNT(*) AS \"{al}\"")
                         sel = ", ".join(agg_parts)
                         if group_by: sel = f"{', '.join([f'\"{c}\"' for c in group_by])}, {sel}"
-                        sql = f"CREATE TEMP TABLE {table_name} AS SELECT {sel} FROM {prev_table}"
+                        sql = f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT {sel} FROM {prev_table}"
                         if group_by: sql += f" GROUP BY {', '.join([f'\"{c}\"' for c in group_by])}"
                         conn.execute(sql); node_to_table[node_id] = table_name
                     elif subtype == "sort" or "Sort" in label:
                         col, direction = config.get("column"), config.get("direction", "asc").upper()
                         if col:
-                            conn.execute(f"CREATE TEMP TABLE {table_name} AS SELECT * FROM {prev_table} ORDER BY \"{col}\" {direction}")
+                            conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT * FROM {prev_table} ORDER BY \"{col}\" {direction}")
                             node_to_table[node_id] = table_name
-                        else: node_to_table[node_id] = prev_table
+                        else:
+                            node_to_table[node_id] = prev_table
                     elif subtype == "limit" or "Limit" in label:
-                        conn.execute(f"CREATE TEMP TABLE {table_name} AS SELECT * FROM {prev_table} LIMIT {int(config.get('count', 100))}")
+                        conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT * FROM {prev_table} LIMIT {int(config.get('count', 100))}")
                         node_to_table[node_id] = table_name
                     elif subtype == "raw_sql":
                         raw_sql = config.get("sql", "")
                         if raw_sql:
                             # Auto-convert backticks to double quotes for standard DuckDB support
                             processed_sql = raw_sql.replace("{{input}}", prev_table).replace("`", "\"")
-                            conn.execute(f"CREATE TEMP TABLE {table_name} AS {processed_sql}")
+                            conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS {processed_sql}")
                             node_to_table[node_id] = table_name
                         else: node_to_table[node_id] = prev_table
                     else:
@@ -992,13 +1033,111 @@ async def inspect_node_dataset(request: InspectRequest):
             if isinstance(v, dict): return {ki: clean_json(vi) for ki, vi in v.items()}
             return v
 
-        return clean_json({"status": "success", "total_rows": total_rows, "total_columns": len(columns), "columns": columns})
+        preview_limit = 50
+        samples = conn.execute(f"SELECT * FROM {target_table} LIMIT {preview_limit}").df().fillna("").to_dict(orient="records")
+
+        return clean_json({
+            "status": "success", 
+            "total_rows": total_rows, 
+            "total_columns": len(columns), 
+            "columns": columns,
+            "node_samples": samples
+        })
 
     except HTTPException: raise
     except Exception as e:
         logger.error(f"Inspect error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Inspection error: {str(e)}")
 
+
+@router.post("/analyze", status_code=status.HTTP_200_OK)
+async def analyze_workflow_schema(request: WorkflowExecutionRequest):
+    """
+    Dry-run the workflow using DUMMY schemas to infer resulting column types for every node.
+    Does NOT read actual data (uses WHERE 1=0).
+    """
+    logger.info(f"Analyzing schema for {len(request.nodes)} nodes...")
+    conn = duckdb.connect(database=':memory:')
+    
+    adj = {node["id"]: [] for node in request.nodes}
+    predecessors = {node["id"]: [] for node in request.nodes}
+    for edge in request.edges:
+        src, tgt = edge.get("source"), edge.get("target")
+        if src in adj and tgt in adj:
+            adj[src].append(tgt); predecessors[tgt].append(src)
+            
+    sorted_nodes: list = []
+    visited: set = set()
+    def _sort(nid: str):
+        if nid in visited: return
+        for p in predecessors.get(nid, []): _sort(p)
+        visited.add(nid)
+        obj = next((n for n in request.nodes if n["id"] == nid), None)
+        if obj: sorted_nodes.append(obj)
+    for n in request.nodes: _sort(n["id"])
+
+    node_schemas = {}
+    node_to_table = {}
+
+    try:
+        for node in sorted_nodes:
+            nid = node["id"]
+            safe_id = nid.replace("-", "_")
+            tname = f"node_{safe_id}"
+            node_data = node.get("data", {})
+            subtype = node_data.get("subtype")
+            config = node_data.get("config", {})
+            preds = predecessors.get(nid, [])
+            prev_table = node_to_table.get(preds[0]) if preds else None
+            
+            try:
+                if node["type"] == "input":
+                    fp = config.get("file_path") or ""
+                    # Create dummy empty table from CSV schema
+                    if fp:
+                        conn.execute(f"CREATE OR REPLACE TEMP TABLE {tname} AS SELECT * FROM read_csv_auto(?) WHERE 1=0", [fp])
+                    else:
+                        conn.execute(f"CREATE OR REPLACE TEMP TABLE {tname} (dummy VARCHAR)")
+                    node_to_table[nid] = tname
+                elif prev_table:
+                    # Simplified transformation logic for schema analysis
+                    if subtype == "filter":
+                        conn.execute(f"CREATE OR REPLACE TEMP TABLE {tname} AS SELECT * FROM {prev_table} WHERE 1=0")
+                    elif subtype == "select":
+                        cols = [quote_identifier(c.strip()) for c in config.get("columns", "").split(',') if c.strip()]
+                        sel = ", ".join(cols) if cols else "*"
+                        conn.execute(f"CREATE OR REPLACE TEMP TABLE {tname} AS SELECT {sel} FROM {prev_table} WHERE 1=0")
+                    elif subtype == "aggregate":
+                        # Aggregation changes schema dramatically
+                        aggs = config.get("aggregations", []) or []
+                        if not aggs: aggs = [{"column": config.get("column"), "operation": config.get("operation", "sum").upper(), "alias": config.get("alias")}]
+                        agg_parts = []
+                        for a in aggs:
+                            c, f = a.get("column"), a.get("operation", "sum").upper()
+                            al = a.get("alias") or f"{f.lower()}_{c}"
+                            if c: agg_parts.append(f"CAST(NULL AS DOUBLE) AS {quote_identifier(al)}")
+                            else: agg_parts.append(f"CAST(0 AS BIGINT) AS {quote_identifier(al)}")
+                        
+                        group_by = [quote_identifier(c.strip()) for c in config.get("groupBy", "").split(',') if c.strip()]
+                        sel = ", ".join(agg_parts)
+                        if group_by: sel = f"{', '.join(group_by)}, {sel}"
+                        conn.execute(f"CREATE OR REPLACE TEMP TABLE {tname} AS SELECT {sel} FROM {prev_table} WHERE 1=0")
+                    else:
+                        # Default: carry over schema
+                        node_to_table[nid] = prev_table
+                        continue
+                    node_to_table[nid] = tname
+                
+                # Get schema
+                if nid in node_to_table:
+                    desc = conn.execute(f"DESCRIBE {node_to_table[nid]}").df()
+                    node_schemas[nid] = desc[['column_name', 'column_type']].to_dict(orient='records')
+            except Exception as e:
+                logger.warning(f"Analyze failed for node {nid}: {e}")
+
+        return {"status": "success", "node_schemas": node_schemas}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Analysis error: {str(e)}")
 
 @router.get("", response_model=WorkflowListResponse)
 @require_permission("workflows:read")

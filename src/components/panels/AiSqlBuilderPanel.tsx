@@ -86,6 +86,7 @@ Important rules:
 - NEVER use backticks for identifiers.
 - DO NOT quote function calls like COUNT(), SUM(), etc.
 - ALWAYS use clear aliases (AS "alias") for all aggregations and expressions
+- ALWAYS wrap columns in TRY_CAST("col" AS DOUBLE) when performing arithmetic (SUM, AVG, +, -, etc.) if the column type in the provided schema is VARCHAR.
 - Reference the input dataset using {{input}} as the table name
 - Return ONLY the raw SQL query without explanations or markdown fences`;
 }
@@ -153,9 +154,10 @@ async function callLLM(provider: Provider, model: string, apiKey: string, userPr
 interface Props {
   schema: ColumnTypeDef[];
   onInsertSql: (sql: string) => void;
+  initialPrompt?: string;
 }
 
-export default function AiSqlBuilderPanel({ schema, onInsertSql }: Props) {
+export default function AiSqlBuilderPanel({ schema, onInsertSql, initialPrompt }: Props) {
   const [providerId, setProviderId] = useState(PROVIDERS[0].id);
   const [modelId, setModelId] = useState(PROVIDERS[0].models[0].id);
   const [apiKey, setApiKey] = useState('');
@@ -169,6 +171,13 @@ export default function AiSqlBuilderPanel({ schema, onInsertSql }: Props) {
   const visibleSchema = isSchemaExpanded ? schema : schema.slice(0, 8);
 
   const provider = PROVIDERS.find(p => p.id === providerId)!;
+
+  // Sync with initialPrompt if provided
+  useEffect(() => {
+    if (initialPrompt) {
+      setPrompt(initialPrompt);
+    }
+  }, [initialPrompt]);
 
   // Load API key from localStorage when provider changes
   useEffect(() => {

@@ -58,8 +58,10 @@ async def upload_file(file: UploadFile = File(...)):
     # Discover columns and row count after upload
     try:
         conn = duckdb.connect(database=':memory:')
-        # Using DESCRIBE for columns and COUNT for rows
-        columns = conn.execute(f"DESCRIBE SELECT * FROM read_csv_auto('{file_path}')").df()['column_name'].tolist()
+        # Using DESCRIBE for columns and types
+        desc_df = conn.execute(f"DESCRIBE SELECT * FROM read_csv_auto('{file_path}')").df()
+        columns = desc_df['column_name'].tolist()
+        column_types = desc_df[['column_name', 'column_type']].to_dict(orient='records')
         row_count = conn.execute(f"SELECT COUNT(*) FROM read_csv_auto('{file_path}')").fetchone()[0]
         
         # Detect if it's KV format
@@ -72,14 +74,16 @@ async def upload_file(file: UploadFile = File(...)):
             
     except Exception as e:
         columns = []
+        column_types = []
         row_count = 0
         detected_format = "flat"
         
     return {
-        "file_id": file_id, 
+        "file_id": file_id,
         "file_path": file_path, 
         "filename": file.filename,
         "available_columns": columns,
+        "column_types": column_types,
         "total_rows": row_count,
         "detected_format": detected_format
     }

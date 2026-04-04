@@ -16,3 +16,6 @@
 [x] delete 'Execution Engine Ready' text on top right corner.
 [x] fix if single node displayed, clicking beautify button will make the node disappear from view.
 [-] fit window/beautify shall zoom considering the size of bottom panel. currently it doesn't consider the bottom panel.
+[x] add - improve notification messages - truncates error message for long ones. add copy button to error message.
+[x] modify - @page.tsx, ai fix is not implemented. try copy and paste the problematic sql query into ai sql builder with context description and move focus there.
+[x] add - add button for inspect, so source file can be inspected without running full pipeline.
