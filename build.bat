@@ -2,7 +2,7 @@
 setlocal
 
 echo ====================================================
-echo 🛠️  DuckDB Data Processor - Windows Build Script
+echo 🛠️  Data Analyst Web - Windows Build Script
 echo ====================================================
 
 :: 1. Check for Node.js
@@ -44,7 +44,7 @@ echo [3/4] 🚀 Packaging application with PyInstaller...
 :: We add the 'out' directory which contains the static frontend.
 :: We include uvicorn hidden imports which are often missed by PyInstaller.
 
-pyinstaller --name "DuckDB-Processor" ^
+pyinstaller --name "data-analyst-web" ^
             --onedir ^
             --clean ^
             --add-data "out;out" ^
@@ -69,7 +69,7 @@ if %errorlevel% neq 0 (
 :: 6. Success
 echo ====================================================
 echo ✅ Build complete! 
-echo 📂 Executable location: dist\DuckDB-Processor\DuckDB-Processor.exe
+echo 📂 Executable location: dist\data-analyst-web\data-analyst-web.exe
 echo 💡 Note: Make sure to copy config.yaml to the same folder if needed.
 echo ====================================================
 pause
