@@ -155,7 +155,6 @@ function WorkspaceCanvas({
       left: 0.1,
     };
     
-    console.log('[DEBUG] fitOptions updated:', { isBottomPanelVisible, bottomPanelHeight, h, padding });
     return {
       padding,
       duration: 600,

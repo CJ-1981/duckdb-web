@@ -1016,6 +1016,8 @@ function Dashboard() {
                   <div 
                     className="absolute -top-1.5 left-0 right-0 h-3 cursor-row-resize z-50 flex items-center justify-center group"
                     onMouseDown={(e) => {
+                      e.preventDefault();
+                      document.body.classList.add('resizing');
                       const startY = e.clientY;
                       const startHeight = previewHeight;
                       const onMouseMove = (moveEvent: MouseEvent) => {
@@ -1023,6 +1025,7 @@ function Dashboard() {
                         setPreviewHeight(Math.max(150, Math.min(800, startHeight + deltaY)));
                       };
                       const onMouseUp = () => {
+                        document.body.classList.remove('resizing');
                         document.removeEventListener('mousemove', onMouseMove);
                         document.removeEventListener('mouseup', onMouseUp);
                       };
