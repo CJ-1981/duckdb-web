@@ -252,7 +252,11 @@ async def validate_sql(
     input_table = request.input_table
     columns = request.columns
     
+    # Use logger for debugging the schema
     logger.info(f">>> [VALIDATE] SQL Request received (Length: {len(sql)})")
+    if columns:
+        logger.info(f">>> [VALIDATE] Received columns: {columns}")
+    
     try:
         conn = duckdb.connect(database=':memory:')
         
@@ -266,20 +270,31 @@ async def validate_sql(
                         c = col_item
                         if isinstance(col_item, str):
                             try:
+                                # Sometimes frontend sends escaped JSON strings
                                 c = json.loads(col_item)
                             except:
+                                # Fallback to using the string itself as the name
                                 pass
                         
                         if isinstance(c, dict):
-                            cname = c.get("column_name") or c.get("name")
-                            ctype = c.get("column_type") or c.get("type", "VARCHAR")
-                            cols_def.append(f"CAST(NULL AS {ctype}) as {quote_identifier(cname)}")
+                            # Try multiple possible keys for name and type
+                            cname = c.get("column_name") or c.get("name") or c.get("id")
+                            ctype = c.get("column_type") or c.get("type") or c.get("dtype", "VARCHAR")
                         else:
                             # Fallback to plain string column name cast to VARCHAR
-                            cols_def.append(f"CAST(NULL AS VARCHAR) as {quote_identifier(str(col_item))}")
+                            cname = str(col_item)
+                            ctype = "VARCHAR"
+                        
+                        # Sanitize and add to definitions
+                        if cname and str(cname).strip() and str(cname) != "dtype":
+                            cols_def.append(f"CAST(NULL AS {ctype}) as {quote_identifier(str(cname))}")
                     except Exception as e:
                         logger.warning(f"Failed to parse column for validation: {col_item} - {e}")
-                        cols_def.append(f"CAST(NULL AS VARCHAR) as {quote_identifier(str(col_item))}")
+            
+            # If no valid columns were parsed, use a safe default instead of failing
+            if not cols_def:
+                logger.info(">>> [VALIDATE] No valid columns found, using generic column")
+                cols_def = ["CAST(NULL AS VARCHAR) as col"]
             
             if not cols_def:
                 cols_def = ["1 as id"]
@@ -743,9 +758,13 @@ async def execute_workflow_graph(
         for nid, tname in node_to_table.items():
             try:
                 node_counts[nid] = conn.execute(f"SELECT COUNT(*) FROM {tname}").fetchone()[0]
+                # Log column information for debugging
                 desc_df = conn.execute(f"DESCRIBE {tname}").df()
                 node_columns[nid] = desc_df['column_name'].tolist()
                 node_types[nid] = desc_df[['column_name', 'column_type']].to_dict(orient='records')
+                
+                logger.info(f">>> [FLOW] Node {nid} ({tname}) cols: {node_columns[nid]}")
+                
                 node_samples[nid] = conn.execute(f"SELECT * FROM {tname} LIMIT {preview_limit}").df().fillna("").to_dict(orient="records")
             except:
                 pass
