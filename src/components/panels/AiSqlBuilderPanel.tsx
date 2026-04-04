@@ -1,7 +1,8 @@
 'use client';
 import React, { useState, useEffect } from 'react';
-import { Wand2, Copy, CheckCheck, AlertCircle, Plus, RefreshCw, ChevronDown, ExternalLink } from 'lucide-react';
+import { Wand2, Copy, CheckCheck, AlertCircle, Plus, RefreshCw, ChevronDown, ExternalLink, Play, Search, SlidersHorizontal, CheckCircle2 } from 'lucide-react';
 import type { ColumnTypeDef } from './DataInspectionPanel';
+import { validateSql } from '../../lib/api';
 
 interface Provider {
   id: string; name: string; baseUrl: string;
@@ -81,8 +82,10 @@ Table Schema:
 ${schemaTxt}
 
 Important rules:
+- ONLY use column names that are explicitly listed in the "Table Schema" section above. DO NOT invent or guess column names even if the user request suggests them.
+- If the user request uses a term that doesn't exactly match a column name, use your best judgement to map it to the closest available column (e.g. if user says "total" but the schema has "amount", use "amount").
 - Use standard DuckDB SQL syntax (Standard SQL, NOT MySQL/Backticks)
-- Use DOUBLE QUOTES (") for column and table names (e.g. "교인성명")
+- Use DOUBLE QUOTES (") for column and table names (e.g. "Last Name")
 - NEVER use backticks for identifiers.
 - DO NOT quote function calls like COUNT(), SUM(), etc.
 - ALWAYS use clear aliases (AS "alias") for all aggregations and expressions
@@ -155,19 +158,28 @@ interface Props {
   schema: ColumnTypeDef[];
   onInsertSql: (sql: string) => void;
   initialPrompt?: string;
+  nodes: any[];
+  edges: any[];
+  nodeId: string;
+  onPreviewSql: (nodes: any[], edges: any[], nodeId: string, sql: string) => Promise<any>;
 }
 
-export default function AiSqlBuilderPanel({ schema, onInsertSql, initialPrompt }: Props) {
+export default function AiSqlBuilderPanel({ schema, onInsertSql, initialPrompt, nodes, edges, nodeId, onPreviewSql }: Props) {
   const [providerId, setProviderId] = useState(PROVIDERS[0].id);
   const [modelId, setModelId] = useState(PROVIDERS[0].models[0].id);
   const [apiKey, setApiKey] = useState('');
   const [prompt, setPrompt] = useState('');
   const [generatedSql, setGeneratedSql] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isExecuting, setIsExecuting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [inserted, setInserted] = useState(false);
   const [isSchemaExpanded, setIsSchemaExpanded] = useState(false);
+  const [previewResult, setPreviewResult] = useState<any>(null);
+  const [isValidating, setIsValidating] = useState(false);
+  const [validationMessage, setValidationMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
+
   const visibleSchema = isSchemaExpanded ? schema : schema.slice(0, 8);
 
   const provider = PROVIDERS.find(p => p.id === providerId)!;
@@ -194,7 +206,7 @@ export default function AiSqlBuilderPanel({ schema, onInsertSql, initialPrompt }
   const handleGenerate = async () => {
     if (!prompt.trim()) return;
     if (!apiKey.trim()) { setError('Please enter your API key.'); return; }
-    setIsGenerating(true); setError(null); setGeneratedSql('');
+    setIsGenerating(true); setError(null); setGeneratedSql(''); setPreviewResult(null);
     try {
       const sql = await callLLM(provider, modelId, apiKey, prompt, schema);
       setGeneratedSql(sql.trim());
@@ -202,6 +214,24 @@ export default function AiSqlBuilderPanel({ schema, onInsertSql, initialPrompt }
       const msg = err instanceof Error ? err.message : String(err);
       setError(msg);
     } finally { setIsGenerating(false); }
+  };
+
+  const handleExecute = async () => {
+    if (!generatedSql) return;
+    setIsExecuting(true);
+    setError(null);
+    try {
+      const result = await onPreviewSql(nodes, edges, nodeId, generatedSql);
+      if (result.status === 'error') {
+        setError(result.message);
+      } else {
+        setPreviewResult(result);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setIsExecuting(false);
+    }
   };
 
   const handleCopy = () => {
@@ -213,6 +243,52 @@ export default function AiSqlBuilderPanel({ schema, onInsertSql, initialPrompt }
   const handleInsert = () => {
     onInsertSql(generatedSql);
     setInserted(true); setTimeout(() => setInserted(false), 4000);
+  };
+
+  const handleValidate = async () => {
+    if (!generatedSql) return;
+    setIsValidating(true);
+    setValidationMessage(null);
+    try {
+      const preparedColumns = schema.map(c => JSON.stringify(c));
+      const res = await validateSql(generatedSql, 'input_table', preparedColumns);
+      if (res.status === 'success') {
+        setValidationMessage({ text: "SQL is valid!", type: 'success' });
+      } else {
+        setValidationMessage({ text: res.message || "Invalid SQL syntax.", type: 'error' });
+      }
+    } catch (err: any) {
+      setValidationMessage({ text: err.message || "Validation failed.", type: 'error' });
+    } finally {
+      setIsValidating(false);
+      // Auto-hide success message, keep error message visible
+      if (validationMessage?.type === 'success') {
+        setTimeout(() => setValidationMessage(null), 5000);
+      }
+    }
+  };
+
+  const handleBeautify = () => {
+    if (!generatedSql) return;
+
+    // Improved SQL formatter logic
+    const tokens = generatedSql.split(/('(?:''|[^'])*'|--.*(?:\n|$))/g);
+    const beautified = tokens.map((token: string) => {
+      if (!token) return '';
+      if (token.startsWith("'") || token.startsWith("--")) return token;
+
+      return token
+        .replace(/\s+/g, ' ')
+        .replace(/\b(SELECT|FROM|WHERE|GROUP BY|ORDER BY|HAVING|LIMIT|JOIN|LEFT JOIN|RIGHT JOIN|INNER JOIN|UNION|WITH|SET|VALUES|CASE|WHEN|THEN|ELSE|END|AS)\b/gi,
+          (match: string) => `\n${match.toUpperCase()}`)
+        .replace(/,/g, ',\n  ');
+    }).join('')
+      .replace(/\n\s*\n/g, '\n')
+      .replace(/\s*\n/g, '\n')
+      .replace(/^\n+/, '')
+      .trim();
+
+    setGeneratedSql(beautified);
   };
 
   return (
@@ -315,7 +391,7 @@ export default function AiSqlBuilderPanel({ schema, onInsertSql, initialPrompt }
             value={prompt}
             onChange={e => setPrompt(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleGenerate(); }}
-            className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-sm focus:ring-1 focus:ring-[#0052CC] focus:border-[#0052CC] outline-none resize-none"
+            className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-sm focus:ring-1 focus:ring-[#0052CC] focus:border-[#0052CC] outline-none resize-y min-h-[80px]"
           />
           <p className="text-[10px] text-[#6B778C] mt-1">Tip: Press Cmd/Ctrl+Enter to generate.</p>
         </div>
@@ -334,8 +410,8 @@ export default function AiSqlBuilderPanel({ schema, onInsertSql, initialPrompt }
         {error && (
           <div className="p-3 bg-red-50 border border-red-200 rounded-md flex items-start gap-2">
             <AlertCircle size={14} className="text-red-500 shrink-0 mt-0.5" />
-            <div>
-              <p className="text-xs font-bold text-red-700 mb-1">API Error</p>
+            <div className="flex-1">
+              <p className="text-xs font-bold text-red-700 mb-1">Error</p>
               <p className="text-[11px] text-red-600 font-mono break-all">{error}</p>
             </div>
           </div>
@@ -343,26 +419,89 @@ export default function AiSqlBuilderPanel({ schema, onInsertSql, initialPrompt }
 
         {/* Generated SQL Result */}
         {generatedSql && (
-          <div className="border border-[#DFE1E6] rounded-md overflow-hidden pb-4">
+          <div className="border border-[#DFE1E6] rounded-md overflow-hidden pb-4 transition-all animate-in fade-in slide-in-from-top-2">
             <div className="flex items-center justify-between px-3 py-2 bg-[#1E1E2E]">
-              <span className="text-[10px] font-bold text-[#89DCEB] uppercase tracking-wider">Generated SQL</span>
+              <div className="flex items-center gap-3">
+                <span className="text-[10px] font-bold text-[#89DCEB] uppercase tracking-wider">Generated SQL</span>
+                {validationMessage && (
+                  <div className={`flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-bold transition-all animate-in fade-in zoom-in-95 ${validationMessage.type === 'success' ? 'bg-[#36B37E]/20 text-[#36B37E]' : 'bg-[#FF5630]/20 text-[#FF5630]'
+                    }`}>
+                    {validationMessage.type === 'success' ? <CheckCircle2 size={10} /> : <AlertCircle size={10} />}
+                    {validationMessage.text}
+                  </div>
+                )}
+              </div>
               <div className="flex gap-2">
+                <button onClick={handleValidate} disabled={isValidating}
+                  title="Validate SQL"
+                  className="flex items-center gap-1 px-2 py-1 text-[10px] font-bold rounded bg-white/10 text-[#CDD6F4] hover:bg-white/20 transition-colors disabled:opacity-50">
+                  {isValidating ? <RefreshCw size={10} className="animate-spin" /> : <Search size={10} />}
+                  Validate
+                </button>
+                <button onClick={handleBeautify}
+                  title="Beautify SQL"
+                  className="flex items-center gap-1 px-2 py-1 text-[10px] font-bold rounded bg-white/10 text-[#CDD6F4] hover:bg-white/20 transition-colors">
+                  <SlidersHorizontal size={10} />
+                  Format
+                </button>
                 <button onClick={handleCopy}
                   className={`flex items-center gap-1 px-2 py-1 text-[10px] font-bold rounded transition-colors ${copied ? 'bg-[#36B37E] text-white' : 'bg-white/10 text-[#CDD6F4] hover:bg-white/20'}`}>
                   {copied ? <CheckCheck size={10} /> : <Copy size={10} />}
-                  {copied ? 'Copied!' : 'Copy'}
+                  {copied ? 'Copy' : 'Copy'}
+                </button>
+                <button onClick={handleExecute} disabled={isExecuting}
+                  className={`flex items-center gap-1 px-2 py-1 text-[10px] font-bold rounded transition-colors bg-[#6554C0] text-white hover:bg-[#5243AA] disabled:opacity-50`}>
+                  {isExecuting ? <RefreshCw size={10} className="animate-spin" /> : <Play size={10} />}
+                  {isExecuting ? 'Run' : 'Run'}
                 </button>
                 <button onClick={handleInsert}
                   className={`flex items-center gap-1 px-2 py-1 text-[10px] font-bold rounded transition-colors ${inserted ? 'bg-[#36B37E] text-white' : 'bg-[#0052CC] text-white hover:bg-[#0065FF]'}`}>
                   <Plus size={10} />
-                  {inserted ? 'Inserted!' : 'Insert as Node'}
+                  {inserted ? 'Insert' : 'Insert'}
                 </button>
               </div>
             </div>
-            <pre className="bg-[#1E1E2E] text-[#CDD6F4] text-xs p-3 font-mono overflow-x-auto whitespace-pre-wrap leading-relaxed border-t border-white/10">{generatedSql}</pre>
+            <pre className="bg-[#1E1E2E] text-[#CDD6F4] text-[11px] p-3 font-mono overflow-x-auto whitespace-pre-wrap leading-relaxed border-t border-white/10 custom-scrollbar">{generatedSql}</pre>
           </div>
         )}
-        
+
+        {/* Preview Results Table */}
+        {previewResult && (
+          <div className="border border-[#DFE1E6] rounded-md overflow-hidden transition-all animate-in fade-in slide-in-from-top-2">
+            <div className="bg-[#FAFBFC] border-b border-[#DFE1E6] px-3 py-2 flex items-center justify-between">
+              <span className="text-[10px] font-bold text-[#6B778C] uppercase tracking-wider">SQL Execution Result ({previewResult.row_count} rows)</span>
+              <button onClick={() => setPreviewResult(null)} className="text-[#6B778C] hover:text-[#171717]">
+                <Plus size={14} className="rotate-45" />
+              </button>
+            </div>
+            <div className="overflow-x-auto max-h-80 custom-scrollbar">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-gray-50 sticky top-0 z-10 shadow-sm">
+                    {previewResult.columns.map((col: string) => (
+                      <th key={col} className="px-3 py-2 text-[10px] font-bold text-[#6B778C] uppercase tracking-wider border-b border-[#DFE1E6] whitespace-nowrap">{col}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[#DFE1E6]">
+                  {previewResult.preview.map((row: any, i: number) => (
+                    <tr key={i} className="hover:bg-blue-50/20 transition-colors">
+                      {previewResult.columns.map((col: string) => (
+                        <td key={col} className="px-3 py-1.5 text-[11px] text-[#171717] font-mono whitespace-nowrap">{String(row[col])}</td>
+                      ))}
+                    </tr>
+                  ))}
+                  {previewResult.preview.length === 0 && (
+                    <tr>
+                      <td colSpan={previewResult.columns.length} className="px-3 py-8 text-center text-xs text-[#6B778C]">No results returned.</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
         {/* Extra Bottom Spacing for Scrolling */}
         <div className="h-16 shrink-0" />
       </div>

@@ -1,10 +1,10 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import WorkspaceCanvas from '@/components/workflow/canvas';
-import { Database, Filter, ArrowRightLeft, Table, Settings, Play, Download, Search, LayoutDashboard, SlidersHorizontal, FileText, FileDown, Save, FolderOpen, Sigma, Eye, ChevronDown, ChevronRight, SortAsc, ListOrdered, Calculator, Code, Fingerprint, PenLine, GitBranch, BarChart3, Plus, Trash2, Wand2, Microscope, PanelLeftClose, PanelLeftOpen, PanelBottomClose, Copy, X, CheckCheck, AlertCircle, CheckCircle } from 'lucide-react';
+import { Database, Filter, ArrowRightLeft, Table, Settings, Play, Download, Search, LayoutDashboard, SlidersHorizontal, FileText, FileDown, Save, FolderOpen, Sigma, Eye, ChevronDown, ChevronRight, SortAsc, ListOrdered, Calculator, Code, Fingerprint, PenLine, GitBranch, BarChart3, Plus, Trash2, Wand2, Microscope, PanelLeftClose, PanelLeftOpen, PanelBottomClose, Copy, X, CheckCheck, AlertCircle, CheckCircle, RefreshCw } from 'lucide-react';
 import { Node, Edge, useReactFlow, ReactFlowProvider, useNodesState, useEdgesState, Panel } from '@xyflow/react';
-import { executeWorkflow, uploadFile, saveWorkflow, listSavedWorkflows, loadWorkflowGraph, generateReport, inspectNode, renameWorkflow, validateSql } from '@/lib/api';
+import { executeWorkflow, uploadFile, saveWorkflow, listSavedWorkflows, loadWorkflowGraph, generateReport, inspectNode, renameWorkflow, validateSql, previewSql } from '@/lib/api';
 import DataInspectionPanel, { type ColumnTypeDef, type FullStats } from '@/components/panels/DataInspectionPanel';
 import AiSqlBuilderPanel from '@/components/panels/AiSqlBuilderPanel';
 
@@ -171,6 +171,16 @@ function Dashboard() {
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [executionSuccess, setExecutionSuccess] = useState(false);
   const [executionMessage, setExecutionMessage] = useState<{ title: string; detail: string; type: 'success' | 'error' | 'info' } | null>(null);
+  
+  // Custom SQL Preview State
+  const [customSqlPreviewResult, setCustomSqlPreviewResult] = useState<any>(null);
+  const [isCustomSqlExecuting, setIsCustomSqlExecuting] = useState(false);
+
+  useEffect(() => {
+    setCustomSqlPreviewResult(null);
+  }, [selectedNode?.id]);
+
+  // AI SQL Sidebar State
   const [aiSqlInitialPrompt, setAiSqlInitialPrompt] = useState<string>('');
   const [previewHeight, setPreviewHeight] = useState(280);
   const [previewLimit, setPreviewLimit] = useState(50);
@@ -460,7 +470,7 @@ function Dashboard() {
     } catch (e) { setExecutionMessage({ title: "Error", detail: "Could not fetch workflows.", type: 'error' }); setExecutionSuccess(true); }
   };
 
-  const getUpstreamColumns = (nodeId: string) => {
+  const getUpstreamColumns = (nodeId: string): string[] => {
     const nodes = getNodes();
     const edges = getEdges();
 
@@ -539,6 +549,28 @@ function Dashboard() {
       getNodeOutputColumns(edge.source).forEach(c => columns.add(c));
     }
     return Array.from(columns);
+  };
+
+  const getInputSchema = (nodeId: string): ColumnTypeDef[] => {
+    const nodes = getNodes();
+    const edges = getEdges();
+    const incoming = edges.filter(e => e.target === nodeId);
+    
+    if (incoming.length === 0) return [];
+    
+    const allTypes: ColumnTypeDef[] = [];
+    const seen = new Set<string>();
+    
+    for (const edge of incoming) {
+      const types = nodeTypes[edge.source] || [];
+      for (const t of types) {
+        if (!seen.has(t.column_name)) {
+          allTypes.push(t);
+          seen.add(t.column_name);
+        }
+      }
+    }
+    return allTypes;
   };
 
   const onDragStart = (event: React.DragEvent, nodeType: string, label: string, subtype?: string) => {
@@ -1004,7 +1036,6 @@ function Dashboard() {
                   <div className="flex items-center justify-between px-4 py-2 bg-[#FAFBFC] border-b border-[#DFE1E6] h-12 select-none">
                     <div className="flex items-center space-x-1">
                       {[
-                        { icon: <Table size={14} />, label: 'Data Preview' },
                         { icon: <Microscope size={14} />, label: 'Data Inspection' },
                         { icon: <Code size={14} />, label: 'AI SQL Builder' }
                       ].map((tab, idx) => (
@@ -1055,41 +1086,6 @@ function Dashboard() {
 
                   <div className="flex-1 overflow-hidden bg-white flex flex-col">
                     {activeBottomTab === 0 && (
-                      <div className="h-full overflow-auto">
-                        {nodeSamples[selectedNode.id] && nodeSamples[selectedNode.id].length > 0 ? (
-                          <table className="w-full text-left border-collapse min-w-max">
-                            <thead className="sticky top-0 bg-[#FAFBFC] z-10 border-b border-[#DFE1E6]">
-                              <tr>
-                                {Object.keys(nodeSamples[selectedNode.id][0]).map((key) => (
-                                  <th key={key} className="px-4 py-2.5 text-[11px] font-bold text-[#6B778C] uppercase tracking-wider border-r border-[#DFE1E6] last:border-0">{key}</th>
-                                ))}
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {nodeSamples[selectedNode.id].slice(0, previewLimit).map((row, i) => (
-                                <tr key={i} className="border-b border-[#F0F2F5] hover:bg-[#F8FAFC] transition-colors group">
-                                  {Object.values(row).map((val: any, j) => (
-                                    <td key={j} className="px-4 py-2 text-xs text-[#172B4D] font-medium border-r border-[#F0F2F5] last:border-0 truncate max-w-[200px] group-hover:text-[#0052CC]">
-                                      {val === null ? <span className="text-[#A5ADBA] italic font-normal text-[10px]">NULL</span> : String(val)}
-                                    </td>
-                                  ))}
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        ) : (
-                          <div className="flex flex-col items-center justify-center h-full py-12 px-6 text-center">
-                            <div className="w-12 h-12 bg-[#F4F5F7] rounded-full flex items-center justify-center mb-3">
-                              <Table size={24} className="text-[#A5ADBA]" />
-                            </div>
-                            <p className="text-sm font-semibold text-[#172B4D]">No preview data available for this node.</p>
-                            <p className="text-xs text-[#6B778C] mt-1">Execute the workflow to generate sample data for all nodes.</p>
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    {activeBottomTab === 1 && (
                       <DataInspectionPanel
                         nodeId={selectedNode.id}
                         nodeLabel={String(selectedNode.data.label)}
@@ -1099,12 +1095,16 @@ function Dashboard() {
                       />
                     )}
 
-                    {activeBottomTab === 2 && (
+                    {activeBottomTab === 1 && (
                       <div className="h-full min-h-0 flex flex-col overflow-hidden">
                         <AiSqlBuilderPanel
-                          schema={nodeTypes[selectedNode.id] || []}
+                          schema={getInputSchema(selectedNode.id)}
                           onInsertSql={handleInsertSql}
                           initialPrompt={aiSqlInitialPrompt}
+                          nodes={nodes}
+                          edges={edges}
+                          nodeId={selectedNode.id}
+                          onPreviewSql={previewSql}
                         />
                       </div>
                     )}
@@ -1252,7 +1252,12 @@ function Dashboard() {
                                 setNodeSamples(prev => ({ ...prev, [selectedNode.id]: res.node_samples }));
                               }
                               
-                              setActiveBottomTab(1); // Data Inspection
+                              // Populate types if returned (Crucial for DataInspectionPanel to show anything!)
+                              if (res.columns) {
+                                setNodeTypes(prev => ({ ...prev, [selectedNode.id]: res.columns }));
+                              }
+                              
+                              setActiveBottomTab(0); // Data Inspection
                               setIsBottomPanelVisible(true);
                               setExecutionMessage({ title: "Ready for Inspection", detail: `Successfully loaded ${res.total_rows?.toLocaleString() || 0} rows and ${res.total_columns || 0} columns.`, type: 'success' });
                               setTimeout(() => { setExecutionSuccess(false); setExecutionMessage(null); }, 4000);
@@ -1821,6 +1826,36 @@ function Dashboard() {
                               <Search size={12} className="text-[#6B778C]" />
                               VALIDATE
                             </button>
+                            
+                            {/* EXECUTE BUTTON - NEW */}
+                            <button
+                              onClick={async () => {
+                                try {
+                                  const sql = (selectedNode.data.config as any)?.sql || '';
+                                  setIsCustomSqlExecuting(true);
+                                  setCustomSqlPreviewResult(null);
+                                  const result = await previewSql(nodes, edges, selectedNode.id, sql);
+                                  if (result.status === 'error') {
+                                    setExecutionMessage({ title: "SQL Preview Error", detail: result.message, type: 'error' });
+                                    setExecutionSuccess(true);
+                                    setTimeout(() => { setExecutionSuccess(false); setExecutionMessage(null); }, 6000);
+                                  } else {
+                                    setCustomSqlPreviewResult(result);
+                                  }
+                                } catch (e: any) {
+                                  setExecutionMessage({ title: "SQL Preview Error", detail: e.message, type: 'error' });
+                                  setExecutionSuccess(true);
+                                  setTimeout(() => { setExecutionSuccess(false); setExecutionMessage(null); }, 6000);
+                                } finally {
+                                  setIsCustomSqlExecuting(false);
+                                }
+                              }}
+                              className="text-[10px] bg-[#6554C0]/10 hover:bg-[#6554C0]/20 text-[#6554C0] px-2 py-1 rounded font-bold transition-all flex items-center gap-1.5"
+                            >
+                              {isCustomSqlExecuting ? <RefreshCw size={12} className="animate-spin" /> : <Play size={12} />}
+                              EXECUTE
+                            </button>
+                            
                             {/* FIX WITH AI BUTTON */}
                             <button
                               onClick={async () => {
@@ -1843,7 +1878,7 @@ Schema: ${cols.join(', ')}
 Please fix the SQL. Return ONLY the raw SQL query.`;
 
                                   setAiSqlInitialPrompt(promptText);
-                                  setActiveBottomTab(2); // AI SQL Builder
+                                  setActiveBottomTab(1); // AI SQL Builder
                                   setIsBottomPanelVisible(true);
                                   
                                   setExecutionMessage({ title: "Focusing AI Builder", detail: "SQL and context description moved to AI SQL Builder sidebar.", type: 'success' });
@@ -1857,7 +1892,7 @@ Please fix the SQL. Return ONLY the raw SQL query.`;
                               className="text-[10px] bg-[#EBF4FF] hover:bg-[#B3D4FF] text-[#0052CC] px-2 py-1 rounded font-bold transition-all flex items-center gap-1.5"
                             >
                               <Wand2 size={12} className="text-[#0052CC]" />
-                              FIX WITH AI
+                              AI FIX
                             </button>
                             <button
                               onClick={() => {
@@ -1921,6 +1956,44 @@ Please fix the SQL. Return ONLY the raw SQL query.`;
                           className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-xs font-mono outline-none focus:ring-1 focus:ring-[#0052CC]"
                         />
                       </div>
+
+                      {/* Preview Results Table */}
+                      {customSqlPreviewResult && (
+                        <div className="border border-[#DFE1E6] rounded-md overflow-hidden transition-all animate-in fade-in slide-in-from-top-2">
+                          <div className="bg-[#FAFBFC] border-b border-[#DFE1E6] px-3 py-2 flex items-center justify-between">
+                            <span className="text-[10px] font-bold text-[#6B778C] uppercase tracking-wider">Result Preview ({customSqlPreviewResult.row_count} rows)</span>
+                            <button onClick={() => setCustomSqlPreviewResult(null)} className="text-[#6B778C] hover:text-[#171717]">
+                              <X size={14} />
+                            </button>
+                          </div>
+                          <div className="overflow-x-auto max-h-80 custom-scrollbar">
+                            <table className="w-full text-left border-collapse">
+                              <thead>
+                                <tr className="bg-gray-50 sticky top-0 z-10 shadow-sm">
+                                  {customSqlPreviewResult.columns.map((col: string) => (
+                                    <th key={col} className="px-3 py-2 text-[10px] font-bold text-[#6B778C] uppercase tracking-wider border-b border-[#DFE1E6] whitespace-nowrap">{col}</th>
+                                  ))}
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-[#DFE1E6]">
+                                {customSqlPreviewResult.preview.map((row: any, i: number) => (
+                                  <tr key={i} className="hover:bg-blue-50/20 transition-colors">
+                                    {customSqlPreviewResult.columns.map((col: string) => (
+                                      <td key={col} className="px-3 py-1.5 text-[11px] text-[#171717] font-mono whitespace-nowrap">{String(row[col])}</td>
+                                    ))}
+                                  </tr>
+                                ))}
+                                {customSqlPreviewResult.preview.length === 0 && (
+                                  <tr>
+                                    <td colSpan={customSqlPreviewResult.columns.length} className="px-3 py-8 text-center text-xs text-[#6B778C]">No results returned.</td>
+                                  </tr>
+                                )}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      )}
+
                       <SqlPreview sql={buildSql('raw_sql', selectedNode.data.config as any)} />
                     </div>
                   )}

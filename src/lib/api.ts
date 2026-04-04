@@ -153,3 +153,23 @@ export async function validateSql(sql: string, inputTable?: string, columns?: (s
     throw error;
   }
 }
+
+export async function previewSql(nodes: any[], edges: any[], nodeId: string, sql: string, previewLimit: number = 50) {
+  try {
+    const response = await fetch(`${API_BASE_URL}/workflows/preview-sql`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nodes, edges, node_id: nodeId, sql, preview_limit: previewLimit }),
+    });
+
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.detail || `Preview failed: ${response.statusText}`);
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Failed to preview SQL:', error);
+    throw error;
+  }
+}

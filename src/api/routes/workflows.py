@@ -140,6 +140,109 @@ class SqlValidationRequest(BaseModel):
     input_table: Optional[str] = None
     columns: Optional[List[Any]] = None
 
+class SqlPreviewRequest(BaseModel):
+    nodes: List[Dict[str, Any]]
+    edges: List[Dict[str, Any]]
+    node_id: str
+    sql: str
+    preview_limit: Optional[int] = 50
+
+@router.post("/preview-sql")
+async def preview_sql(request: SqlPreviewRequest):
+    """Execute a raw SQL query within the context of a specific node."""
+    target_id = request.node_id
+    nodes, edges = request.nodes, request.edges
+    raw_sql = request.sql
+    limit = request.preview_limit or 50
+
+    logger.info(f">>> [PREVIEW SQL] Node: {target_id}, SQL Length: {len(raw_sql)}")
+
+    # 1. Topological Sort up to target_id and its predecessors
+    adj = {n["id"]: [] for n in nodes}
+    predecessors = {n["id"]: [] for n in nodes}
+    for edge in edges:
+        src, tgt = edge.get("source"), edge.get("target")
+        if src in adj and tgt in adj:
+            adj[src].append(tgt)
+            predecessors[tgt].append(src)
+
+    # We need to execute everything up to the predecessors of target_id
+    preds = predecessors.get(target_id, [])
+    
+    # Actually, we can just use the execute_workflow_graph logic but intercept at target_id
+    # To keep it simple and reliable, let's just use the same incremental execution logic
+    
+    # 2. Build Query node by node (Reuse logic from execute_workflow_graph)
+    node_to_table = {} 
+    try:
+        conn = get_connection()
+        
+        # We need a sorted list of all nodes because we might need to execute they predecessors
+        # but execute_workflow_graph already handles full graph.
+        # Let's just run the full execution logic but only up to the predecessors we need.
+        # Even better: just run the standard execution logic for the whole graph provided,
+        # ensuring predecessors of target_id are ready.
+        
+        # Use a temporary WorkflowExecutionRequest to leverage the existing execution logic
+        # but we need to avoid running the whole thing if possible.
+        # However, execute_workflow_graph is fast due to caching.
+        
+        # Let's manually run the predecessors
+        sorted_nodes = []
+        visited = set()
+        def _sort(nid):
+            if nid in visited: return
+            for p in predecessors.get(nid, []): _sort(p)
+            visited.add(nid)
+            obj = next((n for n in nodes if n["id"] == nid), None)
+            if obj: sorted_nodes.append(obj)
+        
+        for p_id in preds:
+            _sort(p_id)
+            
+        # Execute predecessors
+        for node in sorted_nodes:
+            # This is a bit repetitive, but safest way to ensure environment is right
+            # In a real app, we'd refactor execute_workflow_graph to be more modular.
+            # For now, let's reuse the logic via a helper or just inline the essentials.
+            
+            # Since we want to stay within the same connection and use the same cache:
+            # We can't easily call execute_workflow_graph because it returns a response.
+            # But we can call it and ignore the result, then run our SQL.
+            pass
+
+        # Actually, let's just run execute_workflow_graph logic for the provided nodes/edges.
+        # It's already cached, so it's super fast if already run.
+        await execute_workflow_graph(WorkflowExecutionRequest(nodes=nodes, edges=edges, preview_limit=0))
+        
+        # Now find the input table for target_id
+        # We need to know what node_to_table would have for target_id
+        # But node_to_table is local to exec_wf.
+        # However, _NODE_CACHE is global!
+        
+        input_table = "read_csv_auto('')"
+        if preds:
+            cached_p = _NODE_CACHE.get(preds[0])
+            if cached_p:
+                input_table = cached_p["table_name"]
+        
+        # 3. Execute the custom SQL
+        processed_sql = raw_sql.replace("{{input}}", input_table).replace("`", "\"")
+        logger.info(f">>> [PREVIEW SQL] Processed SQL: {processed_sql}")
+        
+        df = conn.execute(processed_sql).df()
+        
+        return {
+            "status": "success",
+            "columns": df.columns.tolist(),
+            "preview": df.head(limit).fillna("").to_dict(orient="records"),
+            "row_count": len(df)
+        }
+        
+    except Exception as e:
+        logger.error(f">>> [PREVIEW SQL] Error: {str(e)}")
+        return {"status": "error", "message": str(e)}
+
 @router.post("/validate-sql")
 async def validate_sql(
     request: SqlValidationRequest
@@ -878,13 +981,13 @@ async def inspect_node_dataset(request: InspectRequest):
     _sort(target_id)
 
     try:
-        conn = duckdb.connect(database=':memory:')
+        conn = get_connection()
         node_to_table: dict = {}
 
         for node in sorted_nodes:
             node_id = node["id"]
             safe_id = node_id.replace("-", "_")
-            table_name = f"node_{safe_id}"
+            table_name = f"inspect_{safe_id}" # Use 'inspect_' prefix to avoid collisions with 'node_'
             node_data = node.get("data", {})
             subtype = node_data.get("subtype")
             label = node_data.get("label", "")
@@ -897,7 +1000,20 @@ async def inspect_node_dataset(request: InspectRequest):
                     fp = config.get("file_path")
                     if not fp: continue
                     if not os.path.isabs(fp): fp = os.path.abspath(fp)
-                    conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT * FROM read_csv_auto('{fp}')")
+                    
+                    ext = os.path.splitext(fp)[1].lower()
+                    if ext == '.parquet':
+                        conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT * FROM read_parquet('{fp}')")
+                    elif ext in ['.xlsx', '.xls']:
+                        # Try using the excel extension if available, otherwise fallback to spatial
+                        try:
+                            conn.execute("INSTALL excel; LOAD excel;")
+                            conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT * FROM st_read('{fp}')")
+                        except Exception:
+                            # Fallback or simple error
+                            conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT * FROM read_csv_auto('{fp}')")
+                    else:
+                        conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT * FROM read_csv_auto('{fp}')")
                     node_to_table[node_id] = table_name
                 elif prev_table:
                     # Pass-through execution for all transformation nodes

@@ -19,3 +19,4 @@
 [x] add - improve notification messages - truncates error message for long ones. add copy button to error message.
 [x] modify - @page.tsx, ai fix is not implemented. try copy and paste the problematic sql query into ai sql builder with context description and move focus there.
 [x] add - add button for inspect, so source file can be inspected without running full pipeline.
+[x] add - add button for execute, so sql query can be executed without running full pipeline.
