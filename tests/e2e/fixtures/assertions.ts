@@ -62,24 +62,41 @@ export async function assertNodesConnected(page: Page, sourceLabel: string, targ
     throw new Error(`Could not find node IDs for ${sourceLabel} or ${targetLabel}`);
   }
   
-  // Check for edge connecting these specific nodes
-  const edges = page.locator('.react-flow__edge');
-  let found = false;
+  // Use React Flow API to check for edges between the nodes
+  const edgeExists = await page.evaluate(
+    ({ srcId, tgtId }) => {
+      // Access the React Flow instance if available
+      const rfContainer = document.querySelector('.react-flow');
+      if (!rfContainer || !(window as any).__REACT_FLOW_INSTANCE__) {
+        // Fallback: check DOM for edge elements
+        const edges = document.querySelectorAll('.react-flow__edge');
+        for (const edge of edges) {
+          const source = edge.getAttribute('data-source');
+          const target = edge.getAttribute('data-target');
+          if ((source === srcId && target === tgtId) || 
+              (source === tgtId && target === srcId)) {
+            return true;
+          }
+        }
+        return false;
+      }
+      
+      // Try to use React Flow's internal API
+      try {
+        const instance = (window as any).__REACT_FLOW_INSTANCE__;
+        const edges = instance.getEdges?.() || [];
+        return edges.some((edge: any) => 
+          (edge.source === srcId && edge.target === tgtId) ||
+          (edge.source === tgtId && edge.target === srcId)
+        );
+      } catch {
+        return false;
+      }
+    },
+    { srcId: sourceId, tgtId: targetId }
+  );
   
-  const edgeCount = await edges.count();
-  for (let i = 0; i < edgeCount; i++) {
-    const edge = edges.nth(i);
-    const source = await edge.getAttribute('data-source');
-    const target = await edge.getAttribute('data-target');
-    
-    if ((source === sourceId && target === targetId) || 
-        (source === targetId && target === sourceId)) {
-      found = true;
-      break;
-    }
-  }
-  
-  expect(found).toBe(true);
+  expect(edgeExists).toBe(true);
 }
 
 /**
@@ -113,4 +130,28 @@ export async function assertWorkflowLoaded(page: Page, workflowName: string) {
   await expect(
     page.locator(`text=/${workflowName}|loaded successfully/i`)
   ).toBeVisible();
+}
+
+/**
+ * Assert that a filter has been applied
+ */
+export async function assertFilterApplied(page: Page) {
+  const filterNode = page.locator('.react-flow__node').filter({ hasText: /filter/i }).first();
+  await expect(filterNode).toBeVisible();
+}
+
+/**
+ * Assert that a join has been configured
+ */
+export async function assertJoinConfigured(page: Page) {
+  const joinNode = page.locator('.react-flow__node').filter({ hasText: /join|combine/i }).first();
+  await expect(joinNode).toBeVisible();
+}
+
+/**
+ * Assert that the canvas has a specific number of nodes
+ */
+export async function assertNodeCount(page: Page, expectedCount: number) {
+  const nodes = page.locator('.react-flow__node');
+  await expect(nodes).toHaveCount(expectedCount);
 }

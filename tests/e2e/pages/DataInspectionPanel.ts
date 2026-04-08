@@ -152,9 +152,9 @@ export class DataInspectionPanel {
   } | null> {
     await this.switchToStatsTab();
     
-    // Find the specific column stat block
-    const statBlock = this.statsContainer.locator('div.p-3').filter({ 
-      has: this.page.getByText(columnName, { exact: true })
+    // Find the specific column stat block using stable data-column-name attribute
+    const statBlock = this.statsContainer.locator('[data-column-name]').filter({
+      hasText: columnName
     }).first();
 
     const isVisible = await statBlock.isVisible().catch(() => false);

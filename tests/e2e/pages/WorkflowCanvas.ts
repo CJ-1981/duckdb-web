@@ -1,6 +1,50 @@
 import { Page, Locator, expect } from '@playwright/test';
 
 /**
+ * Node type mapping for palette labels and technical subtypes
+ */
+const NODE_TYPE_MAP: Record<string, { label: string; subtype: string }> = {
+  'input': { label: 'CSV/Excel File', subtype: 'csv' },
+  'csv': { label: 'CSV/Excel File', subtype: 'csv' },
+  'filter': { label: 'Filter Records', subtype: 'filter' },
+  'output': { label: 'Export File', subtype: 'export' },
+  'export': { label: 'Export File', subtype: 'export' },
+  'aggregate': { label: 'Aggregate Data', subtype: 'aggregate' },
+  'combine': { label: 'Combine Datasets', subtype: 'combine' },
+  'join': { label: 'Combine Datasets', subtype: 'combine' },
+  'clean': { label: 'Clean Data', subtype: 'clean' },
+  'sort': { label: 'Sort Records', subtype: 'sort' },
+  'limit': { label: 'Limit Rows', subtype: 'limit' },
+  'select': { label: 'Select Columns', subtype: 'select' },
+  'computed': { label: 'Add Column', subtype: 'computed' },
+  'rename': { label: 'Rename Columns', subtype: 'rename' },
+  'distinct': { label: 'Remove Duplicates', subtype: 'distinct' },
+  'case_when': { label: 'Logic', subtype: 'case_when' },
+  'window': { label: 'Window Function', subtype: 'window' },
+  'raw_sql': { label: 'Custom SQL', subtype: 'raw_sql' },
+  'report': { label: 'Report', subtype: 'report' },
+};
+
+function getNodeTypeInfo(nodeType: string): { label: string; subtype: string } {
+  const normalized = nodeType.toLowerCase();
+  
+  // Direct match
+  if (NODE_TYPE_MAP[normalized]) {
+    return NODE_TYPE_MAP[normalized];
+  }
+  
+  // Check includes patterns
+  for (const [key, value] of Object.entries(NODE_TYPE_MAP)) {
+    if (normalized.includes(key) || key.includes(normalized)) {
+      return value;
+    }
+  }
+  
+  // Default fallback
+  return { label: nodeType, subtype: 'default' };
+}
+
+/**
  * Page Object for the Workflow Canvas
  * Handles node operations, drag-drop, workflow execution, and canvas interactions
  */
@@ -55,14 +99,7 @@ export class WorkflowCanvas {
    * @param position - Optional position to drop the node {x, y}
    */
   async dragNodeToCanvas(nodeType: string, position?: { x: number; y: number }) {
-    // Map generic types to actual sidebar labels if needed
-    let label = nodeType;
-    const l = nodeType.toLowerCase();
-    if (l === 'input' || l.includes('csv')) label = 'CSV/Excel File';
-    else if (l === 'filter') label = 'Filter Records';
-    else if (l === 'output' || l.includes('export')) label = 'Export File';
-    else if (l === 'aggregate') label = 'Aggregate Data';
-    else if (l === 'combine' || l === 'join') label = 'Combine Datasets';
+    const { label } = getNodeTypeInfo(nodeType);
 
     const palettePanel = this.page.locator('[data-testid="palette"], .palette, aside').filter({
       has: this.page.getByText('CSV/Excel File'),
@@ -88,24 +125,8 @@ export class WorkflowCanvas {
    * @param label - The user-friendly label of the node type
    */
   getTechnicalSubtype(label: string): string {
-    const l = label.toLowerCase();
-    if (l.includes('csv') || l.includes('excel') || l === 'input') return 'csv';
-    if (l.includes('filter')) return 'filter';
-    if (l.includes('combine') || l.includes('join')) return 'combine';
-    if (l.includes('clean')) return 'clean';
-    if (l.includes('aggregate')) return 'aggregate';
-    if (l.includes('sort')) return 'sort';
-    if (l.includes('limit')) return 'limit';
-    if (l.includes('select')) return 'select';
-    if (l.includes('add column') || l.includes('computed')) return 'computed';
-    if (l.includes('rename')) return 'rename';
-    if (l.includes('duplicate') || l.includes('distinct')) return 'distinct';
-    if (l.includes('logic') || l.includes('case')) return 'case_when';
-    if (l.includes('window')) return 'window';
-    if (l.includes('sql')) return 'raw_sql';
-    if (l.includes('report')) return 'report';
-    if (l.includes('export')) return 'export';
-    return 'default';
+    const { subtype } = getNodeTypeInfo(label);
+    return subtype;
   }
 
   /**
