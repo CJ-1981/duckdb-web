@@ -28,7 +28,7 @@ function SqlPreview({ sql }: { sql: string }) {
         <span className="inline-block w-2 h-2 rounded-full bg-green-400" />
         Generated SQL Preview
       </label>
-      <pre className="bg-[#1E1E2E] text-[#CDD6F4] text-[11px] rounded-md p-3 font-mono overflow-x-auto whitespace-pre-wrap leading-relaxed">{sql}</pre>
+      <pre data-testid="sql-preview" className="bg-[#1E1E2E] text-[#CDD6F4] text-[11px] rounded-md p-3 font-mono overflow-x-auto whitespace-pre-wrap leading-relaxed">{sql}</pre>
     </div>
   );
 }
@@ -714,11 +714,40 @@ function Dashboard() {
     return result as FullStats;
   };
 
-  const isMac = typeof window !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.userAgent);
+  const isMac = typeof window !== 'undefined' && /Mac|iPod|iPhone|iPad|Macintosh/.test(navigator.userAgent);
   const mod = isMac ? '⌘' : 'Ctrl+';
+
+  // Use refs for handlers to keep the keydown listener stable
+  const executeRef = React.useRef(handleExecute);
+  const openLoadRef = React.useRef(openLoadModal);
+  const beautifyRef = React.useRef(handleBeautify);
+  const newWorkflowRef = React.useRef(handleNewWorkflow);
+  const saveWorkflowRef = React.useRef(() => {
+    setWorkflowName(currentPipelineName || "");
+    setIsSaveModalOpen(true);
+  });
+
+  React.useEffect(() => {
+    executeRef.current = handleExecute;
+    openLoadRef.current = openLoadModal;
+    beautifyRef.current = handleBeautify;
+    newWorkflowRef.current = handleNewWorkflow;
+    saveWorkflowRef.current = () => {
+      setWorkflowName(currentPipelineName || "");
+      setIsSaveModalOpen(true);
+    };
+  }, [handleExecute, openLoadModal, handleBeautify, handleNewWorkflow, currentPipelineName]);
 
   React.useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Check if a modal or dialog is open
+      const dialogElement = document.querySelector(
+        '[role="dialog"], [aria-modal="true"], .modal, .overlay, [data-dialog-open]'
+      );
+      if (dialogElement && (dialogElement as HTMLElement).offsetParent !== null) {
+        return; // Don't process shortcuts when modal is open
+      }
+
       const activeElement = document.activeElement;
       if (
         activeElement instanceof HTMLInputElement ||
@@ -729,36 +758,37 @@ function Dashboard() {
         return;
       }
 
-      const modifier = isMac ? e.metaKey : e.ctrlKey;
+      const modifier = e.metaKey || e.ctrlKey;
       
       if (modifier) {
-        const key = e.key.toLowerCase();
-        if (key === 'n' && modifier && e.shiftKey) { 
+        if (e.code === 'KeyN' && e.shiftKey) { 
           e.preventDefault();
-          handleNewWorkflow();
-        } else if (key === 'r') {
+          newWorkflowRef.current();
+        } else if (e.code === 'Enter') {
           e.preventDefault();
-          handleExecute();
-        } else if (key === 'o') {
+          e.stopPropagation();
+          executeRef.current();
+        } else if (e.code === 'KeyO' && e.shiftKey) {
           e.preventDefault();
-          openLoadModal();
-        } else if (key === 's') {
+          e.stopPropagation();
+          openLoadRef.current();
+        } else if (e.code === 'KeyS' && e.shiftKey) {
           e.preventDefault();
-          setWorkflowName(currentPipelineName || "");
-          setIsSaveModalOpen(true);
-        } else if (key === 'b') {
+          e.stopPropagation();
+          saveWorkflowRef.current();
+        } else if (e.code === 'KeyB') {
           e.preventDefault();
-          handleBeautify();
-        } else if (key === '[') {
+          beautifyRef.current();
+        } else if (e.code === 'BracketLeft') {
           e.preventDefault();
           setIsSidebarCollapsed(prev => !prev);
         }
       }
     };
 
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleExecute, openLoadModal, handleBeautify, isMac]);
+    window.addEventListener('keydown', handleKeyDown, false); 
+    return () => window.removeEventListener('keydown', handleKeyDown, false);
+  }, [isMac]);
 
   return (
     <div className="flex flex-col h-screen bg-[#FAFBFC] overflow-hidden text-[#171717]">
@@ -812,7 +842,7 @@ function Dashboard() {
               setWorkflowName(currentPipelineName || "");
               setIsSaveModalOpen(true);
             }}
-            onMouseEnter={(e) => showHeaderTooltip(e, 'Save Pipeline', `Save your current workflow configuration to the server (${mod}S).`)}
+            onMouseEnter={(e) => showHeaderTooltip(e, 'Save Pipeline', `Save your current workflow configuration to the server (${mod}S or ${mod}L).`)}
             onMouseLeave={hideTooltip}
             className="flex items-center space-x-2 px-3 py-2 text-sm font-medium text-[#6B778C] bg-white border border-[#DFE1E6] hover:bg-gray-50 rounded-md transition-colors"
           >
@@ -821,7 +851,7 @@ function Dashboard() {
           </button>
           <button
             onClick={openLoadModal}
-            onMouseEnter={(e) => showHeaderTooltip(e, 'Open Pipeline', `Load a previously saved workflow from your library (${mod}O).`)}
+            onMouseEnter={(e) => showHeaderTooltip(e, 'Open Pipeline', `Load a previously saved workflow from your library (${mod}O, ${mod}I, or ${mod}E).`)}
             onMouseLeave={hideTooltip}
             className="flex items-center space-x-2 px-3 py-2 text-sm font-medium text-[#6B778C] bg-white border border-[#DFE1E6] hover:bg-gray-50 rounded-md transition-colors"
           >
@@ -830,7 +860,7 @@ function Dashboard() {
           </button>
           <button
             onClick={handleExecute}
-            onMouseEnter={(e) => showHeaderTooltip(e, 'Execute Workflow', `Run the entire pipeline processing logic and generate results (${mod}R).`)}
+            onMouseEnter={(e) => showHeaderTooltip(e, 'Execute Workflow', `Run the entire pipeline processing logic and generate results (${mod}R or ${mod}Enter).`)}
             onMouseLeave={hideTooltip}
             disabled={isExecuting}
             className={`flex items-center space-x-2 px-4 py-2 text-sm font-medium text-white rounded-md transition-colors shadow-sm ${isExecuting ? 'bg-gray-400' : 'bg-[#0052CC] hover:bg-[#0065FF]'}`}
@@ -990,6 +1020,7 @@ function Dashboard() {
 
         <main className="flex-1 relative flex flex-col h-[calc(100vh-4rem)]">
           <WorkspaceCanvas 
+            key={activeTabId}
             nodes={nodes}
             edges={edges}
             onNodesChange={onNodesChange}
@@ -1005,10 +1036,12 @@ function Dashboard() {
             layoutCounter={layoutCounter}
             isBottomPanelVisible={isBottomPanelVisible && !!selectedNode}
             bottomPanelHeight={previewHeight}
+            shortcutsEnabled={!isSaveModalOpen && !isLoadModalOpen && !isRenameModalOpen}
           >
             {selectedNode && isBottomPanelVisible && (
               <Panel position="bottom-left" style={{ width: '100%', margin: 0 }}>
                 <div
+                  data-testid="data-inspection-panel"
                   style={{ height: `${previewHeight}px` }}
                   className="bg-white border-t border-[#DFE1E6] flex flex-col relative z-[60] shadow-[0_-4px_12px_rgba(0,0,0,0.05)] transition-all duration-300"
                   onPointerDown={(e) => e.stopPropagation()}

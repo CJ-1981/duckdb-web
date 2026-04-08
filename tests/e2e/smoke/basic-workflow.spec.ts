@@ -8,7 +8,7 @@ test.describe('Smoke Tests - Basic Workflow', () => {
   let dataPanel: DataInspectionPanel;
 
   test.beforeEach(async ({ page }) => {
-    await page.goto('http://localhost:3000');
+    await page.goto('');
     canvas = new WorkflowCanvas(page);
     dataPanel = new DataInspectionPanel(page);
     await canvas.waitForReady();
@@ -18,6 +18,7 @@ test.describe('Smoke Tests - Basic Workflow', () => {
     await expect(page).toHaveTitle(/duckdb web|data analyst/i);
     await expect(canvas.canvas).toBeVisible();
     await expect(canvas.emptyState).toBeVisible();
+    expect(await canvas.isEmpty()).toBeTruthy();
   });
 
   test('should display node palette sidebar', async ({ page }) => {
@@ -25,10 +26,10 @@ test.describe('Smoke Tests - Basic Workflow', () => {
     await expect(sidebar).toBeVisible();
 
     // Check for common node types
-    await expect(page.locator('text=/input|file/i')).toBeVisible();
-    await expect(page.locator('text=/filter|where/i')).toBeVisible();
-    await expect(page.locator('text=/aggregate|group/i')).toBeVisible();
-    await expect(page.locator('text=/output|export/i')).toBeVisible();
+    await expect(page.locator('text=/input|file/i').first()).toBeVisible();
+    await expect(page.locator('text=/filter|where/i').first()).toBeVisible();
+    await expect(page.locator('text=/aggregate|group/i').first()).toBeVisible();
+    await expect(page.locator('text=/output|export/i').first()).toBeVisible();
   });
 
   test('should display control buttons on canvas', async () => {
@@ -65,17 +66,14 @@ test.describe('Smoke Tests - Basic Workflow', () => {
 
   test('should select node when clicked', async ({ page }) => {
     await canvas.dragNodeToCanvas('input');
-
+    await canvas.selectNodeByIndex(0);
     const node = page.locator('.react-flow__node').first();
-    await node.click();
-
     await expect(node).toHaveClass(/selected|ring-2/);
   });
 
   test('should display data inspection panel when node selected', async ({ page }) => {
     await canvas.dragNodeToCanvas('input');
-    await page.locator('.react-flow__node').first().click();
-
+    await canvas.selectNodeByIndex(0);
     await expect(dataPanel.panel).toBeVisible();
   });
 
@@ -89,7 +87,7 @@ test.describe('Smoke Tests - Basic Workflow', () => {
   });
 
   test('should allow keyboard undo and redo', async ({ page }) => {
-    const isMac = await page.evaluate(() => /Mac|iPod|iPhone|iPad/.test(navigator.userAgent));
+    const isMac = await page.evaluate(() => /Mac|iPod|iPhone|iPad|Macintosh/.test(navigator.userAgent));
 
     // Add a node
     await canvas.dragNodeToCanvas('input');
@@ -97,7 +95,7 @@ test.describe('Smoke Tests - Basic Workflow', () => {
     expect(initialCount).toBe(1);
 
     // Delete it
-    await page.locator('.react-flow__node').first().click();
+    await canvas.selectNodeByIndex(0);
     await canvas.deleteSelectedNode();
     await expect(await canvas.getNodeCount()).toBe(0);
 
@@ -118,7 +116,7 @@ test.describe('Smoke Tests - Basic Workflow', () => {
     await expect(await canvas.getNodeCount()).toBe(0);
   });
 
-  test('should allow canvas zoom in and out', async () => {
+  test('should allow canvas zoom in and out', async ({ page }) => {
     const initialTransform = await canvas.canvas.evaluate(el => {
       return window.getComputedStyle(el).transform;
     });
@@ -149,17 +147,20 @@ test.describe('Smoke Tests - Basic Workflow', () => {
   });
 
   test('should display bottom panel tabs', async ({ page }) => {
-    const bottomPanel = page.locator('[data-testid="bottom-panel"], .bottom-panel');
+    await canvas.dragNodeToCanvas('input');
+    await canvas.selectNodeByIndex(0);
+    
+    const bottomPanel = page.locator('[data-testid="data-inspection-panel"]');
     await expect(bottomPanel).toBeVisible();
 
-    await expect(page.locator('button:has-text("Data Table")')).toBeVisible();
-    await expect(page.locator('button:has-text("Schema")')).toBeVisible();
-    await expect(page.locator('button:has-text("Statistics")')).toBeVisible();
+    await expect(dataPanel.tabs.data).toBeVisible();
+    await expect(dataPanel.tabs.schema).toBeVisible();
+    await expect(dataPanel.tabs.stats).toBeVisible();
   });
 
   test('should switch between data panel tabs', async ({ page }) => {
     await canvas.dragNodeToCanvas('input');
-    await page.locator('.react-flow__node').first().click();
+    await canvas.selectNodeByIndex(0);
 
     await dataPanel.switchToDataTab();
     await expect(dataPanel.dataTable).toBeVisible();
@@ -218,7 +219,7 @@ test.describe('Smoke Tests - Basic Workflow', () => {
 
 test.describe('Smoke Tests - Data Upload', () => {
   test('should upload CSV file successfully', async ({ page }) => {
-    await page.goto('http://localhost:3000');
+    await page.goto('');
     const canvas = new WorkflowCanvas(page);
     await canvas.waitForReady();
 
@@ -246,7 +247,7 @@ test.describe('Smoke Tests - Data Upload', () => {
 
 test.describe('Smoke Tests - Workflow Execution', () => {
   test('should execute simple workflow and show results', async ({ page }) => {
-    await page.goto('http://localhost:3000');
+    await page.goto('');
     const canvas = new WorkflowCanvas(page);
     await canvas.waitForReady();
 

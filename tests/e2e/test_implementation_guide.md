@@ -192,7 +192,7 @@ test.describe('Filter Node Tests', () => {
     workflowBuilder = new WorkflowBuilderPage(page);
 
     // Navigate to app
-    await page.goto('/');
+    await page.goto('');
     await canvasPage.waitForCanvasReady();
   });
 

@@ -156,7 +156,7 @@ test.describe('My Feature Tests', () => {
     const canvas = new WorkflowCanvas(page);
     const panel = new DataInspectionPanel(page);
 
-    await page.goto('/');
+    await page.goto('');
     await canvas.waitForReady();
 
     // Your test code here

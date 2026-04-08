@@ -151,21 +151,27 @@ export class DataInspectionPanel {
     nullPct: string;
   } | null> {
     await this.switchToStatsTab();
-    const statBlock = this.statsContainer.filter({ hasText: columnName });
+    
+    // Find the specific column stat block using stable data-column-name attribute
+    const statBlock = this.statsContainer.locator('[data-column-name]').filter({
+      hasText: columnName
+    }).first();
 
     const isVisible = await statBlock.isVisible().catch(() => false);
     if (!isVisible) return null;
 
-    const getText = async (label: string) => {
-      const element = statBlock.locator(`text=${label}`).locator('..').locator('div').first();
-      return (await element.textContent())?.trim() || '';
+    const getValueByLabel = async (label: string) => {
+      const row = statBlock.locator('[data-testid="stat-row"]').filter({
+        has: this.page.locator('[data-testid="stat-label"]', { hasText: label })
+      });
+      return (await row.locator('[data-testid="stat-value"]').textContent())?.trim() || '';
     };
 
     return {
-      count: await getText('Non-Null'),
-      distinct: await getText('Distinct'),
-      nulls: await getText('Nulls'),
-      nullPct: await getText('Null %'),
+      count: await getValueByLabel('Non-Null'),
+      distinct: await getValueByLabel('Distinct'),
+      nulls: await getValueByLabel('Nulls'),
+      nullPct: await getValueByLabel('Null %'),
     };
   }
 
@@ -190,8 +196,22 @@ export class DataInspectionPanel {
    * Check if the panel shows "no data" message
    */
   async isNoDataMessage(): Promise<boolean> {
+    return this.isNoDataMessageVisible();
+  }
+
+  /**
+   * Check if the "no data" message is visible
+   */
+  async isNoDataMessageVisible(): Promise<boolean> {
     const noDataMessage = this.panel.locator('text=/no sample data|execute the workflow/i');
     return await noDataMessage.isVisible().catch(() => false);
+  }
+
+  /**
+   * Wait for the "no data" message to appear
+   */
+  async waitForNoDataMessage() {
+    await expect(this.panel.locator('text=/no sample data|execute the workflow/i')).toBeVisible();
   }
 
   /**
