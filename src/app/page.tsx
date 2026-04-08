@@ -740,6 +740,14 @@ function Dashboard() {
 
   React.useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Check if a modal or dialog is open
+      const dialogElement = document.querySelector(
+        '[role="dialog"], [aria-modal="true"], .modal, .overlay, [data-dialog-open]'
+      );
+      if (dialogElement && (dialogElement as HTMLElement).offsetParent !== null) {
+        return; // Don't process shortcuts when modal is open
+      }
+
       const activeElement = document.activeElement;
       if (
         activeElement instanceof HTMLInputElement ||
@@ -756,15 +764,15 @@ function Dashboard() {
         if (e.code === 'KeyN' && e.shiftKey) { 
           e.preventDefault();
           newWorkflowRef.current();
-        } else if (e.code === 'KeyR' || e.code === 'Enter') {
+        } else if (e.code === 'Enter') {
           e.preventDefault();
           e.stopPropagation();
           executeRef.current();
-        } else if (e.code === 'KeyO' || e.code === 'KeyI' || e.code === 'KeyE') {
+        } else if (e.code === 'KeyO' && e.shiftKey) {
           e.preventDefault();
           e.stopPropagation();
           openLoadRef.current();
-        } else if (e.code === 'KeyS' || e.code === 'KeyL') {
+        } else if (e.code === 'KeyS' && e.shiftKey) {
           e.preventDefault();
           e.stopPropagation();
           saveWorkflowRef.current();
@@ -1028,6 +1036,7 @@ function Dashboard() {
             layoutCounter={layoutCounter}
             isBottomPanelVisible={isBottomPanelVisible && !!selectedNode}
             bottomPanelHeight={previewHeight}
+            shortcutsEnabled={!isSaveModalOpen && !isLoadModalOpen && !isRenameModalOpen}
           >
             {selectedNode && isBottomPanelVisible && (
               <Panel position="bottom-left" style={{ width: '100%', margin: 0 }}>

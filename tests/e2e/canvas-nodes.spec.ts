@@ -88,6 +88,7 @@ test.describe('Canvas and Node Tests', () => {
 
     // Connect both inputs to join
     await canvas.connectNodes(/input|csv/i, /combine|join/i);
+    await canvas.connectNodes(/input|csv/i, /combine|join/i);
 
     // Select join node
     await canvas.clickNode(/combine|join/i);
@@ -113,7 +114,8 @@ test.describe('Canvas and Node Tests', () => {
     await expect(outputConfig).toBeVisible();
   });
 
-  test.skip('can delete node from context menu', async ({ page }) => {
+  test.fixme('can delete node from context menu', async ({ page }) => {
+    // TODO: Flaky - investigate context menu reliability and element selection
     // Add a node
     await canvas.dragNodeToCanvas('input');
 
@@ -130,7 +132,8 @@ test.describe('Canvas and Node Tests', () => {
     expect(isEmpty).toBe(true);
   });
 
-  test.skip('can duplicate node', async ({ page }) => {
+  test.fixme('can duplicate node', async ({ page }) => {
+    // TODO: Flaky - investigate context menu reliability and element selection
     // Add a node
     await canvas.dragNodeToCanvas('input');
 

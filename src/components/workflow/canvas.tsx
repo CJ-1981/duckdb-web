@@ -121,6 +121,7 @@ interface WorkspaceCanvasProps {
   layoutCounter?: number;
   isBottomPanelVisible?: boolean;
   bottomPanelHeight?: number;
+  shortcutsEnabled?: boolean;
   children?: React.ReactNode;
 }
 
@@ -135,6 +136,7 @@ function WorkspaceCanvas({
   layoutCounter = 0,
   isBottomPanelVisible = false,
   bottomPanelHeight = 0,
+  shortcutsEnabled = true,
   children
 }: WorkspaceCanvasProps) {
   const [history, setHistory] = useState<{ nodes: Node[]; edges: Edge[] }[]>([]);
@@ -205,6 +207,10 @@ function WorkspaceCanvas({
   // Handle Keyboard Shortcuts
   React.useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (!shortcutsEnabled) {
+        return;
+      }
+
       // Don't intercept if user is typing in an input or textarea
       const target = e.target as HTMLElement;
       if (
@@ -234,7 +240,7 @@ function WorkspaceCanvas({
     };
     window.addEventListener('keydown', handleKeyDown, false);
     return () => window.removeEventListener('keydown', handleKeyDown, false);
-  }, []);
+  }, [shortcutsEnabled]);
 
 
   const onConnect = useCallback(

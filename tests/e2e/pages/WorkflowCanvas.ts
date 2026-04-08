@@ -64,7 +64,11 @@ export class WorkflowCanvas {
     else if (l === 'aggregate') label = 'Aggregate Data';
     else if (l === 'combine' || l === 'join') label = 'Combine Datasets';
 
-    const sidebarItem = this.page.locator('aside').getByText(label, { exact: false }).first();
+    const palettePanel = this.page.locator('[data-testid="palette"], .palette, aside').filter({
+      has: this.page.getByText('CSV/Excel File'),
+    }).first();
+    
+    const sidebarItem = palettePanel.getByText(label, { exact: false }).first();
 
     await expect(sidebarItem).toBeVisible({ timeout: 10000 });
 
@@ -130,7 +134,10 @@ export class WorkflowCanvas {
    * Delete the currently selected node
    */
   async deleteSelectedNode() {
-    // Ensure the page has focus for keyboard events
+    await this.page.evaluate(() => {
+      const el = document.activeElement as HTMLElement;
+      if (el) el.blur();
+    });
     await this.page.keyboard.press('Delete');
     await this.page.keyboard.press('Backspace');
   }

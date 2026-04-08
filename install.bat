@@ -48,16 +48,16 @@ if exist .venv (
 :: 4. Install Python Dependencies
 echo 📦 Installing Backend dependencies...
 if exist .venv\Scripts\activate.bat (
-    call .venv\Scripts\activate.bat
-    python -m pip install --upgrade pip
+    call .venv\Scripts\activate.bat || exit /b 1
+    python -m pip install --upgrade pip || exit /b 1
     if exist requirements.txt (
-        pip install -r requirements.txt
+        pip install -r requirements.txt || exit /b 1
     ) else (
         echo ⚠️  requirements.txt not found. Skipping...
     )
     if exist requirements-dev.txt (
         echo 📦 Installing dev dependencies...
-        pip install -r requirements-dev.txt
+        pip install -r requirements-dev.txt || exit /b 1
     )
 ) else (
     echo ❌ .venv activation script not found.
@@ -69,7 +69,7 @@ echo ✅ Backend dependencies installed.
 :: 5. Install Frontend Dependencies
 echo 📦 Installing Frontend dependencies (npm)...
 if exist package.json (
-    call npm install
+    call npm install || exit /b 1
 ) else (
     echo ⚠️  package.json not found. Skipping...
 )

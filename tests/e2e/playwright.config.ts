@@ -19,7 +19,7 @@ export default defineConfig({
     ['list']
   ],
   use: {
-    baseURL: 'http://127.0.0.1:3001',
+    baseURL: `http://127.0.0.1:${PORT}`,
     trace: 'retain-on-failure',
     viewport: { width: 1920, height: 1080 },
     screenshot: 'only-on-failure',
@@ -36,8 +36,11 @@ export default defineConfig({
   ],
 
   webServer: {
-    command: 'PORT=3001 ../../run.sh',
-    url: 'http://127.0.0.1:3001',
+    command: '../../run.sh',
+    url: `http://127.0.0.1:${PORT}`,
+    env: {
+      PORT,
+    },
     timeout: 300000,
     reuseExistingServer: false,
   },

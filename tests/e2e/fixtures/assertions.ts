@@ -6,15 +6,19 @@ import type { Page } from '@playwright/test';
  * Provides domain-specific assertions for the DuckDB web application
  */
 
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 function getLabelRegex(label: string): RegExp {
   const l = label.toLowerCase();
-  let pattern = label;
-  if (l === 'input' || l.includes('csv')) pattern = 'CSV/Excel File|Input';
-  else if (l === 'filter') pattern = 'Filter Records|Filter';
-  else if (l === 'aggregate') pattern = 'Aggregate Data|Aggregate';
-  else if (l === 'combine' || l.includes('join')) pattern = 'Combine Datasets|Join|Combine';
-  else if (l === 'output' || l.includes('export')) pattern = 'Export File|Output|Export';
-  else if (l === 'sql') pattern = 'Custom SQL|SQL';
+  let pattern = escapeRegExp(label);
+  if (l === 'input' || l.includes('csv')) pattern = '(CSV/Excel File|Input)';
+  else if (l === 'filter') pattern = '(Filter Records|Filter)';
+  else if (l === 'aggregate') pattern = '(Aggregate Data|Aggregate)';
+  else if (l === 'combine' || l.includes('join')) pattern = '(Combine Datasets|Join|Combine)';
+  else if (l === 'output' || l.includes('export')) pattern = '(Export File|Output|Export)';
+  else if (l === 'sql') pattern = '(Custom SQL|SQL)';
   
   return new RegExp(pattern, 'i');
 }
@@ -34,17 +38,48 @@ export async function assertNodeExists(page: Page, nodeLabel: string) {
 export async function assertNodeNotExists(page: Page, nodeLabel: string) {
   const regex = getLabelRegex(nodeLabel);
   const node = page.locator('.react-flow__node').filter({ hasText: regex });
-  await expect(node).not.toBeVisible();
+  await expect(node).toHaveCount(0);
 }
 
 /**
  * Assert that two nodes are connected
  */
 export async function assertNodesConnected(page: Page, sourceLabel: string, targetLabel: string) {
-  // This is a complex assertion as edges are rendered separately in SVG
-  // For now, we check if at least one edge exists
-  const edgeCount = await page.locator('.react-flow__edge').count();
-  expect(edgeCount).toBeGreaterThan(0);
+  const sourceRegex = getLabelRegex(sourceLabel);
+  const targetRegex = getLabelRegex(targetLabel);
+  
+  // Get source and target node IDs
+  const sourceNode = page.locator('.react-flow__node').filter({ hasText: sourceRegex }).first();
+  const targetNode = page.locator('.react-flow__node').filter({ hasText: targetRegex }).first();
+  
+  await expect(sourceNode).toBeVisible();
+  await expect(targetNode).toBeVisible();
+  
+  const sourceId = await sourceNode.getAttribute('data-id');
+  const targetId = await targetNode.getAttribute('data-id');
+  
+  if (!sourceId || !targetId) {
+    throw new Error(`Could not find node IDs for ${sourceLabel} or ${targetLabel}`);
+  }
+  
+  // Check for edge connecting these specific nodes
+  const edges = page.locator('.react-flow__edge');
+  let found = false;
+  
+  const edgeCount = await edges.count();
+  for (let i = 0; i < edgeCount; i++) {
+    const edge = edges.nth(i);
+    const source = await edge.getAttribute('data-source');
+    const target = await edge.getAttribute('data-target');
+    
+    if ((source === sourceId && target === targetId) || 
+        (source === targetId && target === sourceId)) {
+      found = true;
+      break;
+    }
+  }
+  
+  expect(found).toBe(true);
 }
 
 /**

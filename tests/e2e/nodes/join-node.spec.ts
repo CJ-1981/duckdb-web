@@ -9,7 +9,7 @@ test.describe('Join Node Tests', () => {
   let dataPanel: DataInspectionPanel;
 
   test.beforeEach(async ({ page }) => {
-    await page.goto('');
+    await page.goto('/');
     canvas = new WorkflowCanvas(page);
     dataPanel = new DataInspectionPanel(page);
     await canvas.waitForReady();
