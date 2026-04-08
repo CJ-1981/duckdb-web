@@ -34,4 +34,5 @@ if [ ! -d "node_modules" ]; then
     npm install
 fi
 
-npm run dev
+# Use PORT environment variable if provided, else default to 3000
+npm run dev -- -p ${PORT:-3000}

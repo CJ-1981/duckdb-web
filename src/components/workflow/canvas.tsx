@@ -194,28 +194,48 @@ function WorkspaceCanvas({
     setRedoStack((prev) => prev.slice(0, -1));
   }, [redoStack, nodes, edges, setNodes, setEdges]);
 
+  const undoRef = React.useRef(undo);
+  const redoRef = React.useRef(redo);
+
+  React.useEffect(() => {
+    undoRef.current = undo;
+    redoRef.current = redo;
+  }, [undo, redo]);
+
   // Handle Keyboard Shortcuts
   React.useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      const isMac = /Mac|iPod|iPhone|iPad/.test(navigator.userAgent);
-      const modifier = isMac ? e.metaKey : e.ctrlKey;
+      // Don't intercept if user is typing in an input or textarea
+      const target = e.target as HTMLElement;
+      if (
+        target.tagName === 'INPUT' || 
+        target.tagName === 'TEXTAREA' || 
+        target.tagName === 'SELECT' ||
+        target.isContentEditable ||
+        target.closest('input, textarea, [contenteditable="true"]')
+      ) {
+        return;
+      }
 
-      if (modifier && e.key.toLowerCase() === 'z') {
+      const modifier = e.metaKey || e.ctrlKey;
+
+      if (modifier && e.code === 'KeyZ') {
         if (e.shiftKey) {
           e.preventDefault();
-          redo();
+          redoRef.current();
         } else {
           e.preventDefault();
-          undo();
+          undoRef.current();
         }
-      } else if (modifier && e.key.toLowerCase() === 'y') {
+      } else if (modifier && e.code === 'KeyY') {
         e.preventDefault();
-        redo();
+        redoRef.current();
       }
     };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [undo, redo]);
+    window.addEventListener('keydown', handleKeyDown, false);
+    return () => window.removeEventListener('keydown', handleKeyDown, false);
+  }, []);
+
 
   const onConnect = useCallback(
     (params: Connection | Edge) => {

@@ -2,15 +2,12 @@ import { defineConfig, devices } from '@playwright/test';
 
 /**
  * Playwright configuration for DuckDB Web E2E tests
- *
- * Test directory: ./tests/e2e
- * Web server: npm run dev on http://localhost:3000
- * Browsers: Chrome only (for consistency and speed)
- * Reporters: HTML, JSON, JUnit
  */
 
+const PORT = process.env.TEST_PORT || '3001';
+
 export default defineConfig({
-  testDir: './tests/e2e',
+  testDir: '.',
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
@@ -22,8 +19,9 @@ export default defineConfig({
     ['list']
   ],
   use: {
-    baseURL: 'http://localhost:3000',
+    baseURL: 'http://127.0.0.1:3001',
     trace: 'retain-on-failure',
+    viewport: { width: 1920, height: 1080 },
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
     actionTimeout: 10000,
@@ -38,11 +36,12 @@ export default defineConfig({
   ],
 
   webServer: {
-    command: 'npm run dev',
-    url: 'http://localhost:3000',
-    timeout: 120000,
-    reuseExistingServer: !process.env.CI,
+    command: 'PORT=3001 ../../run.sh',
+    url: 'http://127.0.0.1:3001',
+    timeout: 300000,
+    reuseExistingServer: false,
   },
+
 
   expect: {
     timeout: 5000,

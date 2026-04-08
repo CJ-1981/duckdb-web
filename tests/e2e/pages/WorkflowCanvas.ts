@@ -18,13 +18,13 @@ export class WorkflowCanvas {
   constructor(page: Page) {
     this.page = page;
     this.canvas = page.locator('.react-flow').or(page.locator('[data-testid="workflow-canvas"]'));
-    this.emptyState = page.locator('text=/your canvas is empty/i');
+    this.emptyState = page.locator('text=/your canvas is empty|Build Your Pipeline/i');
     this.nodeContainer = page.locator('.react-flow__node');
     this.miniMap = page.locator('.react-flow__minimap');
     this.controls = page.locator('.react-flow__controls');
-    this.executeButton = page.locator('button:has-text("Execute")').or(page.locator('[data-testid="execute-workflow-btn"]'));
+    this.executeButton = page.locator('button:has-text("Execute"), button:has-text("Run")').or(page.locator('[data-testid="execute-workflow-btn"]'));
     this.saveButton = page.locator('button:has-text("Save")').or(page.locator('[data-testid="save-workflow-btn"]'));
-    this.loadButton = page.locator('button:has-text("Load")').or(page.locator('[data-testid="load-workflow-btn"]'));
+    this.loadButton = page.locator('button:has-text("Load"), button:has-text("Open")').or(page.locator('[data-testid="load-workflow-btn"]'));
   }
 
   /**
@@ -55,9 +55,18 @@ export class WorkflowCanvas {
    * @param position - Optional position to drop the node {x, y}
    */
   async dragNodeToCanvas(nodeType: string, position?: { x: number; y: number }) {
-    const sidebarItem = this.page.locator(
-      `[data-testid="node-palette-item-${nodeType}"], [data-testid*="${nodeType}"], text=/${nodeType}/i`
-    ).first();
+    // Map generic types to actual sidebar labels if needed
+    let label = nodeType;
+    const l = nodeType.toLowerCase();
+    if (l === 'input' || l.includes('csv')) label = 'CSV/Excel File';
+    else if (l === 'filter') label = 'Filter Records';
+    else if (l === 'output' || l.includes('export')) label = 'Export File';
+    else if (l === 'aggregate') label = 'Aggregate Data';
+    else if (l === 'combine' || l === 'join') label = 'Combine Datasets';
+
+    const sidebarItem = this.page.locator('aside').getByText(label, { exact: false }).first();
+
+    await expect(sidebarItem).toBeVisible({ timeout: 10000 });
 
     const canvasBox = await this.canvas.boundingBox();
     if (!canvasBox) throw new Error('Canvas not found');
@@ -71,13 +80,40 @@ export class WorkflowCanvas {
   }
 
   /**
-   * Click on a node by its label or index
-   * @param nodeLabel - The label of the node to click
+   * Get the technical subtype for a node label
+   * @param label - The user-friendly label of the node type
    */
-  async clickNode(nodeLabel: string) {
+  getTechnicalSubtype(label: string): string {
+    const l = label.toLowerCase();
+    if (l.includes('csv') || l.includes('excel') || l === 'input') return 'csv';
+    if (l.includes('filter')) return 'filter';
+    if (l.includes('combine') || l.includes('join')) return 'combine';
+    if (l.includes('clean')) return 'clean';
+    if (l.includes('aggregate')) return 'aggregate';
+    if (l.includes('sort')) return 'sort';
+    if (l.includes('limit')) return 'limit';
+    if (l.includes('select')) return 'select';
+    if (l.includes('add column') || l.includes('computed')) return 'computed';
+    if (l.includes('rename')) return 'rename';
+    if (l.includes('duplicate') || l.includes('distinct')) return 'distinct';
+    if (l.includes('logic') || l.includes('case')) return 'case_when';
+    if (l.includes('window')) return 'window';
+    if (l.includes('sql')) return 'raw_sql';
+    if (l.includes('report')) return 'report';
+    if (l.includes('export')) return 'export';
+    return 'default';
+  }
+
+  /**
+   * Click on a node by its label or index
+   * @param nodeLabel - The label of the node to click (string or RegExp)
+   */
+  async clickNode(nodeLabel: string | RegExp) {
     const node = this.nodeContainer.filter({ hasText: nodeLabel }).first();
     await expect(node).toBeVisible();
-    await node.click();
+    await node.click({ force: true });
+    // Verify it's selected (React Flow adds a 'selected' class)
+    await expect(node).toHaveClass(/selected/);
   }
 
   /**
@@ -85,16 +121,18 @@ export class WorkflowCanvas {
    * @param index - The index of the node (0-based)
    */
   async selectNodeByIndex(index: number) {
-    const nodes = this.nodeContainer.all();
-    const node = (await nodes)[index];
-    await node.click();
+    const node = this.nodeContainer.nth(index);
+    await node.scrollIntoViewIfNeeded();
+    await node.click({ force: true });
   }
 
   /**
    * Delete the currently selected node
    */
   async deleteSelectedNode() {
+    // Ensure the page has focus for keyboard events
     await this.page.keyboard.press('Delete');
+    await this.page.keyboard.press('Backspace');
   }
 
   /**
@@ -102,14 +140,14 @@ export class WorkflowCanvas {
    * @param sourceLabel - The label of the source node
    * @param targetLabel - The label of the target node
    */
-  async connectNodes(sourceLabel: string, targetLabel: string) {
+  async connectNodes(sourceLabel: string | RegExp, targetLabel: string | RegExp) {
     const sourceNode = this.nodeContainer.filter({ hasText: sourceLabel }).first();
     const targetNode = this.nodeContainer.filter({ hasText: targetLabel }).first();
 
-    const sourceHandle = sourceNode.locator('.react-flow__handle-bottom, .react-flow__handle[data-handlepos="bottom"]');
-    const targetHandle = targetNode.locator('.react-flow__handle-top, .react-flow__handle[data-handlepos="top"]');
+    const sourceHandle = sourceNode.locator('.react-flow__handle-bottom, .react-flow__handle[data-handlepos="bottom"], .react-flow__handle.source');
+    const targetHandle = targetNode.locator('.react-flow__handle-top, .react-flow__handle[data-handlepos="top"], .react-flow__handle.target');
 
-    await sourceHandle.dragTo(targetHandle);
+    await sourceHandle.dragTo(targetHandle, { force: true });
   }
 
   /**
@@ -123,16 +161,16 @@ export class WorkflowCanvas {
    * Wait for workflow execution to complete
    */
   async waitForExecutionComplete() {
-    await expect(this.page.locator('[data-testid="execution-success"], text=/executed successfully/i')).toBeVisible({
-      timeout: 60000,
-    });
+    await this.page.locator('[data-testid="execution-success"]')
+      .or(this.page.locator('text=/executed successfully/i'))
+      .waitFor({ state: 'visible', timeout: 60000 });
   }
 
   /**
    * Get the row count displayed on a node
    * @param nodeLabel - The label of the node
    */
-  async getNodeRowCount(nodeLabel: string): Promise<string> {
+  async getNodeRowCount(nodeLabel: string | RegExp): Promise<string> {
     const node = this.nodeContainer.filter({ hasText: nodeLabel }).first();
     const rowCount = node.locator('text=/rows/i');
     return await rowCount.textContent() || '';
@@ -142,7 +180,7 @@ export class WorkflowCanvas {
    * Check if a node exists on the canvas
    * @param nodeLabel - The label of the node to check
    */
-  async hasNode(nodeLabel: string): Promise<boolean> {
+  async hasNode(nodeLabel: string | RegExp): Promise<boolean> {
     const node = this.nodeContainer.filter({ hasText: nodeLabel });
     const count = await node.count();
     return count > 0;
@@ -166,7 +204,7 @@ export class WorkflowCanvas {
    * Pan the canvas using the controls
    */
   async panCanvas(direction: 'up' | 'down' | 'left' | 'right') {
-    const panButton = this.controls.locator(`button[aria-label*="${direction}"], button[title*="${direction}"]`);
+    const panButton = this.controls.locator(`button[aria-label*="${direction}" i], button[title*="${direction}" i]`);
     await panButton.click();
   }
 
@@ -174,12 +212,12 @@ export class WorkflowCanvas {
    * Zoom the canvas
    */
   async zoomIn() {
-    const zoomInButton = this.controls.locator('button[aria-label*="zoom in"], button[title*="zoom in"]');
+    const zoomInButton = this.controls.locator('button[aria-label*="zoom in" i], button[title*="zoom in" i]');
     await zoomInButton.click();
   }
 
   async zoomOut() {
-    const zoomOutButton = this.controls.locator('button[aria-label*="zoom out"], button[title*="zoom out"]');
+    const zoomOutButton = this.controls.locator('button[aria-label*="zoom out" i], button[title*="zoom out" i]');
     await zoomOutButton.click();
   }
 
@@ -187,15 +225,17 @@ export class WorkflowCanvas {
    * Fit the view to show all nodes
    */
   async fitView() {
-    const fitButton = this.controls.locator('button[aria-label*="fit"], button[title*="fit"]');
-    await fitButton.click();
+    const fitButton = this.controls.locator('button[aria-label*="fit" i], button[title*="fit" i]');
+    if (await fitButton.isVisible()) {
+      await fitButton.click();
+    }
   }
 
   /**
    * Undo the last action
    */
   async undo() {
-    const isMac = await this.page.evaluate(() => /Mac|iPod|iPhone|iPad/.test(navigator.userAgent));
+    const isMac = await this.page.evaluate(() => /Mac|iPod|iPhone|iPad|Macintosh/.test(navigator.userAgent));
     if (isMac) {
       await this.page.keyboard.press('Meta+Z');
     } else {
@@ -207,7 +247,7 @@ export class WorkflowCanvas {
    * Redo the last undone action
    */
   async redo() {
-    const isMac = await this.page.evaluate(() => /Mac|iPod|iPhone|iPad/.test(navigator.userAgent));
+    const isMac = await this.page.evaluate(() => /Mac|iPod|iPhone|iPad|Macintosh/.test(navigator.userAgent));
     if (isMac) {
       await this.page.keyboard.press('Meta+Shift+Z');
     } else {

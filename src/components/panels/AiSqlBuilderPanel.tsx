@@ -390,7 +390,7 @@ export default function AiSqlBuilderPanel({ schema, onInsertSql, initialPrompt, 
             placeholder={'e.g. "Show me the top 10 customers by total revenue, excluding nulls"'}
             value={prompt}
             onChange={e => setPrompt(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleGenerate(); }}
+            onKeyDown={e => { if ((e.code === 'Enter' || e.code === 'KeyR') && (e.metaKey || e.ctrlKey)) { e.preventDefault(); handleGenerate(); } }}
             className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-sm focus:ring-1 focus:ring-[#0052CC] focus:border-[#0052CC] outline-none resize-y min-h-[80px]"
           />
           <p className="text-[10px] text-[#6B778C] mt-1">Tip: Press Cmd/Ctrl+Enter to generate.</p>

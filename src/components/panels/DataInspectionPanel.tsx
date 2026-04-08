@@ -112,13 +112,6 @@ export default function DataInspectionPanel({ nodeId, nodeLabel, nodeSamples, no
     </div>
   );
 
-  if (samples.length === 0 && types.length === 0) return (
-    <div className="h-full flex flex-col items-center justify-center text-[#6B778C] bg-white p-8">
-      <RefreshCw size={32} className="mb-3 opacity-20" />
-      <p className="text-sm font-medium">Execute the workflow to inspect data.</p>
-    </div>
-  );
-
   return (
     <div className="h-full flex flex-col overflow-hidden bg-white">
       <div className="flex border-b border-[#DFE1E6] bg-[#FAFBFC] px-4 shrink-0">
@@ -130,7 +123,14 @@ export default function DataInspectionPanel({ nodeId, nodeLabel, nodeSamples, no
         ))}
       </div>
 
-      {activeTab === 'data' && (
+      {samples.length === 0 && types.length === 0 ? (
+        <div className="flex-1 flex flex-col items-center justify-center text-[#6B778C] bg-white p-8">
+          <RefreshCw size={32} className="mb-3 opacity-20" />
+          <p className="text-sm font-medium">Execute the workflow to inspect data.</p>
+        </div>
+      ) : (
+        <>
+          {activeTab === 'data' && (
         <div className="flex-1 overflow-auto p-4 custom-scrollbar">
           <div className="flex items-center justify-between mb-3">
              <div>
@@ -246,7 +246,7 @@ export default function DataInspectionPanel({ nodeId, nodeLabel, nodeSamples, no
               <p className="text-[11px] text-red-700 font-medium">{fullStatsError}</p>
             </div>
           )}
-          <div className="space-y-2">
+          <div className="space-y-2" data-testid="column-stats">
             {displayStats.map((stat, i) => {
               const isNum = /INT|FLOAT|DOUBLE|DECIMAL|NUMERIC|BIGINT|REAL/i.test(stat.column_type);
               const isStr = /VARCHAR|TEXT|CHAR|STRING/i.test(stat.column_type);
@@ -263,9 +263,9 @@ export default function DataInspectionPanel({ nodeId, nodeLabel, nodeSamples, no
                       [String(stat.null_count), 'Nulls', stat.null_count > 0 ? 'text-amber-600' : 'text-[#36B37E]'],
                       [String(stat.null_pct) + '%', 'Null %', stat.null_pct > 20 ? 'text-red-500' : stat.null_pct > 0 ? 'text-amber-600' : 'text-[#36B37E]'],
                     ].map(([val, label, color]) => (
-                      <div key={label} className="text-center p-1.5 bg-[#FAFBFC] rounded border border-[#DFE1E6]">
-                        <div className={`text-xs font-bold ${color}`}>{val}</div>
-                        <div className="text-[9px] text-[#6B778C] font-semibold">{label}</div>
+                      <div key={label} className="text-center p-1.5 bg-[#FAFBFC] rounded border border-[#DFE1E6]" data-testid="stat-row">
+                        <div className={`text-xs font-bold ${color}`} data-testid="stat-value">{val}</div>
+                        <div className="text-[9px] text-[#6B778C] font-semibold" data-testid="stat-label">{label}</div>
                       </div>
                     ))}
                   </div>
@@ -290,6 +290,8 @@ export default function DataInspectionPanel({ nodeId, nodeLabel, nodeSamples, no
             })}
           </div>
         </div>
+      )}
+      </>
       )}
     </div>
   );

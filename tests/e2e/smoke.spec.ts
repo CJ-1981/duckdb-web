@@ -19,7 +19,7 @@ test.describe('Smoke Tests', () => {
     panel = new DataInspectionPanel(page);
 
     // Navigate to the application
-    await page.goto('http://localhost:3000');
+    await page.goto('/');
 
     // Wait for the canvas to be ready
     await canvas.waitForReady();

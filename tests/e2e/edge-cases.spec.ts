@@ -18,7 +18,7 @@ test.describe('Edge Cases Tests', () => {
     canvas = new WorkflowCanvas(page);
     panel = new DataInspectionPanel(page);
 
-    await page.goto('http://localhost:3000');
+    await page.goto('');
     await canvas.waitForReady();
   });
 

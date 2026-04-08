@@ -58,6 +58,21 @@ def quote_identifier(name: str) -> str:
     return f'"{name.replace("\"", "\"\"")}"'
 
 
+def _get_df(conn: duckdb.DuckDBPyConnection, sql: str) -> pd.DataFrame:
+    """Helper to robustly extract a pandas DataFrame from DuckDB, handling RecordBatchReader if needed."""
+    try:
+        # Most standard way in DuckDB 0.10+
+        return conn.execute(sql).df()
+    except Exception as e:
+        logger.debug(f"Standard .df() failed: {e}. Attempting Arrow fallback.")
+        try:
+            # Fallback for complex results that might return as Arrow readers
+            return conn.execute(sql).fetch_arrow_reader().read_all().to_pandas()
+        except Exception as arrow_err:
+            logger.error(f"Arrow fallback also failed: {arrow_err}")
+            # Final attempt: try fetchdf()
+            return conn.execute(sql).fetchdf()
+
 @router.post("", response_model=WorkflowResponse, status_code=status.HTTP_201_CREATED)
 @require_permission("workflows:create")
 async def create_workflow(
@@ -230,7 +245,7 @@ async def preview_sql(request: SqlPreviewRequest):
         processed_sql = raw_sql.replace("{{input}}", input_table).replace("`", "\"")
         logger.info(f">>> [PREVIEW SQL] Processed SQL: {processed_sql}")
         
-        df = conn.execute(processed_sql).df()
+        df = _get_df(conn, processed_sql)
         
         return {
             "status": "success",
@@ -740,7 +755,7 @@ async def execute_workflow_graph(
         if not final_table:
             raise HTTPException(status_code=400, detail="No output determined.")
             
-        df = conn.execute(f"SELECT * FROM {final_table}").df()
+        df = _get_df(conn, f"SELECT * FROM {final_table}")
         
         export_url = None
         if output_node:
@@ -759,13 +774,13 @@ async def execute_workflow_graph(
             try:
                 node_counts[nid] = conn.execute(f"SELECT COUNT(*) FROM {tname}").fetchone()[0]
                 # Log column information for debugging
-                desc_df = conn.execute(f"DESCRIBE {tname}").df()
+                desc_df = _get_df(conn, f"DESCRIBE {tname}")
                 node_columns[nid] = desc_df['column_name'].tolist()
                 node_types[nid] = desc_df[['column_name', 'column_type']].to_dict(orient='records')
                 
                 logger.info(f">>> [FLOW] Node {nid} ({tname}) cols: {node_columns[nid]}")
                 
-                node_samples[nid] = conn.execute(f"SELECT * FROM {tname} LIMIT {preview_limit}").df().fillna("").to_dict(orient="records")
+                node_samples[nid] = _get_df(conn, f"SELECT * FROM {tname} LIMIT {preview_limit}").fillna("").to_dict(orient="records")
             except:
                 pass
 
@@ -1109,11 +1124,11 @@ async def inspect_node_dataset(request: InspectRequest):
             raise HTTPException(status_code=400, detail=f"Could not execute workflow to reach node '{target_id}'.")
 
         total_rows = conn.execute(f"SELECT COUNT(*) FROM {target_table}").fetchone()[0]
-        desc_df = conn.execute(f"DESCRIBE {target_table}").df()
+        desc_df = _get_df(conn, f"DESCRIBE {target_table}")
 
         columns = []
         try:
-            summarize_df = conn.execute(f"SUMMARIZE {target_table}").df()
+            summarize_df = _get_df(conn, f"SUMMARIZE {target_table}")
             summarize_map = {row['column_name']: row for _, row in summarize_df.iterrows()}
         except Exception:
             summarize_map = {}
@@ -1265,7 +1280,7 @@ async def analyze_workflow_schema(request: WorkflowExecutionRequest):
                 
                 # Get schema
                 if nid in node_to_table:
-                    desc = conn.execute(f"DESCRIBE {node_to_table[nid]}").df()
+                    desc = _get_df(conn, f"DESCRIBE {node_to_table[nid]}")
                     node_schemas[nid] = desc[['column_name', 'column_type']].to_dict(orient='records')
             except Exception as e:
                 logger.warning(f"Analyze failed for node {nid}: {e}")
