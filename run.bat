@@ -1,15 +1,18 @@
 @echo off
 setlocal enabledelayedexpansion
 
+:: CD to the repo directory (in case script is called from elsewhere)
+cd /d "%~dp0"
+
 echo 🚀 Starting DuckDB Data Processor Services...
 
 :: 1. Start Backend (FastAPI)
 echo 📦 Starting Backend (FastAPI)...
 
 if exist .venv\Scripts\activate.bat (
-    start /b cmd /c ".venv\Scripts\activate.bat && uvicorn src.api.main:create_app --factory --reload --port 8000"
+    start /b cmd /c "cd /d %cd% && .venv\Scripts\activate.bat && python -m uvicorn src.api.main:create_app --factory --reload --port 8000"
 ) else (
-    start /b uvicorn src.api.main:create_app --factory --reload --port 8000
+    start /b cmd /c "cd /d %cd% && python -m uvicorn src.api.main:create_app --factory --reload --port 8000"
 )
 
 :: 2. Wait a moment for backend to initialize

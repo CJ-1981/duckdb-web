@@ -3,6 +3,9 @@
 # Exit script on any error
 set -e
 
+# CD to the repo directory (in case script is called from elsewhere)
+cd "$(dirname "$0")"
+
 # Function to cleanup background processes on exit
 cleanup() {
     echo "Stopping all services..."
@@ -15,12 +18,13 @@ echo "🚀 Starting DuckDB Data Processor Services..."
 
 # 1. Start Backend (FastAPI)
 echo "📦 Starting Backend (FastAPI)..."
+
 if [ -d ".venv" ]; then
     source .venv/bin/activate
 fi
 
-# Run backend in background
-uvicorn src.api.main:create_app --factory --reload --port 8000 &
+# Run backend in background - use python -m uvicorn to ensure PYTHONPATH handling
+python -m uvicorn src.api.main:create_app --factory --reload --port 8000 &
 
 # 2. Wait a moment for backend to initialize
 sleep 2

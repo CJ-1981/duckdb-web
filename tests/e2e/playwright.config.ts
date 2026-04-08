@@ -40,6 +40,7 @@ export default defineConfig({
     url: `http://127.0.0.1:${PORT}`,
     env: {
       PORT,
+      PYTHONPATH: '.',
     },
     timeout: 300000,
     reuseExistingServer: false,
