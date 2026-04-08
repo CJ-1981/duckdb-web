@@ -36,7 +36,7 @@ export default defineConfig({
   ],
 
   webServer: {
-    command: process.platform === 'win32' ? 'npm run dev' : '../../run.sh',
+    command: process.platform === 'win32' ? 'cmd /c ../../run.bat' : '../../run.sh',
     url: `http://127.0.0.1:${PORT}`,
     env: {
       PORT,

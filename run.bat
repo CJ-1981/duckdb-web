@@ -1,5 +1,5 @@
 @echo off
-setlocal
+setlocal enabledelayedexpansion
 
 echo 🚀 Starting DuckDB Data Processor Services...
 
@@ -24,7 +24,14 @@ if not exist node_modules (
     call npm install
 )
 
-call npm run dev
+:: Use PORT environment variable if provided, else default to 3000
+if defined PORT (
+    call npm run dev -- -p !PORT!
+) else (
+    call npm run dev -- -p 3000
+)
 
 :: Cleanup is tricky in batch, but usually closing terminal kills children
-pause
+if not defined CI (
+    pause
+)
