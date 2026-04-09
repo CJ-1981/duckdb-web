@@ -152,8 +152,13 @@ async def list_saved_workflows():
 
 class SqlValidationRequest(BaseModel):
     sql: str
-    input_table: Optional[str] = None
-    columns: Optional[List[Any]] = None
+    input_table: Optional[str] = None  # Deprecated: Use input_tables instead
+    columns: Optional[List[Any]] = None  # Deprecated: Use input_tables instead
+    input_tables: Optional[List[Dict[str, Any]]] = None  # NEW: Multi-input support
+
+    class Config:
+        # For backwards compatibility, allow extra fields
+        extra = "allow"
 
 class SqlPreviewRequest(BaseModel):
     nodes: List[Dict[str, Any]]
@@ -230,19 +235,35 @@ async def preview_sql(request: SqlPreviewRequest):
         # It's already cached, so it's super fast if already run.
         await execute_workflow_graph(WorkflowExecutionRequest(nodes=nodes, edges=edges, preview_limit=0))
         
-        # Now find the input table for target_id
+        # Now find the input table(s) for target_id
         # We need to know what node_to_table would have for target_id
         # But node_to_table is local to exec_wf.
         # However, _NODE_CACHE is global!
-        
-        input_table = "read_csv_auto('')"
-        if preds:
-            cached_p = _NODE_CACHE.get(preds[0])
-            if cached_p:
-                input_table = cached_p["table_name"]
-        
-        # 3. Execute the custom SQL
-        processed_sql = raw_sql.replace("{{input}}", input_table).replace("`", "\"")
+
+        # 3. Execute the custom SQL with multi-input support
+        processed_sql = raw_sql
+
+        # Support multi-input placeholders: {{input1}}, {{input2}}, etc.
+        # Replace based on predecessors in edge order
+        for idx, pred_id in enumerate(preds, start=1):
+            cached = _NODE_CACHE.get(pred_id)
+            if cached:
+                table_name = cached["table_name"]
+                table_ref = f'"{table_name.replace('"', '""')}"'
+                processed_sql = processed_sql.replace(f"{{{{input{idx}}}}}", table_ref)
+                logger.info(f">>> [PREVIEW SQL] Replaced {{input{idx}}} with {table_ref}")
+
+        # Backward compatible: {{input}} → first predecessor
+        if "{{input}}" in processed_sql and preds:
+            cached = _NODE_CACHE.get(preds[0])
+            if cached:
+                table_name = cached["table_name"]
+                table_ref = f'"{table_name.replace('"', '""')}"'
+                processed_sql = processed_sql.replace("{{input}}", table_ref)
+                logger.info(f">>> [PREVIEW SQL] Replaced {{input}} with {table_ref}")
+
+        # Auto-convert backticks to double quotes
+        processed_sql = processed_sql.replace("`", "\"")
         logger.info(f">>> [PREVIEW SQL] Processed SQL: {processed_sql}")
         
         df = _get_df(conn, processed_sql)
@@ -262,66 +283,180 @@ async def preview_sql(request: SqlPreviewRequest):
 async def validate_sql(
     request: SqlValidationRequest
 ):
-    """Validate a DuckDB SQL query using EXPLAIN with a realistic schema."""
+    """Validate a DuckDB SQL query using EXPLAIN with multi-input support."""
+    import re
+
     sql = request.sql
-    input_table = request.input_table
-    columns = request.columns
-    
-    # Use logger for debugging the schema
+    input_tables = request.input_tables
+    input_table = request.input_table  # Backward compatibility
+    columns = request.columns  # Backward compatibility
+
+    # Normalize input_tables to always be a list
+    tables_to_process = []
+
+    # Auto-detect multi-input placeholders FIRST (before legacy format)
+    # This ensures {{input1}}, {{input2}} etc. work even with old frontend
+    pattern = r'\{\{input(\d+)\}\}'
+    matches = re.findall(pattern, sql)
+
+    # Also detect {{input}} pattern (single input)
+    has_single_input = bool(re.search(r'\{\{input\}\}', sql))
+
+    if matches:
+        # Multi-input placeholders detected - extract column names from SQL
+        max_input = max(int(m) for m in matches)
+        logger.info(f">>> [VALIDATE] Auto-detected {max_input} inputs from SQL placeholders")
+
+        # Extract column references for each input table
+        # Pattern: {{input1}}.column_name or "input1".column_name
+        input_columns = {}
+        for i in range(1, max_input + 1):
+            input_ref = f"input{i}"
+            # Find all column references for this input
+            # Matches: {{input1}}.이름, "input1".email, etc.
+            col_patterns = [
+                rf'\{{\{{input{i}\}}}}\.(\w+)',  # {{input1}}.column
+                rf'"{input_ref}"\.(\w+)',       # "input1".column
+                rf'{input_ref}\.(\w+)',          # input1.column (unquoted)
+            ]
+
+            columns_found = set()
+            for pattern in col_patterns:
+                found = re.findall(pattern, sql)
+                columns_found.update(found)
+
+            # Remove common SQL keywords that might be matched
+            sql_keywords = {'where', 'from', 'join', 'on', 'and', 'or', 'select', 'group', 'order', 'by', 'having', 'limit', 'as', 'is', 'null', 'not', 'in', 'like', 'between'}
+            columns_found = {c for c in columns_found if c.lower() not in sql_keywords}
+
+            if columns_found:
+                input_columns[input_ref] = list(columns_found)
+                logger.info(f">>> [VALIDATE] Extracted columns for {input_ref}: {columns_found}")
+            else:
+                # Fallback to generic column if none found
+                input_columns[input_ref] = ['col']
+                logger.info(f">>> [VALIDATE] No columns found for {input_ref}, using generic schema")
+
+        # Create dummy tables with extracted columns
+        for i in range(1, max_input + 1):
+            input_ref = f"input{i}"
+            cols = input_columns.get(input_ref, ['col'])
+            tables_to_process.append({
+                "name": input_ref,
+                "columns": [{"column_name": col, "column_type": "VARCHAR"} for col in cols]
+            })
+
+    elif has_single_input and not tables_to_process:
+        # Single {{input}} detected but no numbered inputs
+        # Extract column references for {{input}}
+        input_ref = "input_1"
+        col_patterns = [
+            r'\{\{input\}\}\.(\w+)',   # {{input}}.column
+            rf'"{input_ref}"\.(\w+)',    # "input_1".column
+            rf'{input_ref}\.(\w+)',       # input_1.column (unquoted)
+        ]
+
+        columns_found = set()
+        for pattern in col_patterns:
+            found = re.findall(pattern, sql)
+            columns_found.update(found)
+
+        # Remove SQL keywords
+        sql_keywords = {'where', 'from', 'join', 'on', 'and', 'or', 'select', 'group', 'order', 'by', 'having', 'limit', 'as', 'is', 'null', 'not', 'in', 'like', 'between'}
+        columns_found = {c for c in columns_found if c.lower() not in sql_keywords}
+
+        if columns_found:
+            cols = list(columns_found)
+            logger.info(f">>> [VALIDATE] Extracted columns for {{input}}: {columns_found}")
+        else:
+            cols = ['col']
+            logger.info(">>> [VALIDATE] No columns found for {{input}}, using generic schema")
+
+        tables_to_process.append({
+            "name": input_ref,
+            "columns": [{"column_name": col, "column_type": "VARCHAR"} for col in cols]
+        })
+        logger.info(">>> [VALIDATE] Auto-detected single {{input}} placeholder")
+
+    # Only use input_tables/input_table if auto-detection didn't find anything
+    if not tables_to_process:
+        if input_tables:
+            # New multi-input format
+            tables_to_process = input_tables
+            logger.info(f">>> [VALIDATE] Multi-input mode: {len(tables_to_process)} tables")
+        elif input_table and columns:
+            # Legacy single-input format - convert to new format
+            tables_to_process = [{"name": input_table, "columns": columns}]
+            logger.info(">>> [VALIDATE] Legacy single-input mode detected, converting")
+
     logger.info(f">>> [VALIDATE] SQL Request received (Length: {len(sql)})")
-    if columns:
-        logger.info(f">>> [VALIDATE] Received columns: {columns}")
-    
+    logger.info(f">>> [VALIDATE] Processing {len(tables_to_process)} input tables")
+
     try:
         conn = duckdb.connect(database=':memory:')
-        
-        # If input_table is provided, we build a dummy table for binder checks
-        if input_table:
+
+        # Build dummy tables for schema validation
+        for table_info in tables_to_process:
+            table_name = table_info.get("name", "")
+            table_columns = table_info.get("columns", [])
+
+            if not table_name:
+                continue
+
             cols_def = []
-            if columns:
-                for col_item in columns:
-                    try:
-                        # Handle both JSON string and already-parsed dict/list
-                        c = col_item
-                        if isinstance(col_item, str):
-                            try:
-                                # Sometimes frontend sends escaped JSON strings
-                                c = json.loads(col_item)
-                            except:
-                                # Fallback to using the string itself as the name
-                                pass
-                        
-                        if isinstance(c, dict):
-                            # Try multiple possible keys for name and type
-                            cname = c.get("column_name") or c.get("name") or c.get("id")
-                            ctype = c.get("column_type") or c.get("type") or c.get("dtype", "VARCHAR")
-                        else:
-                            # Fallback to plain string column name cast to VARCHAR
-                            cname = str(col_item)
-                            ctype = "VARCHAR"
-                        
-                        # Sanitize and add to definitions
-                        if cname and str(cname).strip() and str(cname) != "dtype":
-                            cols_def.append(f"CAST(NULL AS {ctype}) as {quote_identifier(str(cname))}")
-                    except Exception as e:
-                        logger.warning(f"Failed to parse column for validation: {col_item} - {e}")
-            
+            for col_item in table_columns:
+                try:
+                    # Handle both JSON string and already-parsed dict/list
+                    c = col_item
+                    if isinstance(col_item, str):
+                        try:
+                            c = json.loads(col_item)
+                        except:
+                            c = {"name": col_item, "type": "VARCHAR"}
+
+                    if isinstance(c, dict):
+                        # Try multiple possible keys for name and type
+                        cname = c.get("column_name") or c.get("name") or c.get("id")
+                        ctype = c.get("column_type") or c.get("type") or c.get("dtype", "VARCHAR")
+                    else:
+                        # Fallback to plain string column name cast to VARCHAR
+                        cname = str(col_item)
+                        ctype = "VARCHAR"
+
+                    # Sanitize and add to definitions
+                    if cname and str(cname).strip() and str(cname) != "dtype":
+                        cols_def.append(f"CAST(NULL AS {ctype}) as {quote_identifier(str(cname))}")
+                except Exception as e:
+                    logger.warning(f"Failed to parse column for validation: {col_item} - {e}")
+
             # If no valid columns were parsed, use a safe default instead of failing
             if not cols_def:
-                logger.info(">>> [VALIDATE] No valid columns found, using generic column")
+                logger.info(f">>> [VALIDATE] No valid columns for table '{table_name}', using generic column")
                 cols_def = ["CAST(NULL AS VARCHAR) as col"]
-            
-            if not cols_def:
-                cols_def = ["1 as id"]
-                
-            create_sql = f"CREATE OR REPLACE TABLE \"{input_table.replace('\"', '\"\"')}\" AS SELECT {', '.join(cols_def)} WHERE 1=0"
+
+            # Create dummy table
+            create_sql = f"CREATE OR REPLACE TABLE {quote_identifier(table_name)} AS SELECT {', '.join(cols_def)} WHERE 1=0"
             logger.info(f">>> [VALIDATE] Schema SQL: {create_sql}")
             conn.execute(create_sql)
-        
-        # Replace {{input}} placeholder
-        safe_input = f"\"{input_table.replace('\"', '\"\"')}\"" if input_table else "read_csv_auto('')"
-        processed_sql = sql.replace("{{input}}", safe_input).replace("`", "\"")
-        
+
+        # Replace multi-input placeholders: {{input1}}, {{input2}}, etc.
+        processed_sql = sql
+        for idx, table_info in enumerate(tables_to_process, start=1):
+            table_name = table_info.get("name", f"input_{idx}")
+            safe_ref = f'"{table_name.replace('"', '""')}"'
+            processed_sql = processed_sql.replace(f"{{{{input{idx}}}}}", safe_ref)
+
+        # Backward compatible: {{input}} → first table
+        if "{{input}}" in processed_sql and tables_to_process:
+            table_name = tables_to_process[0].get("name", "input_1")
+            safe_ref = f'"{table_name.replace('"', '""')}"'
+            processed_sql = processed_sql.replace("{{input}}", safe_ref)
+
+        # Auto-convert backticks to double quotes
+        processed_sql = processed_sql.replace("`", "\"")
+
+        logger.info(f">>> [VALIDATE] Processed SQL: {processed_sql[:200]}...")
+
         # Validate syntax and binder via EXPLAIN
         conn.execute(f"EXPLAIN {processed_sql}")
         return {"status": "success", "message": "SQL is valid"}
@@ -469,11 +604,11 @@ async def execute_workflow_graph(
                         
                         node_to_table[node_id] = table_name
                     else:
-                        conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT * FROM read_csv_auto(?)", [file_path])
+                        conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT * FROM read_csv_auto(?, ALL_VARCHAR=TRUE)", [file_path])
                         node_to_table[node_id] = table_name
                 else:
                         # Standard Flat loading
-                        sql = f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT * FROM read_csv_auto(?)"
+                        sql = f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT * FROM read_csv_auto(?, ALL_VARCHAR=TRUE)"
                         conn.execute(sql, [file_path])
                         node_to_table[node_id] = table_name
                 
@@ -530,10 +665,30 @@ async def execute_workflow_graph(
             elif subtype == "raw_sql":
                 raw_sql = config.get("sql", "")
                 if raw_sql:
-                    input_table = prev_table if prev_table else "read_csv_auto('')"
+                    # Support multi-input placeholders: {{input1}}, {{input2}}, etc.
+                    all_preds = predecessors.get(node_id, [])
+                    processed_sql = raw_sql
+
+                    # Replace indexed placeholders
+                    for idx, pred_id in enumerate(all_preds, start=1):
+                        cached = _NODE_CACHE.get(pred_id)
+                        if cached:
+                            table_ref = f'"{cached["table_name"].replace('"', '""')}"'
+                            processed_sql = processed_sql.replace(f"{{{{input{idx}}}}}", table_ref)
+
+                    # Backward compatible: {{input}} → first predecessor
+                    if "{{input}}" in processed_sql and all_preds:
+                        cached = _NODE_CACHE.get(all_preds[0])
+                        if cached:
+                            table_ref = f'"{cached["table_name"].replace('"', '""')}"'
+                            processed_sql = processed_sql.replace("{{input}}", table_ref)
+                        elif prev_table:
+                            # Fallback to prev_table if no predecessors
+                            table_ref = f'"{prev_table.replace('"', '""')}"'
+                            processed_sql = processed_sql.replace("{{input}}", table_ref)
+
                     # Auto-convert backticks to double quotes for standard DuckDB support
-                    # This helps with AI-generated or user-pasted MySQL-style queries
-                    processed_sql = raw_sql.replace("{{input}}", input_table).replace("`", "\"")
+                    processed_sql = processed_sql.replace("`", "\"")
                     conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS {processed_sql}")
                     node_to_table[node_id] = table_name
                 else:
@@ -1045,9 +1200,11 @@ async def inspect_node_dataset(request: InspectRequest):
                             conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT * FROM st_read('{fp}')")
                         except Exception:
                             # Fallback or simple error
-                            conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT * FROM read_csv_auto('{fp}')")
-                    else:
+                            conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT * FROM read_csv_auto('{fp}', ALL_VARCHAR=TRUE)")
+                    try:
                         conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT * FROM read_csv_auto('{fp}')")
+                    except Exception:
+                        conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT * FROM read_csv_auto('{fp}', ALL_VARCHAR=TRUE)")
                     node_to_table[node_id] = table_name
                 elif prev_table:
                     # Pass-through execution for all transformation nodes
@@ -1106,11 +1263,34 @@ async def inspect_node_dataset(request: InspectRequest):
                     elif subtype == "raw_sql":
                         raw_sql = config.get("sql", "")
                         if raw_sql:
+                            # Support multi-input placeholders: {{input1}}, {{input2}}, etc.
+                            all_preds = predecessors.get(node_id, [])
+                            processed_sql = raw_sql
+
+                            # Replace indexed placeholders
+                            for idx, pred_id in enumerate(all_preds, start=1):
+                                cached = _NODE_CACHE.get(pred_id)
+                                if cached:
+                                    table_ref = f'"{cached["table_name"].replace('"', '""')}"'
+                                    processed_sql = processed_sql.replace(f"{{{{input{idx}}}}}", table_ref)
+
+                            # Backward compatible: {{input}} → first predecessor
+                            if "{{input}}" in processed_sql and all_preds:
+                                cached = _NODE_CACHE.get(all_preds[0])
+                                if cached:
+                                    table_ref = f'"{cached["table_name"].replace('"', '""')}"'
+                                    processed_sql = processed_sql.replace("{{input}}", table_ref)
+                            elif prev_table:
+                                # Fallback to prev_table if no predecessors
+                                table_ref = f'"{prev_table.replace('"', '""')}"'
+                                processed_sql = processed_sql.replace("{{input}}", table_ref)
+
                             # Auto-convert backticks to double quotes for standard DuckDB support
-                            processed_sql = raw_sql.replace("{{input}}", prev_table).replace("`", "\"")
+                            processed_sql = processed_sql.replace("`", "\"")
                             conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS {processed_sql}")
                             node_to_table[node_id] = table_name
-                        else: node_to_table[node_id] = prev_table
+                        else:
+                            node_to_table[node_id] = prev_table
                     else:
                         node_to_table[node_id] = prev_table
                 elif node["type"] == "output":
@@ -1245,7 +1425,7 @@ async def analyze_workflow_schema(request: WorkflowExecutionRequest):
                     fp = config.get("file_path") or ""
                     # Create dummy empty table from CSV schema
                     if fp:
-                        conn.execute(f"CREATE OR REPLACE TEMP TABLE {tname} AS SELECT * FROM read_csv_auto(?) WHERE 1=0", [fp])
+                        conn.execute(f"CREATE OR REPLACE TEMP TABLE {tname} AS SELECT * FROM read_csv_auto(?, ALL_VARCHAR=TRUE) WHERE 1=0", [fp])
                     else:
                         conn.execute(f"CREATE OR REPLACE TEMP TABLE {tname} (dummy VARCHAR)")
                     node_to_table[nid] = tname
