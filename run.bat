@@ -6,16 +6,53 @@ cd /d "%~dp0"
 
 echo 🚀 Starting DuckDB Data Processor Services...
 
+:: 0. Check for OneDrive/Cloud-Synced Paths
+echo 🔎 Checking environment...
+set "CURRENT_DIR=%CD%"
+
+echo %CURRENT_DIR% | findstr /C:"OneDrive" /C:"SkyDrive" >nul
+if %ERRORLEVEL% equ 0 (
+    echo ⚠️  WARNING: Running from OneDrive path!
+    echo This may cause issues with virtual environments and file locking.
+    echo.
+    echo If you encounter problems, consider moving to:
+    echo   - C:\dev\duckdb-web
+    echo   - %USERPROFILE%\projects\duckdb-web
+    echo.
+)
+
+echo %CURRENT_DIR% | findstr /C:"Dropbox" /C:"Google Drive" /C:"iCloudDrive" >nul
+if %ERRORLEVEL% equ 0 (
+    echo ⚠️  WARNING: Running from cloud-synced path!
+    echo File synchronization may interfere with development.
+    echo.
+)
+
 :: 1. Start Backend (FastAPI)
 echo 📦 Starting Backend (FastAPI)...
 
-if exist .venv\Scripts\activate.bat (
-    start /b cmd /c "cd /d ""%cd%"" && .venv\Scripts\activate.bat && python -m uvicorn src.api.main:create_app --factory --reload --port 8000"
+:: Determine virtual environment location
+if defined VENV_DIR (
+    set "VENV_PATH=!VENV_DIR!"
+    echo Using custom virtual environment: !VENV_PATH!
 ) else (
+    set "VENV_PATH=.venv"
+)
+
+:: Try to use virtual environment, fall back to system Python
+set "ACTIVATE_SCRIPT=!VENV_PATH!\Scripts\activate.bat"
+
+if exist "!ACTIVATE_SCRIPT!" (
+    echo Starting backend with virtual environment...
+    start /b cmd /c "cd /d ""%cd%"" && call ""!ACTIVATE_SCRIPT!"" && python -m uvicorn src.api.main:create_app --factory --reload --port 8000"
+) else (
+    echo Virtual environment not found at !ACTIVATE_SCRIPT!
+    echo Falling back to system Python...
     start /b cmd /c "cd /d ""%cd%"" && python -m uvicorn src.api.main:create_app --factory --reload --port 8000"
 )
 
 :: 2. Wait a moment for backend to initialize
+echo Waiting for backend to initialize...
 timeout /t 5 /nobreak > nul
 
 :: 3. Start Frontend (Next.js)
