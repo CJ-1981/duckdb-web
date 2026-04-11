@@ -2333,7 +2333,11 @@ async def inspect_node_dataset(request: InspectRequest):
             stat: dict = {"column_name": col_name, "column_type": col_type}
             if col_name in summarize_map:
                 s = summarize_map[col_name]
-                cnt = int(s.get('count', 0)) if val_or_none(s.get('count')) is not None else 0
+                # DuckDB SUMMARIZE 'count' is total count, not non-null count
+                # Calculate non-null count from total count and null_percentage
+                total_from_summarize = int(s.get('count', 0)) if val_or_none(s.get('count')) is not None else 0
+                null_pct_from_summarize = float(s.get('null_percentage', 0)) if val_or_none(s.get('null_percentage')) is not None else 0
+                cnt = int(total_from_summarize * (1 - null_pct_from_summarize / 100))
                 stat.update({
                     "count": cnt,
                     "null_count": total_rows - cnt,
