@@ -371,17 +371,18 @@ class CSVConnector(BaseConnector):
             try:
                 import duckdb
                 conn = duckdb.connect(database=':memory:')
-                # Try reading with auto-detection using the best encoding found so far
-                fallback_enc = encoding if success else 'utf-8'
+                # Try reading with auto-detection
                 # Treat empty strings as NULL during CSV load
-                rel = conn.execute("SELECT * FROM read_csv_auto(?, ALL_VARCHAR=TRUE, ENCODING=?, nullstr='') LIMIT 100", [file_path, fallback_enc])
+                # Note: read_csv_auto automatically detects encoding
+                rel = conn.execute("SELECT * FROM read_csv_auto(?, ALL_VARCHAR=TRUE, nullstr='') LIMIT 100", [file_path])
                 # Convert to list of dictionaries directly, avoiding .df() conversion issues
                 columns = [desc[0] for desc in rel.description]
                 rows = [dict(zip(columns, row)) for row in rel.fetchall()]
                 if rows:
                     success = True
-                    self.encoding = fallback_enc
-                    logger.info(f">>> [CSV FALLBACK] Successfully inferred schema using DuckDB for {file_path} (encoding: {fallback_enc})")
+                    # Set default encoding since DuckDB auto-detects
+                    self.encoding = 'utf-8'
+                    logger.info(f">>> [CSV FALLBACK] Successfully inferred schema using DuckDB for {file_path} (encoding: auto-detected)")
             except Exception as de:
                 logger.error(f">>> [CSV FALLBACK] DuckDB inference also failed: {de}")
 

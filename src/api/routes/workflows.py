@@ -1309,10 +1309,10 @@ async def execute_workflow_graph(
                             # Build CAST expressions with proper types
                             # Load with ALL_VARCHAR first, then SELECT with CAST expressions
                             temp_view = f"{table_name}_raw"
-                            
-                            # Use detected encoding if available
+
                             # Treat empty strings as NULL during CSV load
-                            conn.execute(f"CREATE OR REPLACE TEMP TABLE {temp_view} AS SELECT * FROM read_csv_auto(?, ALL_VARCHAR=TRUE, ENCODING=?, nullstr='')", [file_path, encoding])
+                            # Note: read_csv_auto automatically detects encoding
+                            conn.execute(f"CREATE OR REPLACE TEMP TABLE {temp_view} AS SELECT * FROM read_csv_auto(?, ALL_VARCHAR=TRUE, nullstr='')", [file_path])
 
                             # Get actual column names from the loaded table to handle BOM/whitespace issues
                             # Use fetchall() to avoid .df() conversion issues
@@ -1345,7 +1345,8 @@ async def execute_workflow_graph(
                             # Use schema inference for automatic type detection
                             temp_view = f"{table_name}_raw"
                             # Treat empty strings as NULL during CSV load
-                            conn.execute(f"CREATE OR REPLACE TEMP TABLE {temp_view} AS SELECT * FROM read_csv_auto(?, ALL_VARCHAR=TRUE, ENCODING=?, nullstr='')", [file_path, encoding])
+                            # Note: read_csv_auto automatically detects encoding
+                            conn.execute(f"CREATE OR REPLACE TEMP TABLE {temp_view} AS SELECT * FROM read_csv_auto(?, ALL_VARCHAR=TRUE, nullstr='')", [file_path])
 
                             # Get actual column names from the loaded table to handle BOM/whitespace issues
                             # Use fetchall() to avoid .df() conversion issues
@@ -1812,14 +1813,15 @@ async def execute_workflow_graph(
                 "message": "No nodes processed."
             }
 
-        final_node_id = sorted_nodes[-1]["id"]
+        final_node_id = str(sorted_nodes[-1]["id"])
         final_table = node_to_table.get(final_node_id)
         # If no output node specified, use the last executed node's table
         if not final_table and node_to_table:
             # Get the last node in topological order that has a table
-            for node_id in reversed(sorted_nodes):
-                if node_id in node_to_table:
-                    final_table = node_to_table[node_id]
+            for node in reversed(sorted_nodes):
+                node_key = str(node["id"])
+                if node_key in node_to_table:
+                    final_table = node_to_table[node_key]
                     break
 
         if not final_table:
@@ -2137,11 +2139,11 @@ async def inspect_node_dataset(request: InspectRequest):
                             # Fallback to CSV with schema inference
                             infer_result = get_or_infer_csv_schema(fp)
                             schema = infer_result["schema"]
-                            encoding = infer_result.get("encoding", "utf-8")
                             if schema:
                                 temp_view = f"{table_name}_raw"
                                 # Treat empty strings as NULL during CSV load
-                                conn.execute(f"CREATE OR REPLACE TEMP TABLE {temp_view} AS SELECT * FROM read_csv_auto(?, ALL_VARCHAR=TRUE, ENCODING=?, nullstr='')", [fp, encoding])
+                                # Note: read_csv_auto automatically detects encoding
+                                conn.execute(f"CREATE OR REPLACE TEMP TABLE {temp_view} AS SELECT * FROM read_csv_auto(?, ALL_VARCHAR=TRUE, nullstr='')", [fp])
                                 
                                 # Get actual column names to handle BOM/whitespace issues
                                 res = conn.execute(f"DESCRIBE {temp_view}").df()
@@ -2157,11 +2159,11 @@ async def inspect_node_dataset(request: InspectRequest):
                     # Use schema-aware CSV loading with TRY_CAST for null handling
                     infer_result = get_or_infer_csv_schema(fp)
                     schema = infer_result["schema"]
-                    encoding = infer_result.get("encoding", "utf-8")
                     if schema:
                         temp_view = f"{table_name}_raw"
                         # Treat empty strings as NULL during CSV load
-                        conn.execute(f"CREATE OR REPLACE TEMP TABLE {temp_view} AS SELECT * FROM read_csv_auto(?, ALL_VARCHAR=TRUE, ENCODING=?, nullstr='')", [fp, encoding])
+                        # Note: read_csv_auto automatically detects encoding
+                        conn.execute(f"CREATE OR REPLACE TEMP TABLE {temp_view} AS SELECT * FROM read_csv_auto(?, ALL_VARCHAR=TRUE, nullstr='')", [fp])
 
                         # Get actual column names to handle BOM/whitespace issues
                         res = conn.execute(f"DESCRIBE {temp_view}").df()
