@@ -1,36 +1,278 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# DuckDB Workflow Builder
+
+A visual data analysis platform for building and executing DuckDB workflows through an intuitive drag-and-drop interface.
+
+## Overview
+
+The DuckDB Workflow Builder is a full-stack web application that enables users to create complex data processing pipelines visually without writing SQL code. Users can drag and drop nodes onto a canvas to build workflows that connect to multiple data sources, transform data using DuckDB's powerful analytical engine, and generate reports.
+
+## Features
+
+### Visual Workflow Builder
+- **Drag-and-Drop Interface**: Intuitive canvas for constructing data processing pipelines
+- **Node-Based Architecture**: Modular components for data sources, transformations, and outputs
+- **Real-Time Validation**: Immediate feedback on workflow structure and connections
+- **Keyboard Shortcuts**: Power user commands for efficient workflow construction
+
+### Multi-Source Data Integration
+- **Database Connectors**: Native support for DuckDB, PostgreSQL, MySQL
+- **File Import**: CSV files with automatic encoding detection (UTF-8, UTF-8-sig, CP949, EUC-KR)
+- **Remote Data**: HTTP/HTTPS file downloads with streaming support
+- **Schema Inference**: Automatic column type detection and validation
+
+### Real-Time Data Processing
+- **DuckDB Engine**: In-memory analytical database for fast query execution
+- **Incremental Caching**: Smart node-level caching to avoid redundant computation
+- **Streaming Support**: Process large datasets without loading entirely into memory
+- **Query Optimization**: Automatic SQL generation with parameterized queries
+
+### AI-Assisted SQL Generation
+- **Natural Language to SQL**: Convert plain English descriptions into SQL queries
+- **Multiple LLM Providers**: Support for OpenAI, Anthropic, Google, Groq, Cerebras
+- **Context-Aware**: AI understands data schema and suggests relevant queries
+- **Query Validation**: EXPLAIN-based validation to ensure query correctness
+
+### Workflow Persistence
+- **Save/Load Workflows**: Store workflow definitions for future use
+- **Export/Import**: Share workflows across teams and environments
+- **Auto-Save**: Prevent data loss with automatic saving (planned feature)
+
+### Live Data Preview
+- **Real-Time Results**: Preview output at any node in the workflow
+- **Pagination**: Handle large datasets efficiently with configurable page sizes
+- **Data Inspection**: Statistical analysis including column types, null counts, unique values
+- **Export Results**: Download processed data as CSV or other formats
+
+## Tech Stack
+
+### Frontend
+- **Next.js 16.2.1**: React framework with App Router
+- **React 19**: UI library
+- **TypeScript**: Type-safe development
+- **Tailwind CSS**: Utility-first styling
+- **shadcn/ui**: Component library
+- **React Flow**: Workflow canvas visualization
+
+### Backend
+- **FastAPI**: Python web framework
+- **DuckDB**: In-memory analytical database
+- **Uvicorn**: ASGI server
+- **Pydantic**: Data validation
+
+### Testing
+- **Playwright**: End-to-end testing
+- **pytest**: Python unit testing
+- **Vitest**: TypeScript unit testing
 
 ## Getting Started
 
-First, run the development server:
+### Prerequisites
 
+- **Node.js 18+** and **npm**
+- **Python 3.11+**
+- **Git**
+
+### Local Development
+
+#### Quick Start
+
+Clone the repository:
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+git clone https://github.com/CJ-1981/duckdb-web.git
+cd duckdb-web
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+#### Linux/macOS
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+# Install dependencies
+./install.sh
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+# Start development servers
+./run.sh
+```
 
-## Learn More
+#### Windows
 
-To learn more about Next.js, take a look at the following resources:
+```bash
+# Install dependencies
+install.bat
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+# Start development servers
+run.bat
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+#### Manual Setup
 
-## Deploy on Vercel
+**Backend Setup:**
+```bash
+# Create virtual environment
+python -m venv .venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+# Install Python dependencies
+pip install -r requirements.txt
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+# Start backend
+python -m uvicorn src.api.main:create_app --factory --reload --port 8000
+```
+
+**Frontend Setup:**
+```bash
+# Install Node dependencies
+npm install
+
+# Start frontend
+npm run dev
+```
+
+The application will be available at:
+- **Frontend**: http://localhost:3000
+- **Backend API**: http://localhost:8000
+- **API Documentation**: http://localhost:8000/docs
+
+## Deployment
+
+### Vercel Frontend + Local Backend
+
+**Recommended for:** Free hosting, data privacy, full functionality
+
+This architecture deploys the frontend to Vercel (free tier) while running the backend locally or on a cloud provider.
+
+#### Setup Steps
+
+1. **Deploy Frontend to Vercel:**
+   ```bash
+   npm run build
+   vercel deploy
+   ```
+
+2. **Start Backend Locally:**
+   ```bash
+   python -m uvicorn src.api.main:create_app --factory --reload --port 8000
+   ```
+
+3. **Configure Backend URL in Vercel App:**
+   - Open your deployed Vercel app
+   - Click the **Settings** button in the toolbar
+   - Enter your local backend URL (e.g., `http://localhost:8000`)
+   - Click **Test & Save** to verify the connection
+
+4. **Enable CORS:**
+   - Update `src/api/main.py` to include your Vercel domain in `cors_origins`
+   - Restart the backend
+
+For detailed setup instructions, see [docs/LOCAL_BACKEND_SETUP.md](docs/LOCAL_BACKEND_SETUP.md)
+
+### Full Cloud Deployment
+
+**Backend Options:**
+- **Railway**: $5-20/month
+- **Render**: Free tier available
+- **Fly.io**: Pay-as-you-go
+- **AWS Lambda**: Serverless option
+
+**Frontend:**
+- **Vercel**: Free tier available
+- **Netlify**: Free tier available
+
+## Development
+
+### Project Structure
+
+```
+duckdb-web/
+├── src/
+│   ├── api/           # FastAPI backend
+│   │   ├── routers/   # API endpoints
+│   │   └── main.py    # Application entry point
+│   ├── components/    # React components
+│   │   ├── canvas/    # Workflow canvas
+│   │   ├── nodes/     # Node types (input, output, sql, etc.)
+│   │   └── panels/    # UI panels (settings, inspection)
+│   └── lib/           # Utilities and helpers
+├── tests/
+│   ├── unit/          # Python unit tests
+│   ├── integration/   # Integration tests
+│   └── e2e/           # Playwright E2E tests
+├── docs/              # Documentation
+└── README.md          # This file
+```
+
+### Available Scripts
+
+**Frontend:**
+```bash
+npm run dev          # Start development server
+npm run build        # Build for production
+npm run start        # Start production server
+npm run lint         # Run ESLint
+npm run test         # Run Vitest tests
+npm run test:e2e     # Run Playwright E2E tests
+```
+
+**Backend:**
+```bash
+python -m uvicorn src.api.main:create_app --factory --reload
+pytest               # Run unit tests
+pytest tests/integration/  # Run integration tests
+```
+
+### Windows Development Notes
+
+If your project is in a OneDrive or cloud-synced folder, the batch scripts will detect this and warn you. For best performance:
+
+1. **Move the project** to a non-cloud-synced location (e.g., `C:\projects\duckdb-web`)
+2. **Set environment variable** to point to a custom virtual environment location:
+   ```cmd
+   set VENV_DIR=C:\venvs\duckdb-web
+   install.bat
+   ```
+
+See [docs/WINDOWS_SETUP.md](docs/WINDOWS_SETUP.md) for detailed Windows setup instructions.
+
+## Testing
+
+### E2E Testing
+
+```bash
+# Install Playwright browsers
+npx playwright install
+
+# Run all E2E tests
+npm run test:e2e
+
+# Run specific test file
+npx playwright test tests/e2e/canvas-nodes.spec.ts
+
+# Run with UI
+npx playwright test --ui
+```
+
+### Unit Testing
+
+**Python:**
+```bash
+pytest tests/unit/
+pytest --cov=src tests/unit/
+```
+
+**TypeScript:**
+```bash
+npm test
+```
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+## License
+
+This project is licensed under the MIT License.
+
+## Acknowledgments
+
+- **DuckDB** for the amazing analytical database engine
+- **Next.js** team for the excellent React framework
+- **shadcn/ui** for the beautiful component library
+- **React Flow** for the workflow canvas visualization
