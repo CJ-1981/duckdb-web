@@ -102,7 +102,7 @@ West,Widget B,1050,Q2`,
 export async function uploadTestCsv(page: Page, testData: TestDataFile) {
   // Create a buffer from the CSV content
   // Wait for backend to be ready before uploading
-  await page.waitForTimeout(2000);
+  await page.waitForTimeout(5000);
   const buffer = Buffer.from(testData.content, 'utf-8');
 
   // Create a temporary file
