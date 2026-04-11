@@ -8,6 +8,7 @@ import { executeWorkflow, uploadFile, saveWorkflow, listSavedWorkflows, loadWork
 import DataInspectionPanel, { type ColumnTypeDef, type FullStats } from '@/components/panels/DataInspectionPanel';
 import AiSqlBuilderPanel from '@/components/panels/AiSqlBuilderPanel';
 import AiPipelineBuilderPanel from '@/components/panels/AiPipelineBuilderPanel';
+import SettingsPanel from '@/components/panels/SettingsPanel';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000/api/v1';
 
@@ -192,6 +193,7 @@ function Dashboard() {
   const [isSaveModalOpen, setIsSaveModalOpen] = useState(false);
   const [isLoadModalOpen, setIsLoadModalOpen] = useState(false);
   const [isRenameModalOpen, setIsRenameModalOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [workflowName, setWorkflowName] = useState("");
   const [currentPipelineName, setCurrentPipelineName] = useState<string | null>(null);
   const [newName, setNewName] = useState("");
@@ -959,6 +961,15 @@ function Dashboard() {
             <span>Save</span>
           </button>
           <button
+            onClick={() => setIsSettingsOpen(true)}
+            onMouseEnter={(e) => showHeaderTooltip(e, 'Settings', 'Configure backend API connection and other settings.')}
+            onMouseLeave={hideTooltip}
+            className="flex items-center space-x-2 px-3 py-2 text-sm font-medium text-[#6B778C] bg-white border border-[#DFE1E6] hover:bg-gray-50 rounded-md transition-colors"
+          >
+            <Settings size={16} />
+            <span>Settings</span>
+          </button>
+          <button
             onClick={openLoadModal}
             onMouseEnter={(e) => showHeaderTooltip(e, 'Open Pipeline', `Load a previously saved workflow from your library (${mod}O, ${mod}I, or ${mod}E).`)}
             onMouseLeave={hideTooltip}
@@ -1161,7 +1172,7 @@ function Dashboard() {
             layoutCounter={layoutCounter}
             isBottomPanelVisible={isBottomPanelVisible && !!selectedNode}
             bottomPanelHeight={previewHeight}
-            shortcutsEnabled={!isSaveModalOpen && !isLoadModalOpen && !isRenameModalOpen}
+            shortcutsEnabled={!isSaveModalOpen && !isLoadModalOpen && !isRenameModalOpen && !isSettingsOpen}
           >
             {selectedNode && isBottomPanelVisible && (
               <Panel position="bottom-left" style={{ width: '100%', margin: 0 }}>
@@ -3145,6 +3156,16 @@ Please fix the SQL. Return ONLY the raw SQL query.`;
           </div>
         </div>
       )}
+
+      {/* Settings Modal */}
+      {isSettingsOpen && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl p-6 border border-[#DFE1E6] animate-in fade-in zoom-in duration-200 max-h-[90vh] overflow-y-auto">
+            <SettingsPanel onClose={() => setIsSettingsOpen(false)} />
+          </div>
+        </div>
+      )}
+
       {/* Global Tooltip */}
       {tooltip && (
         <div

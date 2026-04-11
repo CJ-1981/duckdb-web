@@ -6,10 +6,7 @@ Creates the main FastAPI application instance with middleware stack,
 """
 
 import logging
-import sys
 import os
-from typing import Optional
-from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, Request
@@ -53,18 +50,24 @@ def create_app() -> FastAPI:
     app_config = config
 
     # Configure CORS middleware
-    # @MX:NOTE: CORS must to be configured from config
+    # @MX:NOTE: CORS configured for Vercel frontend + local backend development
     # Default CORS settings - will be overridden by config
-    cors_headers = {
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "DELETE, GET, HEAD, OPTIONS, PATCH, POST, PUT",
-        "Access-Control-Allow-Headers": "content-type, authorization",
-    }
+    cors_origins = [
+        "http://localhost:3000",        # Local Next.js development
+        "http://127.0.0.1:3000",         # Alternative local development
+        "http://localhost:19006",       # Vercel dev server
+        os.getenv("VERCEL_URL", ""),     # Dynamic Vercel deployment URL
+        # Add your Vercel deployment URL here:
+        # "https://your-app.vercel.app",
+    ]
+
+    # Filter out empty strings
+    cors_origins = [origin for origin in cors_origins if origin]
 
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
-        allow_credentials=False,
+        allow_origins=cors_origins if cors_origins else ["*"],
+        allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
     )
@@ -75,7 +78,6 @@ def create_app() -> FastAPI:
         return JSONResponse(
             status_code=exc.status_code,
             content={"detail": exc.detail},
-            headers=cors_headers,
         )
 
     @app.exception_handler(RequestValidationError)
@@ -83,7 +85,6 @@ def create_app() -> FastAPI:
         return JSONResponse(
             status_code=422,
             content={"detail": exc.errors()},
-            headers=cors_headers,
         )
 
     @app.exception_handler(Exception)
@@ -92,7 +93,6 @@ def create_app() -> FastAPI:
         return JSONResponse(
             status_code=500,
             content={"detail": str(exc)},
-            headers=cors_headers,
         )
 
     # Add custom middleware stack
