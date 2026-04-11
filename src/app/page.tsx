@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import WorkspaceCanvas from '@/components/workflow/canvas';
 import { Database, Filter, ArrowRightLeft, Table, Settings, Play, Search, LayoutDashboard, SlidersHorizontal, FileText, FileDown, Save, FolderOpen, Sigma, Eye, ChevronRight, SortAsc, ListOrdered, Calculator, Code, Fingerprint, PenLine, GitBranch, BarChart3, Plus, Trash2, Wand2, Microscope, PanelLeftClose, PanelLeftOpen, PanelBottomClose, Copy, X, CheckCheck, AlertCircle, RefreshCw, Globe, Repeat, Dices, Braces, DatabaseBackup } from 'lucide-react';
 import { Node, Edge, useReactFlow, ReactFlowProvider, useNodesState, useEdgesState, Panel } from '@xyflow/react';
-import { executeWorkflow, uploadFile, saveWorkflow, listSavedWorkflows, loadWorkflowGraph, generateReport, inspectNode, renameWorkflow, validateSql, previewSql, getBackendUrl } from '@/lib/api-unified';
+import { executeWorkflow, uploadFile, saveWorkflow, listSavedWorkflows, loadWorkflowGraph, generateReport, inspectNode, renameWorkflow, deleteWorkflow, validateSql, previewSql, getBackendUrl } from '@/lib/api-unified';
 import DataInspectionPanel, { type ColumnTypeDef, type FullStats } from '@/components/panels/DataInspectionPanel';
 import AiSqlBuilderPanel from '@/components/panels/AiSqlBuilderPanel';
 import AiPipelineBuilderPanel from '@/components/panels/AiPipelineBuilderPanel';
@@ -198,6 +198,10 @@ function Dashboard() {
   const [availableWorkflows, setAvailableWorkflows] = useState<string[]>([]);
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
+  const [renamingWorkflow, setRenamingWorkflow] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState<string>('');
+  const [renameLoading, setRenameLoading] = useState(false);
+  const [deleteLoading, setDeleteLoading] = useState<string | null>(null);
   const [executionResult, setExecutionResult] = useState<any>(null);
   const [isExecuting, setIsExecuting] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
@@ -522,18 +526,82 @@ function Dashboard() {
       const nodes = parsed.nodes || parsed.definition?.nodes || [];
       const edges = parsed.edges || parsed.definition?.edges || [];
       const baseName = importFile.name.replace(/\.json$/i, '');
-      // Save to server
-      await saveWorkflow(baseName, nodes, edges);
+
+      // Ensure we do NOT overwrite existing workflow: generate unique name if needed
+      const listResp = await listSavedWorkflows();
+      const existing = listResp.workflows || [];
+      let targetName = baseName;
+      let i = 1;
+      while (existing.includes(targetName)) {
+        targetName = `${baseName}-copy${i === 1 ? '' : i}`;
+        i += 1;
+      }
+
+      // Save to server under unique name
+      await saveWorkflow(targetName, nodes, edges);
       // Refresh list
-      const { workflows } = await listSavedWorkflows();
-      setAvailableWorkflows(workflows || []);
+      const refreshed = await listSavedWorkflows();
+      setAvailableWorkflows(refreshed.workflows || []);
       setImportFile(null);
       setIsLoadModalOpen(false);
-      setExecutionMessage({ title: "Import successful", detail: `Imported and saved '${baseName}'.`, type: 'success' });
+      setExecutionMessage({ title: "Import successful", detail: `Imported and saved '${targetName}'.`, type: 'success' });
       setExecutionSuccess(true);
       setTimeout(() => { setExecutionSuccess(false); setExecutionMessage(null); }, 3000);
     } catch (err: any) {
       setImportError(err.message || 'Import failed');
+    }
+  };
+
+  const handleDeleteWorkflow = async (name: string) => {
+    if (!confirm(`Delete workflow '${name}'? This cannot be undone.`)) return;
+    try {
+      setDeleteLoading(name);
+      await deleteWorkflow(name);
+      const { workflows } = await listSavedWorkflows();
+      setAvailableWorkflows(workflows || []);
+      setExecutionMessage({ title: 'Deleted', detail: `Deleted '${name}'.`, type: 'success' });
+      setExecutionSuccess(true);
+      setTimeout(() => { setExecutionSuccess(false); setExecutionMessage(null); }, 3000);
+    } catch (e: any) {
+      setExecutionMessage({ title: 'Delete failed', detail: e.message || 'Could not delete workflow', type: 'error' });
+      setExecutionSuccess(true);
+    } finally {
+      setDeleteLoading(null);
+    }
+  };
+
+  const startRenameWorkflow = (name: string) => {
+    setRenamingWorkflow(name);
+    setRenameValue(name);
+  };
+
+  const cancelRename = () => {
+    setRenamingWorkflow(null);
+    setRenameValue('');
+  };
+
+  const confirmRenameWorkflow = async (oldName: string) => {
+    const trimmed = renameValue.trim();
+    if (!trimmed) {
+      setExecutionMessage({ title: 'Rename failed', detail: 'New name cannot be empty', type: 'error' });
+      setExecutionSuccess(true);
+      return;
+    }
+    try {
+      setRenameLoading(true);
+      await renameWorkflow(oldName, trimmed);
+      const { workflows } = await listSavedWorkflows();
+      setAvailableWorkflows(workflows || []);
+      setRenamingWorkflow(null);
+      setRenameValue('');
+      setExecutionMessage({ title: 'Renamed', detail: `Renamed '${oldName}' to '${trimmed}'.`, type: 'success' });
+      setExecutionSuccess(true);
+      setTimeout(() => { setExecutionSuccess(false); setExecutionMessage(null); }, 3000);
+    } catch (e: any) {
+      setExecutionMessage({ title: 'Rename failed', detail: e.message || 'Could not rename workflow', type: 'error' });
+      setExecutionSuccess(true);
+    } finally {
+      setRenameLoading(false);
     }
   };
 
@@ -3185,12 +3253,27 @@ Please fix the SQL. Return ONLY the raw SQL query.`;
                 <div className="space-y-2 pr-1">
                   {availableWorkflows.map(name => (
                     <div key={name} className="flex items-center justify-between space-x-3">
-                      <button
-                        onClick={() => handleLoadWorkflow(name)}
-                        className="flex-1 text-left px-4 py-3 text-sm text-[#172B4D] hover:bg-[#F4F5F7] border border-[#DFE1E6] rounded-md transition-all flex items-center group hover:border-[#0052CC]"
-                      >
-                        <span className="font-medium">{name}</span>
-                      </button>
+                      {renamingWorkflow === name ? (
+                        <div className="flex-1 flex items-center gap-2">
+                          <input
+                            autoFocus
+                            value={renameValue}
+                            onChange={(e) => setRenameValue(e.target.value)}
+                            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); confirmRenameWorkflow(name); } if (e.key === 'Escape') { cancelRename(); } }}
+                            className="flex-1 px-3 py-2 border border-[#DFE1E6] rounded-md text-sm"
+                          />
+                          <button onClick={(e) => { e.stopPropagation(); confirmRenameWorkflow(name); }} disabled={renameLoading} className="px-3 py-2 bg-[#0052CC] text-white rounded-md text-sm">{renameLoading ? '...' : 'OK'}</button>
+                          <button onClick={(e) => { e.stopPropagation(); cancelRename(); }} className="px-3 py-2 bg-white border border-[#DFE1E6] rounded-md text-sm">Cancel</button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => handleLoadWorkflow(name)}
+                          className="flex-1 text-left px-4 py-3 text-sm text-[#172B4D] hover:bg-[#F4F5F7] border border-[#DFE1E6] rounded-md transition-all flex items-center group hover:border-[#0052CC]"
+                        >
+                          <span className="font-medium">{name}</span>
+                        </button>
+                      )}
+
                       <div className="flex items-center gap-2">
                         <button
                           onClick={async (e) => { e.stopPropagation(); try { const data = await loadWorkflowGraph(name); const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `${name}.json`; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url); } catch (err) { setExecutionMessage({ title: 'Export failed', detail: (err as any).message || 'Could not export workflow', type: 'error' }); setExecutionSuccess(true); } }}
@@ -3198,6 +3281,23 @@ Please fix the SQL. Return ONLY the raw SQL query.`;
                           title="Download JSON"
                         >
                           <FileDown size={14} />
+                        </button>
+
+                        <button
+                          onClick={(e) => { e.stopPropagation(); startRenameWorkflow(name); }}
+                          className="px-3 py-2 bg-white border border-[#DFE1E6] rounded-md text-sm"
+                          title="Rename"
+                        >
+                          <PenLine size={14} />
+                        </button>
+
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleDeleteWorkflow(name); }}
+                          disabled={deleteLoading === name}
+                          className="px-3 py-2 bg-white border border-[#FEE2E2] text-red-600 rounded-md text-sm"
+                          title="Delete"
+                        >
+                          {deleteLoading === name ? '...' : <Trash2 size={14} />}
                         </button>
                       </div>
                     </div>

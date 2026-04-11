@@ -214,6 +214,22 @@ export async function renameWorkflow(oldName: string, newName: string) {
   return await response.json();
 }
 
+/**
+ * Delete a saved workflow
+ */
+export async function deleteWorkflow(name: string) {
+  const response = await apiRequest(`/api/v1/workflows/delete?name=${encodeURIComponent(name)}`, {
+    method: 'POST',
+  });
+
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err.detail || 'Delete failed');
+  }
+
+  return await response.json();
+}
+
 // ─── Data Operations ─────────────────────────────────────────────────────────
 
 /**

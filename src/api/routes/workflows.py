@@ -760,6 +760,23 @@ async def rename_workflow(
     os.rename(old_path, new_path)
     return {"message": f"Workflow renamed from {old_name} to {new_name}"}
 
+@router.post("/delete")
+async def delete_workflow(
+    name: str = Query(...),
+):
+    """Delete a saved workflow file."""
+    save_dir = "data/workflows"
+    # Protect against path traversal
+    safe_name = os.path.basename(name).replace(".json", "")
+    file_path = os.path.join(save_dir, f"{safe_name}.json")
+
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="Workflow not found")
+
+    os.remove(file_path)
+    return {"message": f"Workflow '{name}' deleted"}
+
+
 @router.get("/list")
 async def list_saved_workflows():
     """List all saved workflow graphs."""
