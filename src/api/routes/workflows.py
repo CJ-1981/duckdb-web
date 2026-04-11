@@ -1196,10 +1196,10 @@ async def execute_workflow_graph(
     node_to_table = {} 
     
     logger.info(f"--- Workflow Execution Start: {len(sorted_nodes)} nodes ---")
-    
+
     try:
         conn = get_connection()
-        
+
         for i, node in enumerate(sorted_nodes):
             node_id = str(node["id"])
             safe_id = node_id.replace("-", "_")
@@ -1208,7 +1208,7 @@ async def execute_workflow_graph(
             subtype = node_data.get("subtype")
             label = node_data.get("label", "")
             config = node_data.get("config", {})
-            
+
             preds = predecessors.get(node_id, [])
             prev_table = node_to_table.get(preds[0]) if preds else None
             
@@ -1493,7 +1493,18 @@ async def execute_workflow_graph(
                     # Use fetchall() to avoid .df() conversion issues
                     res = conn.execute(f"DESCRIBE {prev_table}")
                     all_cols = [row[0] for row in res.fetchall()]
-                    renamed_map = {m['old']: m['new'] for m in mappings if m.get('old') and m.get('new')}
+                    # Build renamed map with string conversion safety
+                    renamed_map = {}
+                    for m in mappings:
+                        old_col = m.get('old')
+                        new_col = m.get('new')
+                        if old_col and new_col:
+                            try:
+                                old_str = str(old_col)
+                                new_str = str(new_col)
+                                renamed_map[old_str] = new_str
+                            except Exception:
+                                logger.warning(f">>> [RENAME] Skipping invalid mapping: {old_col} -> {new_col}")
                     select_items = [f"{quote_identifier(col)} AS {quote_identifier(renamed_map[col])}" if col in renamed_map else quote_identifier(col) for col in all_cols]
                     conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT {', '.join(select_items)} FROM {prev_table}")
                     node_to_table[node_id] = table_name
@@ -1771,17 +1782,20 @@ async def execute_workflow_graph(
                     # This enables downstream nodes to benefit from type detection
                     try:
                         desc_df = _get_df(conn, f"DESCRIBE {final_table}")
-                        # Debug: Check DataFrame structure before schema inference
-                        logger.info(f">>> [CACHE] DESCRIBE result columns: {desc_df.columns.tolist()}")
-                        logger.info(f">>> [CACHE] DESCRIBE result dtypes:\n{desc_df.dtypes}")
                         inferred_schema = {}
                         for _, row in desc_df.iterrows():
-                            col_name = row['column_name']
-                            col_type = row['column_type']
-                            # Ensure column_name is a string (not a dict or other unhashable type)
-                            if not isinstance(col_name, str):
-                                logger.error(f">>> [CACHE] Column name is not a string: {col_name} (type: {type(col_name)})")
+                            # Extract column name and type safely
+                            col_name_raw = row['column_name']
+                            col_type_raw = row['column_type']
+
+                            # Convert to strings, handling non-scalar types
+                            try:
+                                col_name = str(col_name_raw) if col_name_raw is not None else ""
+                                col_type = str(col_type_raw) if col_type_raw is not None else "VARCHAR"
+                            except Exception:
+                                logger.warning(f">>> [CACHE] Skipping invalid column: {col_name_raw}")
                                 continue
+
                             inferred_schema[col_name] = col_type
                         cache_entry["schema"] = inferred_schema
                         logger.info(f">>> [CACHE] Inferred schema for node {node_id}: {len(inferred_schema)} columns")
@@ -2326,8 +2340,18 @@ async def inspect_node_dataset(request: InspectRequest):
         columns = []
         try:
             summarize_df = _get_df(conn, f"SUMMARIZE {target_table}")
-            summarize_map = {row['column_name']: row for _, row in summarize_df.iterrows()}
-        except Exception:
+            summarize_map = {}
+            for _, row in summarize_df.iterrows():
+                # Extract column name safely, ensuring it's a string
+                col_name_raw = row.get('column_name', row['column_name'] if 'column_name' in row else None)
+                if col_name_raw is not None:
+                    try:
+                        col_name = str(col_name_raw)
+                        summarize_map[col_name] = row
+                    except Exception:
+                        logger.warning(f">>> [STATS] Skipping column with invalid name: {col_name_raw}")
+        except Exception as e:
+            logger.warning(f">>> [STATS] Failed to summarize table: {e}")
             summarize_map = {}
 
         def val_or_none(v):
