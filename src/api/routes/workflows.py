@@ -1257,10 +1257,13 @@ async def execute_workflow_graph(
                     continue
 
                 file_path = config.get("file_path")
+                logger.info(f">>> [INPUT NODE] Processing CSV file: {file_path}")
                 if not file_path: continue
                 if not os.path.isabs(file_path):
                     file_path = os.path.abspath(file_path)
-                
+                logger.info(f">>> [INPUT NODE] Absolute file path: {file_path}")
+                logger.info(f">>> [INPUT NODE] File exists: {os.path.exists(file_path)}")
+
                 load_format = config.get("format", "flat")
                 if load_format == "kv":
                     # Schema-discovery for KV format (Union of all detected keys)
@@ -1768,7 +1771,18 @@ async def execute_workflow_graph(
                     # This enables downstream nodes to benefit from type detection
                     try:
                         desc_df = _get_df(conn, f"DESCRIBE {final_table}")
-                        inferred_schema = {row['column_name']: row['column_type'] for _, row in desc_df.iterrows()}
+                        # Debug: Check DataFrame structure before schema inference
+                        logger.info(f">>> [CACHE] DESCRIBE result columns: {desc_df.columns.tolist()}")
+                        logger.info(f">>> [CACHE] DESCRIBE result dtypes:\n{desc_df.dtypes}")
+                        inferred_schema = {}
+                        for _, row in desc_df.iterrows():
+                            col_name = row['column_name']
+                            col_type = row['column_type']
+                            # Ensure column_name is a string (not a dict or other unhashable type)
+                            if not isinstance(col_name, str):
+                                logger.error(f">>> [CACHE] Column name is not a string: {col_name} (type: {type(col_name)})")
+                                continue
+                            inferred_schema[col_name] = col_type
                         cache_entry["schema"] = inferred_schema
                         logger.info(f">>> [CACHE] Inferred schema for node {node_id}: {len(inferred_schema)} columns")
                     except Exception as e:
