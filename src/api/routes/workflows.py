@@ -1360,8 +1360,8 @@ async def execute_workflow_graph(
                             _NODE_CACHE[node_id]["schema"] = schema
                         else:
                             # Fallback to ALL_VARCHAR if schema inference fails
-                            sql = f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT * FROM read_csv_auto(?, ALL_VARCHAR=TRUE)"
-                            conn.execute(sql, [file_path])
+                            # Treat empty strings as NULL during CSV load
+                            conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT * FROM read_csv_auto(?, ALL_VARCHAR=TRUE, nullstr='')", [file_path])
                             logger.info(f">>> [CSV LOAD] Created table {table_name} with ALL_VARCHAR (schema inference failed)")
 
                         node_to_table[node_id] = table_name
@@ -2338,6 +2338,7 @@ async def inspect_node_dataset(request: InspectRequest):
                 total_from_summarize = int(s.get('count', 0)) if val_or_none(s.get('count')) is not None else 0
                 null_pct_from_summarize = float(s.get('null_percentage', 0)) if val_or_none(s.get('null_percentage')) is not None else 0
                 cnt = int(total_from_summarize * (1 - null_pct_from_summarize / 100))
+                logger.info(f">>> [STATS] Column '{col_name}': total={total_from_summarize}, null_pct={null_pct_from_summarize}, cnt={cnt}, null_count={total_rows - cnt}")
                 stat.update({
                     "count": cnt,
                     "null_count": total_rows - cnt,
@@ -2352,11 +2353,14 @@ async def inspect_node_dataset(request: InspectRequest):
                     "q75": str(s['q75']) if val_or_none(s.get('q75')) is not None else None,
                 })
             else:
+                # Column not in SUMMARIZE output (shouldn't happen, but handle it)
                 try:
                     qcn = quote_identifier(col_name)
                     cnt = conn.execute(f"SELECT COUNT({qcn}) FROM {target_table}").fetchone()[0]
                     dist = conn.execute(f"SELECT COUNT(DISTINCT {qcn}) FROM {target_table}").fetchone()[0]
-                    stat.update({"count": cnt, "null_count": total_rows - cnt,
+                    null_count = total_rows - cnt
+                    logger.info(f">>> [STATS-ELSE] Column '{col_name}': total_rows={total_rows}, cnt={cnt}, null_count={null_count}")
+                    stat.update({"count": cnt, "null_count": null_count,
                                  "null_pct": round((total_rows - cnt) / total_rows * 100, 1) if total_rows else 0,
                                  "distinct": dist})
                 except Exception: pass
@@ -2508,7 +2512,8 @@ async def analyze_workflow_schema(request: WorkflowExecutionRequest):
                             conn.execute(f"CREATE OR REPLACE TEMP TABLE {tname} ({columns_def})")
                         else:
                             # Fallback to ALL_VARCHAR if schema inference fails
-                            conn.execute(f"CREATE OR REPLACE TEMP TABLE {tname} AS SELECT * FROM read_csv_auto(?, ALL_VARCHAR=TRUE) WHERE 1=0", [fp])
+                            # Treat empty strings as NULL during CSV load
+                            conn.execute(f"CREATE OR REPLACE TEMP TABLE {tname} AS SELECT * FROM read_csv_auto(?, ALL_VARCHAR=TRUE, nullstr='') WHERE 1=0", [fp])
                     else:
                         conn.execute(f"CREATE OR REPLACE TEMP TABLE {tname} (dummy VARCHAR)")
                     node_to_table[node_id] = tname

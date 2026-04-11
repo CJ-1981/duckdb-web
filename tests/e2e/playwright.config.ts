@@ -43,7 +43,7 @@ export default defineConfig({
       PYTHONPATH: '.',
     },
     timeout: 300000,
-    reuseExistingServer: false,  // Don't reuse to pick up code changes
+    reuseExistingServer: true,  // Reuse existing server to handle port conflicts
   },
 
 
