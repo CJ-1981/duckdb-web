@@ -102,54 +102,7 @@ West,Widget B,1050,Q2`,
 export async function uploadTestCsv(page: Page, testData: TestDataFile) {
   // Create a buffer from the CSV content
   // Wait for backend to be ready before uploading
-  // Check both Playwright context and browser context
-  let backendReady = false;
-  let retries = 0;
-  const maxRetries = 15;
-
-  while (!backendReady && retries < maxRetries) {
-    try {
-      // First check from Playwright context
-      const playwrightResponse = await page.request.fetch('http://127.0.0.1:8000/api/v1/system/health', {
-        timeout: 2000,
-      });
-
-      if (playwrightResponse.ok()) {
-        // Now verify browser can reach backend by checking in browser context
-        const browserCheck = await page.evaluate(async () => {
-          try {
-            const response = await fetch('http://127.0.0.1:8000/api/v1/system/health', {
-              method: 'GET',
-              mode: 'cors',
-            });
-            return { ok: response.ok, status: response.status };
-          } catch (error) {
-            return { ok: false, error: (error as Error).message };
-          }
-        });
-
-        if (browserCheck.ok) {
-          backendReady = true;
-          console.log('Backend is ready (both contexts) after', retries * 1000, 'ms');
-        } else {
-          console.log('Playwright can reach backend but browser cannot:', browserCheck);
-          retries++;
-          await page.waitForTimeout(1000);
-        }
-      }
-    } catch (error) {
-      retries++;
-      await page.waitForTimeout(1000);
-    }
-  }
-
-  if (!backendReady) {
-    throw new Error('Backend failed to start after multiple retries');
-  }
-
-  // Additional wait to ensure all endpoints are loaded
-  await page.waitForTimeout(1000);
-
+  await page.waitForTimeout(2000);
   const buffer = Buffer.from(testData.content, 'utf-8');
 
   // Create a temporary file

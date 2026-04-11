@@ -282,6 +282,7 @@ def _build_regex_clean_expression(col_ref: str) -> str:
     Build DuckDB regexp_replace expression to clean Korean number format characters.
 
     Removes commas, currency symbols (₩, $, ¥, €, £) in a single regex pass.
+    Handles empty strings by returning NULL.
 
     Args:
         col_ref: Column reference to clean
@@ -291,7 +292,8 @@ def _build_regex_clean_expression(col_ref: str) -> str:
     """
     # Remove all Korean number format characters in one pass: commas and currency symbols
     # Use 'g' flag for global replacement (all occurrences, not just first)
-    return f"REGEXP_REPLACE({col_ref}, '[,₩$¥€£]', '', 'g')"
+    # Handle empty strings: NULLIF converts empty string to NULL before TRY_CAST
+    return f"NULLIF(REGEXP_REPLACE({col_ref}, '[,₩$¥€£]', '', 'g'), '')"
 
 def build_cast_expressions(schema: Dict[str, str], table_alias: str = "", actual_cols: List[str] = None) -> List[str]:
     """

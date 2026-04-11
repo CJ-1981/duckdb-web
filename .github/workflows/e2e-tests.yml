@@ -1,8 +1,11 @@
 name: E2E Tests
 
-# Korean number format detection implemented (2025-04-11)
+# Korean number format detection implemented (2026-04-11)
 # Backend schema-aware CSV loading working with TRY_CAST for null handling
-# UI interaction timeouts remain - tests non-blocking until resolved
+# CORS configured for E2E test server (port 3001)
+# Health check endpoint added for service coordination
+# Data Inspection: 9/13 tests passing (69%)
+# Full suite: UI interaction and backend lifecycle issues remain
 on:
   push:
     branches: [main, develop]

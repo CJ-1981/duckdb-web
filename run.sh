@@ -24,7 +24,14 @@ if [ -d ".venv" ]; then
 fi
 
 # Run backend in background - use python -m uvicorn to ensure PYTHONPATH handling
-python -m uvicorn src.api.main:create_app --factory --reload --port 8000 &
+# Note: --reload disabled for E2E tests to prevent port binding issues
+if [ "$PORT" = "3001" ]; then
+    # E2E test mode - no reload
+    python -m uvicorn src.api.main:create_app --factory --port 8000 &
+else
+    # Development mode - with reload
+    python -m uvicorn src.api.main:create_app --factory --reload --port 8000 &
+fi
 
 # 2. Wait a moment for backend to initialize
 sleep 2

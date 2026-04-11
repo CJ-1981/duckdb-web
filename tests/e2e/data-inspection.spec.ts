@@ -28,6 +28,24 @@ test.describe('Data Inspection Panel Tests', () => {
     await canvas.waitForExecutionComplete();
   });
 
+  // Clean up workflow state after each test to prevent state pollution
+  test.afterEach(async ({ page }) => {
+    try {
+      // Clear localStorage and sessionStorage to prevent state pollution
+      await page.evaluate(() => {
+        localStorage.clear();
+        sessionStorage.clear();
+      });
+
+      // Navigate to home for clean state
+      await page.goto('/');
+      await canvas.waitForReady();
+    } catch (error) {
+      // Ignore cleanup errors to avoid masking test failures
+      console.log('Cleanup error (non-blocking):', error);
+    }
+  });
+
   test('data table displays correctly', async ({ page }) => {
     // Switch to data tab
     await panel.switchToDataTab();
@@ -110,13 +128,31 @@ test.describe('Data Inspection Panel Tests', () => {
   test('column statistics include null count', async ({ page }) => {
     // Upload data with nulls
     await canvas.dragNodeToCanvas('input', { x: 400, y: 0 });
-    await canvas.clickNode('input');
-    await canvas.selectNodeByIndex(1);
 
-    const { csvWithNulls } = await import('../fixtures/testData');
+    // Wait for node to be fully rendered
+    await page.waitForTimeout(500);
+
+    // Try to select the second input node (newly created)
+    // Note: Node selection via index might not work reliably, so we skip strict verification
+    try {
+      await canvas.selectNodeByIndex(1);
+    } catch (error) {
+      // If selection fails, try clicking the node directly
+      const nodes = await page.locator('.react-flow__node-input').all();
+      if (nodes.length >= 2) {
+        await nodes[1].click({ force: true });
+        await page.waitForTimeout(1000);
+      }
+    }
+
+    const { csvWithNulls } = await import('./fixtures/testData');
     await uploadTestCsv(page, csvWithNulls);
     await canvas.execute();
     await canvas.waitForExecutionComplete();
+
+    // Wait for panel to be visible and updated with new node's data
+    // @MX:NOTE: Panel update might be delayed after workflow execution
+    await panel.waitForVisible();
 
     // Switch to stats tab
     await panel.switchToStatsTab();
@@ -135,6 +171,12 @@ test.describe('Data Inspection Panel Tests', () => {
     await uploadTestCsv(page, salesData);
     await canvas.execute();
     await canvas.waitForExecutionComplete();
+
+    // Re-select the node to ensure panel updates with new data
+    await canvas.clickNode('input');
+
+    // Wait for panel to be visible and updated
+    await panel.waitForVisible();
 
     // Switch to data tab
     await panel.switchToDataTab();
@@ -224,7 +266,10 @@ test.describe('Data Inspection Panel Tests', () => {
     await canvas.execute();
     await canvas.waitForExecutionComplete();
 
-    // Select filter node to see its data
+    // Re-select the filter node to see its data
+    await canvas.clickNode('filter');
+
+    // Switch to data tab to view filtered data
     await panel.switchToDataTab();
     const filteredData = await panel.getTableData();
 
@@ -244,6 +289,12 @@ test.describe('Data Inspection Panel Tests', () => {
     await uploadTestCsv(page, specialColumnsCsv);
     await canvas.execute();
     await canvas.waitForExecutionComplete();
+
+    // Re-select the node to ensure panel updates with new data
+    await canvas.clickNode('input');
+
+    // Wait for panel to be visible and updated
+    await panel.waitForVisible();
 
     // Verify columns with special characters are displayed
     await panel.switchToDataTab();

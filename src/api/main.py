@@ -56,6 +56,8 @@ def create_app() -> FastAPI:
     cors_origins = [
         "http://localhost:3000",        # Local Next.js development
         "http://127.0.0.1:3000",         # Alternative local development
+        "http://localhost:3001",        # E2E test server
+        "http://127.0.0.1:3001",         # E2E test server alternative
         "http://localhost:19006",       # Vercel dev server
         os.getenv("VERCEL_URL", ""),     # Dynamic Vercel deployment URL
         # Add your Vercel deployment URL here:

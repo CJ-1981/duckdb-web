@@ -15,6 +15,29 @@ from src.api.auth.dependencies import get_current_user_with_role
 router = APIRouter(prefix="/api/v1/system", tags=["System"])
 
 
+class HealthResponse(BaseModel):
+    """Health check response model."""
+
+    status: str
+    backend: str
+    version: str
+
+
+@router.get("/health", response_model=HealthResponse)
+async def health_check():
+    """
+    Health check endpoint for testing and monitoring.
+
+    Returns:
+        Health status with backend and version info
+    """
+    return HealthResponse(
+        status="healthy",
+        backend="FastAPI",
+        version="1.0.0",
+    )
+
+
 class SystemConfigResponse(BaseModel):
     """System configuration response model."""
 

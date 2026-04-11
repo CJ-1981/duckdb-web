@@ -196,6 +196,8 @@ function Dashboard() {
   const [currentPipelineName, setCurrentPipelineName] = useState<string | null>(null);
   const [newName, setNewName] = useState("");
   const [availableWorkflows, setAvailableWorkflows] = useState<string[]>([]);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importError, setImportError] = useState<string | null>(null);
   const [executionResult, setExecutionResult] = useState<any>(null);
   const [isExecuting, setIsExecuting] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
@@ -499,6 +501,40 @@ function Dashboard() {
       setAvailableWorkflows(workflows || []);
       setIsLoadModalOpen(true);
     } catch (e) { setExecutionMessage({ title: "Error", detail: "Could not fetch workflows.", type: 'error' }); setExecutionSuccess(true); }
+  };
+
+  const handleImportSelectedFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0] || null;
+    setImportError(null);
+    setImportFile(f);
+  };
+
+  const handleImportConfirm = async () => {
+    if (!importFile) { setImportError('No file selected'); return; }
+    try {
+      const text = await importFile.text();
+      const parsed = JSON.parse(text);
+      if (!parsed || (!parsed.nodes && !parsed.definition && !parsed.edges)) {
+        setImportError('File does not contain a valid workflow JSON (nodes/edges).');
+        return;
+      }
+      // Support both {nodes, edges} and {definition} shapes
+      const nodes = parsed.nodes || parsed.definition?.nodes || [];
+      const edges = parsed.edges || parsed.definition?.edges || [];
+      const baseName = importFile.name.replace(/\.json$/i, '');
+      // Save to server
+      await saveWorkflow(baseName, nodes, edges);
+      // Refresh list
+      const { workflows } = await listSavedWorkflows();
+      setAvailableWorkflows(workflows || []);
+      setImportFile(null);
+      setIsLoadModalOpen(false);
+      setExecutionMessage({ title: "Import successful", detail: `Imported and saved '${baseName}'.`, type: 'success' });
+      setExecutionSuccess(true);
+      setTimeout(() => { setExecutionSuccess(false); setExecutionMessage(null); }, 3000);
+    } catch (err: any) {
+      setImportError(err.message || 'Import failed');
+    }
   };
 
   const getUpstreamColumns = (nodeId: string): string[] => {
@@ -3121,9 +3157,25 @@ Please fix the SQL. Return ONLY the raw SQL query.`;
       {isLoadModalOpen && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
           <div className="bg-white rounded-lg shadow-xl w-full max-w-lg border border-[#DFE1E6] animate-in fade-in zoom-in duration-200 flex flex-col max-h-[calc(100vh-2rem)]">
-            <div className="p-6 pb-4 flex-shrink-0">
+            <div className="p-6 pb-2 flex-shrink-0 flex items-center justify-between">
               <h3 className="text-lg font-bold text-[#172B4D] font-inter">Open Pipeline</h3>
+              <div className="flex items-center gap-2">
+                <input id="workflow-import-input" type="file" accept=".json,application/json" onChange={handleImportSelectedFile} className="hidden" />
+                <label htmlFor="workflow-import-input" className="px-3 py-2 bg-[#FAFBFC] border border-[#DFE1E6] rounded-md text-sm text-[#42526E] cursor-pointer">Choose file</label>
+                <button
+                  onClick={handleImportConfirm}
+                  disabled={!importFile}
+                  className="px-3 py-2 bg-[#0052CC] text-white rounded-md text-sm font-medium disabled:opacity-50"
+                >
+                  Import
+                </button>
+              </div>
             </div>
+            {importError && (
+              <div className="px-6 pb-2">
+                <p className="text-sm text-red-600">{importError}</p>
+              </div>
+            )}
             {availableWorkflows.length === 0 ? (
               <div className="px-6 pb-6 flex-shrink-0">
                 <p className="text-sm text-[#6B778C]">No saved pipelines found on server.</p>
@@ -3132,14 +3184,23 @@ Please fix the SQL. Return ONLY the raw SQL query.`;
               <div className="px-6 pb-4 flex-1 overflow-y-auto min-h-0">
                 <div className="space-y-2 pr-1">
                   {availableWorkflows.map(name => (
-                    <button
-                      key={name}
-                      onClick={() => handleLoadWorkflow(name)}
-                      className="w-full text-left px-4 py-3 text-sm text-[#172B4D] hover:bg-[#F4F5F7] border border-[#DFE1E6] rounded-md transition-all flex items-center justify-between group hover:border-[#0052CC]"
-                    >
-                      <span className="font-medium">{name}</span>
-                      <FolderOpen size={14} className="text-[#6B778C] opacity-0 group-hover:opacity-100 transition-opacity" />
-                    </button>
+                    <div key={name} className="flex items-center justify-between space-x-3">
+                      <button
+                        onClick={() => handleLoadWorkflow(name)}
+                        className="flex-1 text-left px-4 py-3 text-sm text-[#172B4D] hover:bg-[#F4F5F7] border border-[#DFE1E6] rounded-md transition-all flex items-center group hover:border-[#0052CC]"
+                      >
+                        <span className="font-medium">{name}</span>
+                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={async (e) => { e.stopPropagation(); try { const data = await loadWorkflowGraph(name); const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `${name}.json`; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url); } catch (err) { setExecutionMessage({ title: 'Export failed', detail: (err as any).message || 'Could not export workflow', type: 'error' }); setExecutionSuccess(true); } }}
+                          className="px-3 py-2 bg-[#EDEFFF] text-[#0052CC] rounded-md text-sm border border-[#DFE1E6]"
+                          title="Download JSON"
+                        >
+                          <FileDown size={14} />
+                        </button>
+                      </div>
+                    </div>
                   ))}
                 </div>
               </div>

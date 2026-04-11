@@ -1,22 +1,25 @@
 # Session Summary: 3a6eaf1c-59bc-4c32-94d6-6e3bcd6787ca
 
-**Total Hook Invocations:** 1
+**Total Hook Invocations:** 3
 
-**Session Duration:** 0s
+**Session Duration:** 9m40.684s
 
 ## Event Breakdown
 
-- **SessionStart**: 1
+- **PreToolUse**: 1
+- **SessionStart**: 2
 
 ## Decision Breakdown
 
-_No decisions recorded._
+- **deny**: 1
 
 ## Top 5 Slowest Hook Executions
 
 | # | Event | Handler | Tool | Duration (ms) |
 |---|-------|---------|------|---------------|
-| 1 | SessionStart | *hook.sessionStartHandler |  | 0 |
+| 1 | PreToolUse | *hook.preToolHandler | Bash | 3187 |
+| 2 | SessionStart | *hook.sessionStartHandler |  | 0 |
+| 3 | SessionStart | *hook.sessionStartHandler |  | 0 |
 
 ## Errors (0)
 

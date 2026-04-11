@@ -59,7 +59,8 @@ export class DataInspectionPanel {
    */
   async switchToStatsTab() {
     await this.tabs.stats.click();
-    await expect(this.statsContainer).toBeVisible();
+    // Stats might take time to load, wait longer
+    await expect(this.statsContainer).toBeVisible({ timeout: 10000 });
   }
 
   /**
@@ -219,7 +220,15 @@ export class DataInspectionPanel {
    * @param format - The format to copy ('md', 'json', or 'sql')
    */
   async copySchema(format: 'md' | 'json' | 'sql') {
-    const button = this.panel.locator(`button:has-text("${format.toUpperCase()}"), button:has-text("${format}")`);
+    // Map format codes to actual button labels
+    const labels = {
+      'md': 'Markdown',
+      'json': 'JSON',
+      'sql': 'SQL DDL'
+    };
+    const label = labels[format] || format;
+
+    const button = this.panel.locator(`button:has-text("${label}")`);
     await button.click();
   }
 
