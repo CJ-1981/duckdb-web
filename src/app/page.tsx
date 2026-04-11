@@ -4,13 +4,11 @@ import React, { useState, useEffect } from 'react';
 import WorkspaceCanvas from '@/components/workflow/canvas';
 import { Database, Filter, ArrowRightLeft, Table, Settings, Play, Search, LayoutDashboard, SlidersHorizontal, FileText, FileDown, Save, FolderOpen, Sigma, Eye, ChevronRight, SortAsc, ListOrdered, Calculator, Code, Fingerprint, PenLine, GitBranch, BarChart3, Plus, Trash2, Wand2, Microscope, PanelLeftClose, PanelLeftOpen, PanelBottomClose, Copy, X, CheckCheck, AlertCircle, RefreshCw, Globe, Repeat, Dices, Braces, DatabaseBackup } from 'lucide-react';
 import { Node, Edge, useReactFlow, ReactFlowProvider, useNodesState, useEdgesState, Panel } from '@xyflow/react';
-import { executeWorkflow, uploadFile, saveWorkflow, listSavedWorkflows, loadWorkflowGraph, generateReport, inspectNode, renameWorkflow, validateSql, previewSql } from '@/lib/api';
+import { executeWorkflow, uploadFile, saveWorkflow, listSavedWorkflows, loadWorkflowGraph, generateReport, inspectNode, renameWorkflow, validateSql, previewSql, getBackendUrl } from '@/lib/api-unified';
 import DataInspectionPanel, { type ColumnTypeDef, type FullStats } from '@/components/panels/DataInspectionPanel';
 import AiSqlBuilderPanel from '@/components/panels/AiSqlBuilderPanel';
 import AiPipelineBuilderPanel from '@/components/panels/AiPipelineBuilderPanel';
 import SettingsPanel from '@/components/panels/SettingsPanel';
-
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000/api/v1';
 
 interface WorkflowTab {
   id: string;
@@ -3004,7 +3002,8 @@ Please fix the SQL. Return ONLY the raw SQL query.`;
                         const res = await generateReport(getNodes(), getEdges(), selectedNode.data.config);
                         if (res.report_url) {
                           const link = document.createElement('a');
-                          link.href = API_BASE_URL.replace('/api/v1', '') + res.report_url;
+                          const baseUrl = getBackendUrl().replace(/\/$/, '');
+                          link.href = res.report_url.startsWith('http') ? res.report_url : `${baseUrl}${res.report_url}`;
                           link.setAttribute('download', '');
                           document.body.appendChild(link);
                           link.click();

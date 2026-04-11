@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { getBackendUrl, setBackendUrl as saveBackendUrl, resetBackendUrl, checkBackendConnection } from '@/lib/api-unified';
 
 interface SettingsPanelProps {
   onClose?: () => void;
@@ -12,16 +13,10 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
   const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
-    // Load saved backend URL from localStorage
-    const savedUrl = localStorage.getItem('backend_url');
-    if (savedUrl) {
-      setBackendUrl(savedUrl);
-      checkConnection(savedUrl);
-    } else {
-      // Default to environment variable or localhost
-      const defaultUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-      setBackendUrl(defaultUrl);
-    }
+    // Load saved backend URL from unified client
+    const savedUrl = getBackendUrl();
+    setBackendUrl(savedUrl);
+    checkConnection(savedUrl);
   }, []);
 
   const checkConnection = async (url: string) => {
@@ -30,21 +25,13 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
       // Remove trailing slash for consistency
       const cleanUrl = url.replace(/\/$/, '');
 
-      const response = await fetch(`${cleanUrl}/health`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        // Short timeout for connection check
-        signal: AbortSignal.timeout(5000),
-      });
+      // Test connection using unified client
+      const connected = await checkBackendConnection();
 
-      if (response.ok) {
+      if (connected) {
         setConnectionStatus('connected');
-        // Save to localStorage
-        localStorage.setItem('backend_url', cleanUrl);
-        // Update global fetch configuration
-        (window as any).BACKEND_URL = cleanUrl;
+        // Save using unified client
+        saveBackendUrl(cleanUrl);
       } else {
         setConnectionStatus('error');
       }
@@ -64,7 +51,7 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
   const handleReset = () => {
     const defaultUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
     setBackendUrl(defaultUrl);
-    localStorage.removeItem('backend_url');
+    resetBackendUrl();
     setConnectionStatus('unknown');
   };
 
