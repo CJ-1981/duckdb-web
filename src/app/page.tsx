@@ -1267,8 +1267,10 @@ function Dashboard() {
             onNodeSelect={(node) => {
               if (node?.id !== selectedNode?.id) {
                 setSelectedNode(node);
-                if (node) setIsBottomPanelVisible(true);
               }
+              // Always show panel when a node is selected, even if it's the same node
+              // This allows reopening the panel after it was closed
+              if (node) setIsBottomPanelVisible(true);
             }}
             onAfterConnect={handleConnection}
             layoutCounter={layoutCounter}

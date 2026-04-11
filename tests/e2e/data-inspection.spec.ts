@@ -37,9 +37,8 @@ test.describe('Data Inspection Panel Tests', () => {
         sessionStorage.clear();
       });
 
-      // Navigate to home for clean state
-      await page.goto('/');
-      await canvas.waitForReady();
+      // Note: Don't navigate to home - it clears React state and breaks tests
+      // The tests already work properly without navigation
     } catch (error) {
       // Ignore cleanup errors to avoid masking test failures
       console.log('Cleanup error (non-blocking):', error);
@@ -125,7 +124,7 @@ test.describe('Data Inspection Panel Tests', () => {
     await expect(fullStatsIndicator).toBeVisible();
   });
 
-  test.skip('column statistics include null count', async ({ page }) => {
+  test('column statistics include null count', async ({ page }) => {
     // @MX:TODO: SKIPPED - Application bug: uploading new CSV data to existing node breaks panel display
     // Issue: After uploading csvWithNulls and clicking node, panel doesn't appear
     // Root cause: Application clears workflow or has state management issue when replacing node data
@@ -152,7 +151,7 @@ test.describe('Data Inspection Panel Tests', () => {
     expect(parseInt(stats?.nulls || '0')).toBeGreaterThan(0);
   });
 
-  test.skip('data preview pagination works', async ({ page }) => {
+  test('data preview pagination works', async ({ page }) => {
     // @MX:TODO: SKIPPED - Application bug: uploading new CSV data to existing node breaks panel display
     // Issue: After uploading salesData and clicking node, panel doesn't appear
     // Root cause: Application clears workflow or has state management issue when replacing node data
@@ -277,7 +276,7 @@ test.describe('Data Inspection Panel Tests', () => {
     expect(filteredData.length).toBeGreaterThanOrEqual(0);
   });
 
-  test.skip('handles column with special characters in name', async ({ page }) => {
+  test('handles column with special characters in name', async ({ page }) => {
     // @MX:TODO: SKIPPED - Application bug: uploading new CSV data to existing node breaks panel display
     // Issue: After uploading specialColumnsCsv and clicking node, panel doesn't appear
     // Root cause: Application clears workflow or has state management issue when replacing node data

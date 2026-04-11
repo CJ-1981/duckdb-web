@@ -43,7 +43,7 @@ export default defineConfig({
       PYTHONPATH: '.',
     },
     timeout: 300000,
-    reuseExistingServer: true,  // Reuse existing server (for CI/pre-commit)
+    reuseExistingServer: false,  // Don't reuse to pick up code changes
   },
 
 

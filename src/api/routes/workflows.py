@@ -354,7 +354,8 @@ def build_cast_expressions(schema: Dict[str, str], table_alias: str = "", actual
             )
         else:
             # VARCHAR - ensure it's trimmed and cast to VARCHAR, then aliased to cleaned name
-            cast_expressions.append(f"TRIM(CAST({col_ref} AS VARCHAR)) AS {quoted_clean}")
+            # Use NULLIF to convert empty strings to NULL for proper NULL counting
+            cast_expressions.append(f"NULLIF(TRIM(CAST({col_ref} AS VARCHAR)), '') AS {quoted_clean}")
 
     return cast_expressions
 
@@ -1248,7 +1249,8 @@ async def execute_workflow_graph(
                             conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT * FROM read_parquet('{url}')")
                         else:
                             # Try CSV first
-                            conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT * FROM read_csv_auto('{url}', ALL_VARCHAR=TRUE)")
+                            # Treat empty strings as NULL during CSV load
+                            conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT * FROM read_csv_auto('{url}', ALL_VARCHAR=TRUE, nullstr='')")
                         node_to_table[node_id] = table_name
                     except Exception as e:
                         logger.error(f"Failed to load remote file {url}: {e}")
@@ -1306,11 +1308,13 @@ async def execute_workflow_graph(
                             temp_view = f"{table_name}_raw"
                             
                             # Use detected encoding if available
-                            conn.execute(f"CREATE OR REPLACE TEMP TABLE {temp_view} AS SELECT * FROM read_csv_auto(?, ALL_VARCHAR=TRUE, ENCODING=?)", [file_path, encoding])
+                            # Treat empty strings as NULL during CSV load
+                            conn.execute(f"CREATE OR REPLACE TEMP TABLE {temp_view} AS SELECT * FROM read_csv_auto(?, ALL_VARCHAR=TRUE, ENCODING=?, nullstr='')", [file_path, encoding])
 
                             # Get actual column names from the loaded table to handle BOM/whitespace issues
-                            res = conn.execute(f"DESCRIBE {temp_view}").df()
-                            actual_cols = res['column_name'].tolist()
+                            # Use fetchall() to avoid .df() conversion issues
+                            res = conn.execute(f"DESCRIBE {temp_view}")
+                            actual_cols = [row[0] for row in res.fetchall()]
 
                             cast_exprs = build_cast_expressions(schema, temp_view, actual_cols=actual_cols)
                             conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT {', '.join(cast_exprs)} FROM {temp_view}")
@@ -1324,7 +1328,8 @@ async def execute_workflow_graph(
                             _NODE_CACHE[node_id]["schema"] = schema
                         else:
                             # Fallback to ALL_VARCHAR if schema inference fails
-                            conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT * FROM read_csv_auto(?, ALL_VARCHAR=TRUE)", [file_path])
+                            # Treat empty strings as NULL during CSV load
+                            conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT * FROM read_csv_auto(?, ALL_VARCHAR=TRUE, nullstr='')", [file_path])
                             logger.info(f">>> [CSV LOAD] Created table {table_name} with ALL_VARCHAR (schema inference failed)")
                         node_to_table[node_id] = table_name
                 else:
@@ -1336,11 +1341,13 @@ async def execute_workflow_graph(
                         if schema:
                             # Use schema inference for automatic type detection
                             temp_view = f"{table_name}_raw"
-                            conn.execute(f"CREATE OR REPLACE TEMP TABLE {temp_view} AS SELECT * FROM read_csv_auto(?, ALL_VARCHAR=TRUE, ENCODING=?)", [file_path, encoding])
+                            # Treat empty strings as NULL during CSV load
+                            conn.execute(f"CREATE OR REPLACE TEMP TABLE {temp_view} AS SELECT * FROM read_csv_auto(?, ALL_VARCHAR=TRUE, ENCODING=?, nullstr='')", [file_path, encoding])
 
                             # Get actual column names from the loaded table to handle BOM/whitespace issues
-                            res = conn.execute(f"DESCRIBE {temp_view}").df()
-                            actual_cols = res['column_name'].tolist()
+                            # Use fetchall() to avoid .df() conversion issues
+                            res = conn.execute(f"DESCRIBE {temp_view}")
+                            actual_cols = [row[0] for row in res.fetchall()]
 
                             cast_exprs = build_cast_expressions(schema, temp_view, actual_cols=actual_cols)
                             conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT {', '.join(cast_exprs)} FROM {temp_view}")
@@ -1480,7 +1487,9 @@ async def execute_workflow_graph(
                 if not prev_table: continue
                 mappings = config.get("mappings", [])
                 if mappings:
-                    all_cols = conn.execute(f"DESCRIBE {prev_table}").df()['column_name'].tolist()
+                    # Use fetchall() to avoid .df() conversion issues
+                    res = conn.execute(f"DESCRIBE {prev_table}")
+                    all_cols = [row[0] for row in res.fetchall()]
                     renamed_map = {m['old']: m['new'] for m in mappings if m.get('old') and m.get('new')}
                     select_items = [f"{quote_identifier(col)} AS {quote_identifier(renamed_map[col])}" if col in renamed_map else quote_identifier(col) for col in all_cols]
                     conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT {', '.join(select_items)} FROM {prev_table}")
@@ -2077,7 +2086,8 @@ async def inspect_node_dataset(request: InspectRequest):
                                 conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT * FROM read_parquet('{url}')")
                             else:
                                 # Try CSV first
-                                conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT * FROM read_csv_auto('{url}', ALL_VARCHAR=TRUE)")
+                                # Treat empty strings as NULL during CSV load
+                                conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT * FROM read_csv_auto('{url}', ALL_VARCHAR=TRUE, nullstr='')")
                             node_to_table[node_id] = table_name
                         except Exception as e:
                             logger.error(f"Failed to load remote file {url}: {e}")
@@ -2102,7 +2112,8 @@ async def inspect_node_dataset(request: InspectRequest):
                             encoding = infer_result.get("encoding", "utf-8")
                             if schema:
                                 temp_view = f"{table_name}_raw"
-                                conn.execute(f"CREATE OR REPLACE TEMP TABLE {temp_view} AS SELECT * FROM read_csv_auto(?, ALL_VARCHAR=TRUE, ENCODING=?)", [fp, encoding])
+                                # Treat empty strings as NULL during CSV load
+                                conn.execute(f"CREATE OR REPLACE TEMP TABLE {temp_view} AS SELECT * FROM read_csv_auto(?, ALL_VARCHAR=TRUE, ENCODING=?, nullstr='')", [fp, encoding])
                                 
                                 # Get actual column names to handle BOM/whitespace issues
                                 res = conn.execute(f"DESCRIBE {temp_view}").df()
@@ -2113,14 +2124,16 @@ async def inspect_node_dataset(request: InspectRequest):
                                 conn.execute(f"DROP TABLE IF EXISTS {temp_view}")
                             else:
                                 # Final fallback to ALL_VARCHAR if schema inference fails
-                                conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT * FROM read_csv_auto(?, ALL_VARCHAR=TRUE)", [fp])
+                                # Treat empty strings as NULL during CSV load
+                                conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT * FROM read_csv_auto(?, ALL_VARCHAR=TRUE, nullstr='')", [fp])
                     # Use schema-aware CSV loading with TRY_CAST for null handling
                     infer_result = get_or_infer_csv_schema(fp)
                     schema = infer_result["schema"]
                     encoding = infer_result.get("encoding", "utf-8")
                     if schema:
                         temp_view = f"{table_name}_raw"
-                        conn.execute(f"CREATE OR REPLACE TEMP TABLE {temp_view} AS SELECT * FROM read_csv_auto(?, ALL_VARCHAR=TRUE, ENCODING=?)", [fp, encoding])
+                        # Treat empty strings as NULL during CSV load
+                        conn.execute(f"CREATE OR REPLACE TEMP TABLE {temp_view} AS SELECT * FROM read_csv_auto(?, ALL_VARCHAR=TRUE, ENCODING=?, nullstr='')", [fp, encoding])
 
                         # Get actual column names to handle BOM/whitespace issues
                         res = conn.execute(f"DESCRIBE {temp_view}").df()
@@ -2131,7 +2144,8 @@ async def inspect_node_dataset(request: InspectRequest):
                         conn.execute(f"DROP TABLE IF EXISTS {temp_view}")
                     else:
                         # Fallback to DuckDB auto-detection if schema inference fails
-                        conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT * FROM read_csv_auto(?, ALL_VARCHAR=TRUE)", [fp])
+                        # Treat empty strings as NULL during CSV load
+                        conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT * FROM read_csv_auto(?, ALL_VARCHAR=TRUE, nullstr='')", [fp])
                     node_to_table[node_id] = table_name
                 elif prev_table:
                     # Pass-through execution for all transformation nodes
@@ -2353,7 +2367,10 @@ async def inspect_node_dataset(request: InspectRequest):
             return v
 
         preview_limit = 50
-        samples = conn.execute(f"SELECT * FROM {target_table} LIMIT {preview_limit}").df().fillna("").to_dict(orient="records")
+        # Use fetchall() to avoid .df() conversion issues with empty strings
+        res = conn.execute(f"SELECT * FROM {target_table} LIMIT {preview_limit}")
+        columns_list = [desc[0] for desc in res.description]
+        samples = [dict(zip(columns_list, [None if v is None or v == '' else v for v in row])) for row in res.fetchall()]
 
         return clean_json({
             "status": "success", 
@@ -2466,7 +2483,8 @@ async def analyze_workflow_schema(request: WorkflowExecutionRequest):
                                 if url.lower().endswith('.parquet'):
                                     conn.execute(f"CREATE OR REPLACE TEMP TABLE {tname} AS SELECT * FROM read_parquet('{url}') WHERE 1=0")
                                 else:
-                                    conn.execute(f"CREATE OR REPLACE TEMP TABLE {tname} AS SELECT * FROM read_csv_auto('{url}', ALL_VARCHAR=TRUE) WHERE 1=0")
+                                    # Treat empty strings as NULL during CSV load
+                                    conn.execute(f"CREATE OR REPLACE TEMP TABLE {tname} AS SELECT * FROM read_csv_auto('{url}', ALL_VARCHAR=TRUE, nullstr='') WHERE 1=0")
                             except Exception:
                                 conn.execute(f"CREATE OR REPLACE TEMP TABLE {tname} (dummy VARCHAR)")
                         else:
