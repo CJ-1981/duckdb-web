@@ -11,7 +11,7 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
-  workers: process.env.CI ? 1 : 4,
+  workers: 1,
   reporter: [
     ['html', { outputFolder: 'playwright-report', open: 'never' }],
     ['json', { outputFile: 'test-results/results.json' }],
@@ -43,7 +43,7 @@ export default defineConfig({
       PYTHONPATH: '.',
     },
     timeout: 300000,
-    reuseExistingServer: false,
+    reuseExistingServer: true,
   },
 
 

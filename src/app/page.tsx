@@ -2,11 +2,12 @@
 
 import React, { useState, useEffect } from 'react';
 import WorkspaceCanvas from '@/components/workflow/canvas';
-import { Database, Filter, ArrowRightLeft, Table, Settings, Play, Download, Search, LayoutDashboard, SlidersHorizontal, FileText, FileDown, Save, FolderOpen, Sigma, Eye, ChevronDown, ChevronRight, SortAsc, ListOrdered, Calculator, Code, Fingerprint, PenLine, GitBranch, BarChart3, Plus, Trash2, Wand2, Microscope, PanelLeftClose, PanelLeftOpen, PanelBottomClose, Copy, X, CheckCheck, AlertCircle, CheckCircle, RefreshCw } from 'lucide-react';
+import { Database, Filter, ArrowRightLeft, Table, Settings, Play, Search, LayoutDashboard, SlidersHorizontal, FileText, FileDown, Save, FolderOpen, Sigma, Eye, ChevronRight, SortAsc, ListOrdered, Calculator, Code, Fingerprint, PenLine, GitBranch, BarChart3, Plus, Trash2, Wand2, Microscope, PanelLeftClose, PanelLeftOpen, PanelBottomClose, Copy, X, CheckCheck, AlertCircle, RefreshCw, Globe, Repeat, Dices, Braces, DatabaseBackup } from 'lucide-react';
 import { Node, Edge, useReactFlow, ReactFlowProvider, useNodesState, useEdgesState, Panel } from '@xyflow/react';
 import { executeWorkflow, uploadFile, saveWorkflow, listSavedWorkflows, loadWorkflowGraph, generateReport, inspectNode, renameWorkflow, validateSql, previewSql } from '@/lib/api';
 import DataInspectionPanel, { type ColumnTypeDef, type FullStats } from '@/components/panels/DataInspectionPanel';
 import AiSqlBuilderPanel from '@/components/panels/AiSqlBuilderPanel';
+import AiPipelineBuilderPanel from '@/components/panels/AiPipelineBuilderPanel';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000/api/v1';
 
@@ -121,6 +122,35 @@ function buildSql(subtype: string, cfg: any): string {
         .map((c: any) => `  WHEN ${c.when} THEN '${c.then}'`).join('\n') || '  WHEN /* condition */ THEN /* value */';
       return `SELECT *,\n  CASE\n${whenLines}\n  ELSE ${elsePart}\n  END AS "${alias}"\nFROM ${T}`;
     }
+    case 'window': {
+      const fn = cfg?.function || 'ROW_NUMBER()';
+      const partition = cfg?.partitionBy ? `PARTITION BY ${cfg.partitionBy.split(',').map((c: string) => `"${c.trim()}"`).join(', ')}` : '';
+      const order = cfg?.orderBy ? `ORDER BY ${cfg.orderBy.split(',').map((c: string) => `"${c.trim()}"`).join(', ')}` : '';
+      const over = [partition, order].filter(Boolean).join(' ');
+      const alias = cfg?.alias || 'window_result';
+      return `SELECT *,\n  ${fn} OVER (${over}) AS "${alias}"\nFROM ${T}`;
+    }
+    case 'pivot': {
+      const on = cfg?.on ? `"${cfg.on}"` : '/* column to pivot */';
+      const using = cfg?.using || 'sum(/* value_column */)';
+      const groupBy = cfg?.groupBy ? cfg.groupBy.split(',').map((c: string) => `"${c.trim()}"`).join(', ') : '/* columns to keep */';
+      return `PIVOT ${T}\nON ${on}\nUSING ${using}\nGROUP BY ${groupBy}`;
+    }
+    case 'unpivot': {
+      const on = cfg?.on ? cfg.on.split(',').map((c: string) => `"${c.trim()}"`).join(', ') : '/* columns to unpivot */';
+      const name = cfg?.intoName ? `"${cfg.intoName}"` : '"name"';
+      const value = cfg?.intoValue ? `"${cfg.intoValue}"` : '"value"';
+      return `UNPIVOT ${T}\nON ${on}\nINTO\n  NAME ${name}\n  VALUE ${value}`;
+    }
+    case 'sample': {
+      const method = cfg?.method || 'PERCENT';
+      const value = cfg?.value || 10;
+      return `SELECT *\nFROM ${T}\nUSING SAMPLE ${value} ${method}`;
+    }
+    case 'unnest': {
+      const col = cfg?.column ? `"${cfg.column}"` : '/* column */';
+      return `SELECT * EXCLUDE (${col}), UNNEST(${col}) AS "${cfg?.alias || 'unnested_value'}"\nFROM ${T}`;
+    }
     case 'raw_sql':
       return cfg?.sql ? cfg.sql.replace(/\{\{input\}\}/g, T) : `SELECT * FROM ${T}`;
     default:
@@ -188,6 +218,7 @@ function Dashboard() {
   const [nodeTypes, setNodeTypes] = useState<Record<string, ColumnTypeDef[]>>({});
   const [activeBottomTab, setActiveBottomTab] = useState(0);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [isAiPipelinePanelOpen, setIsAiPipelinePanelOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [tooltip, setTooltip] = useState<{ label: string; text: string; x: number; y: number } | null>(null);
   const [isBottomPanelVisible, setIsBottomPanelVisible] = useState(true);
@@ -527,6 +558,8 @@ function Dashboard() {
       }
 
       if (node.type === 'input') {
+        if (Array.isArray(config?.availableColumns) && config.availableColumns.length > 0) return config.availableColumns;
+        if (nodeTypes[nId]) return nodeTypes[nId].map(c => c.column_name);
         return config?.availableColumns || [];
       }
 
@@ -597,6 +630,73 @@ function Dashboard() {
     }, 4000);
   };
 
+  const getSourceSchemas = (): { nodeId: string; label: string; schema: ColumnTypeDef[] }[] => {
+    // Return schemas from all input/source nodes with their metadata
+    return nodes
+      .filter(n => n.type === 'input')
+      .map(n => ({
+        nodeId: n.id,
+        label: (n.data as any).label || 'Input Node',
+        schema: nodeTypes[n.id] || []
+      }))
+      .filter(s => s.schema.length > 0);
+  };
+
+  const handleConnection = async (connection: any) => {
+    const sourceNode = nodes.find(n => n.id === connection.source);
+    const targetNode = nodes.find(n => n.id === connection.target);
+
+    if (!sourceNode || !targetNode) return;
+
+    // If source node has schema, propagate it to the target node
+    const sourceSchema = nodeTypes[sourceNode.id];
+    if (sourceSchema && sourceSchema.length > 0) {
+      // Update target node's available columns
+      setNodes((nds: Node[]) =>
+        nds.map((node: Node) => {
+          if (node.id === targetNode.id) {
+            return {
+              ...node,
+              data: {
+                ...node.data,
+                config: {
+                  ...(node.data.config as any || {}),
+                  availableColumns: sourceSchema.map((t: ColumnTypeDef) => t.column_name)
+                }
+              }
+            };
+          }
+          return node;
+        })
+      );
+    }
+  };
+
+  const handleApplyPipeline = (newNodes: Node[], newEdges: Edge[]) => {
+    const suffix = '_' + Math.random().toString(36).substring(2, 11);
+    const existingNodeIds = new Set(getNodes().map(n => n.id));
+    const idMap: Record<string, string> = {};
+    
+    const mappedNodes = newNodes.map(n => {
+      if (!existingNodeIds.has(n.id)) {
+        idMap[n.id] = n.id + suffix;
+        return { ...n, id: n.id + suffix };
+      }
+      return n;
+    }).filter(n => !existingNodeIds.has(n.id));
+    
+    const mappedEdges = newEdges.map(e => ({
+      ...e,
+      id: e.id + suffix,
+      source: idMap[e.source] || e.source,
+      target: idMap[e.target] || e.target
+    }));
+
+    setNodes((nds) => [...nds, ...mappedNodes]);
+    setEdges((eds) => [...eds, ...mappedEdges]);
+    setIsAiPipelinePanelOpen(false);
+  };
+
   const handleExecute = async () => {
     setIsExecuting(true);
     try {
@@ -651,18 +751,18 @@ function Dashboard() {
         const predecessors = incoming(node.id);
         if (predecessors.length > 0) {
           const maxPrevDepth = Math.max(...predecessors.map(e => depths[e.source] ?? 0));
-          if (!isNaN(maxPrevDepth) && depths[node.id] !== maxPrevDepth + 1) { 
-            depths[node.id] = maxPrevDepth + 1; 
-            changed = true; 
+          if (!isNaN(maxPrevDepth) && depths[node.id] !== maxPrevDepth + 1) {
+            depths[node.id] = maxPrevDepth + 1;
+            changed = true;
           }
         }
       });
     }
     const depthGroups: Record<number, string[]> = {};
-    Object.entries(depths).forEach(([id, depth]) => { 
+    Object.entries(depths).forEach(([id, depth]) => {
       const d = isNaN(depth) ? 0 : depth;
-      if (!depthGroups[d]) depthGroups[d] = []; 
-      depthGroups[d].push(id); 
+      if (!depthGroups[d]) depthGroups[d] = [];
+      depthGroups[d].push(id);
     });
     const HORIZONTAL_GAP = 280, VERTICAL_GAP = 180, CANVAS_CENTER_X = 250;
     const newNodes = nodes.map(node => {
@@ -672,19 +772,19 @@ function Dashboard() {
       const indexInGroup = group.indexOf(node.id);
       const totalInGroup = group.length;
       const xOffset = (indexInGroup - (totalInGroup - 1) / 2) * HORIZONTAL_GAP;
-      
-      const currentX = isNaN(node.position?.x) ? CANVAS_CENTER_X : node.position.x;
-      const currentY = isNaN(node.position?.y) ? 50 : node.position.y;
 
-      return { 
-        ...node, 
-        position: { 
-          x: CANVAS_CENTER_X + (isNaN(xOffset) ? 0 : xOffset), 
-          y: 100 + cleanDepth * VERTICAL_GAP 
-        } 
+      return {
+        ...node,
+        position: {
+          x: CANVAS_CENTER_X + (isNaN(xOffset) ? 0 : xOffset),
+          y: 100 + cleanDepth * VERTICAL_GAP
+        }
       };
     });
     setNodes(newNodes);
+
+    // Increment layout counter to trigger fitView in WorkspaceCanvas
+    // The canvas will automatically zoom to fit all nodes considering bottom panel size
     setLayoutCounter(c => c + 1);
   };
 
@@ -829,6 +929,15 @@ function Dashboard() {
 
         <div className="flex items-center space-x-3">
           <button
+            onClick={() => setIsAiPipelinePanelOpen(true)}
+            onMouseEnter={(e) => showHeaderTooltip(e, 'AI Pipeline Builder', 'Generate a pipeline using natural language.')}
+            onMouseLeave={hideTooltip}
+            className="flex items-center space-x-2 px-3 py-2 text-sm font-medium text-[#0052CC] bg-[#EAE6FF] hover:bg-[#DED7FF] rounded-md transition-colors"
+          >
+            <Wand2 size={16} />
+            <span>AI Builder</span>
+          </button>
+          <button
             onClick={handleBeautify}
             onMouseEnter={(e) => showHeaderTooltip(e, 'Beautify Layout', `Automatically organize nodes into a clean, hierarchical structure (${mod}B).`)}
             onMouseLeave={hideTooltip}
@@ -943,7 +1052,8 @@ function Dashboard() {
                   title: 'Data Sources',
                   items: [
                     { type: 'input', label: 'Database Table', icon: <Database size={16} />, tooltip: 'Source data directly from project-level DuckDB tables.' },
-                    { type: 'input', label: 'CSV/Excel File', icon: <Table size={16} />, tooltip: 'Upload or select local data files (CSV, XLSX) to analyze.' }
+                    { type: 'input', label: 'CSV/Excel File', icon: <Table size={16} />, tooltip: 'Upload or select local data files (CSV, XLSX) to analyze.' },
+                    { type: 'input', subtype: 'remote_file', label: 'Remote File / S3', icon: <Globe size={16} />, tooltip: 'Load data from an external HTTP URL or S3 Bucket.' }
                   ]
                 },
                 {
@@ -961,6 +1071,10 @@ function Dashboard() {
                     { type: 'default', subtype: 'distinct', label: 'Remove Duplicates', icon: <Fingerprint size={16} />, tooltip: 'Filter out identical rows to ensure data uniqueness.' },
                     { type: 'default', subtype: 'case_when', label: 'Conditional Logic', icon: <GitBranch size={16} />, tooltip: 'Apply CASE-WHEN logic to create sophisticated branching rules.' },
                     { type: 'default', subtype: 'window', label: 'Window Function', icon: <BarChart3 size={16} />, tooltip: 'Perform calculations across related rows (ranks, moving averages).' },
+                    { type: 'default', subtype: 'pivot', label: 'Pivot Data', icon: <Repeat size={16} />, tooltip: 'Reshape long data into wide format (rows to columns).' },
+                    { type: 'default', subtype: 'unpivot', label: 'Unpivot Data', icon: <Repeat size={16} />, tooltip: 'Reshape wide data into long format (columns to rows).' },
+                    { type: 'default', subtype: 'sample', label: 'Sample Data', icon: <Dices size={16} />, tooltip: 'Extract a random sample or specific percentage of the dataset.' },
+                    { type: 'default', subtype: 'unnest', label: 'Unnest / JSON', icon: <Braces size={16} />, tooltip: 'Unnest arrays or extract fields from JSON columns.' },
                     { type: 'default', subtype: 'raw_sql', label: 'Custom SQL', icon: <Code size={16} />, tooltip: 'Maximum power: write your own DuckDB SQL to transform data.' }
                   ]
                 },
@@ -968,7 +1082,8 @@ function Dashboard() {
                   title: 'Outputs',
                   items: [
                     { type: 'output', subtype: 'report', label: 'Report Builder', icon: <FileText size={16} />, tooltip: 'Design a customized report (PDF/Markdown) from your pipeline results.' },
-                    { type: 'output', subtype: 'export', label: 'Export File', icon: <FileDown size={16} />, tooltip: 'Save your processed data to a CSV or Excel file for external use.' }
+                    { type: 'output', subtype: 'export', label: 'Export File', icon: <FileDown size={16} />, tooltip: 'Save your processed data to a CSV or Excel file for external use.' },
+                    { type: 'output', subtype: 'db_write', label: 'Write to DB', icon: <DatabaseBackup size={16} />, tooltip: 'Save your processed data directly as a table in the local database.' }
                   ]
                 }
               ];
@@ -1019,7 +1134,16 @@ function Dashboard() {
         </aside>
 
         <main className="flex-1 relative flex flex-col h-[calc(100vh-4rem)]">
-          <WorkspaceCanvas 
+          {isAiPipelinePanelOpen && (
+            <div className="absolute right-0 top-0 bottom-0 z-50">
+              <AiPipelineBuilderPanel
+                sourceSchemas={getSourceSchemas()}
+                onApplyPipeline={handleApplyPipeline}
+                onClose={() => setIsAiPipelinePanelOpen(false)}
+              />
+            </div>
+          )}
+          <WorkspaceCanvas
             key={activeTabId}
             nodes={nodes}
             edges={edges}
@@ -1033,6 +1157,7 @@ function Dashboard() {
                 if (node) setIsBottomPanelVisible(true);
               }
             }}
+            onAfterConnect={handleConnection}
             layoutCounter={layoutCounter}
             isBottomPanelVisible={isBottomPanelVisible && !!selectedNode}
             bottomPanelHeight={previewHeight}
@@ -1179,14 +1304,17 @@ function Dashboard() {
               <h2 className="text-sm font-semibold text-gray-800">Node Properties</h2>
             </div>
             <div className="p-4 flex-1">
-              <h3 className="text-base font-medium text-[#171717] mb-2 flex items-center justify-between">
-                <input
-                  type="text"
-                  value={String(selectedNode.data?.label || '')}
-                  onChange={(e) => setSelectedNode({ ...selectedNode, data: { ...selectedNode.data, label: e.target.value } })}
-                  className="flex-1 bg-transparent border-none focus:outline-none focus:ring-0 p-0 font-medium text-lg placeholder-gray-400"
-                  placeholder="Node Label"
-                />
+              <h3 className="text-base font-medium text-[#171717] mb-2 flex items-center justify-between group">
+                <div className="flex items-center flex-1 mr-2 border-b border-transparent hover:border-[#DFE1E6] focus-within:border-[#0052CC] transition-colors pb-0.5">
+                  <input
+                    type="text"
+                    value={String(selectedNode.data?.label || '')}
+                    onChange={(e) => setSelectedNode({ ...selectedNode, data: { ...selectedNode.data, label: e.target.value } })}
+                    className="flex-1 bg-transparent border-none focus:outline-none focus:ring-0 p-0 font-semibold text-lg placeholder-gray-400"
+                    placeholder="Node Label"
+                  />
+                  <PenLine size={14} className="text-[#6B778C] ml-1 opacity-40 group-hover:opacity-100 transition-opacity" />
+                </div>
                 {selectedNode.data?.rowCount !== undefined && (
                   <span className="ml-2 text-[10px] bg-[#EAE6FF] text-[#403294] px-2 py-0.5 rounded-full font-bold whitespace-nowrap">
                     {String(selectedNode.data.rowCount)} rows
@@ -1246,6 +1374,24 @@ function Dashboard() {
                                     ...prev,
                                     [selectedNode.id]: uploadResult.column_types
                                   }));
+                                }
+
+                                // Fetch sample data for the uploaded CSV using inspect endpoint
+                                try {
+                                  const inspectResult = await inspectNode(
+                                    nodes.map(n => n.id === selectedNode.id ? updatedNode : n),
+                                    edges,
+                                    selectedNode.id
+                                  );
+
+                                  if (inspectResult.node_samples && inspectResult.node_samples[selectedNode.id]) {
+                                    setNodeSamples(prev => ({
+                                      ...prev,
+                                      [selectedNode.id]: inspectResult.node_samples[selectedNode.id]
+                                    }));
+                                  }
+                                } catch (error) {
+                                  console.error('Failed to fetch sample data after upload:', error);
                                 }
 
                                 setExecutionMessage({ title: "File uploaded!", detail: `${file.name} ready for analysis. Discovered ${uploadResult.available_columns?.length || 0} columns and ${uploadResult.total_rows?.toLocaleString() || 0} rows.`, type: 'success' });
@@ -1309,12 +1455,14 @@ function Dashboard() {
                         INSPECT
                       </button>
                     </div>
-                    <input type="text" readOnly value={String((selectedNode.data.config as Record<string, unknown>)?.file_path || "None uploaded")} className="w-full bg-gray-50 border border-[#DFE1E6] rounded-md px-3 py-2 text-xs text-[#6B778C] font-mono" />
+                    <input type="text" data-testid="file-path-input" readOnly value={String((selectedNode.data.config as Record<string, unknown>)?.file_path || "None uploaded")} className="w-full bg-gray-50 border border-[#DFE1E6] rounded-md px-3 py-2 text-xs text-[#6B778C] font-mono" />
                   </div>
                   <div>
                     <label className="block text-xs font-semibold text-[#6B778C] mb-1">Parsing Format</label>
                     <div className="flex flex-col gap-2">
                        <select
+                         name="format"
+                         data-testid="format-select"
                          value={String((selectedNode.data.config as any)?.format || 'flat')}
                          onChange={(e) => {
                            const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), format: e.target.value } } };
@@ -1381,6 +1529,8 @@ function Dashboard() {
                           <div>
                             <label className="block text-xs font-semibold text-[#6B778C] mb-1">Column to Filter</label>
                             <select
+                              name="column"
+                              data-testid="column-select"
                               value={String((selectedNode.data.config as Record<string, unknown>)?.column || '')}
                               onChange={(e) => {
                                 const updatedNode = {
@@ -1406,6 +1556,8 @@ function Dashboard() {
                           <div>
                             <label className="block text-xs font-semibold text-[#6B778C] mb-1">Condition</label>
                             <select
+                              name="operator"
+                              data-testid="operator-select"
                               value={String((selectedNode.data.config as Record<string, unknown>)?.operator || '==')}
                               onChange={(e) => {
                                 const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), operator: e.target.value } } };
@@ -1435,6 +1587,8 @@ function Dashboard() {
                               <label className="block text-xs font-semibold text-[#6B778C] mb-1">Value</label>
                               <input
                                 type="text"
+                                name="value"
+                                data-testid="value-input"
                                 value={String((selectedNode.data.config as Record<string, unknown>)?.value || '')}
                                 onChange={(e) => {
                                   const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), value: e.target.value } } };
@@ -1457,6 +1611,8 @@ function Dashboard() {
                       <div>
                         <label className="block text-xs font-semibold text-[#6B778C] mb-1">Merge Type</label>
                         <select
+                          name="joinType"
+                          data-testid="join-type-select"
                           value={String((selectedNode.data.config as Record<string, unknown>)?.joinType || 'inner')}
                           onChange={(e) => {
                             const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), joinType: e.target.value } } };
@@ -1486,6 +1642,8 @@ function Dashboard() {
                             <div>
                               <label className="block text-[9px] font-bold text-[#6B778C] mb-1 tracking-tighter uppercase">Left Input Key</label>
                               <select
+                                name="leftColumn"
+                                data-testid="left-column-select"
                                 value={String((selectedNode.data.config as any)?.leftColumn || '')}
                                 onChange={(e) => {
                                   const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), leftColumn: e.target.value } } };
@@ -1506,6 +1664,8 @@ function Dashboard() {
                             <div>
                               <label className="block text-[9px] font-bold text-[#6B778C] mb-1 tracking-tighter uppercase">Right Input Key</label>
                               <select
+                                name="rightColumn"
+                                data-testid="right-column-select"
                                 value={String((selectedNode.data.config as any)?.rightColumn || '')}
                                 onChange={(e) => {
                                   const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), rightColumn: e.target.value } } };
@@ -1608,11 +1768,13 @@ function Dashboard() {
                               <label key={col} className={`flex items-center space-x-2 cursor-pointer hover:bg-gray-100 p-1.5 rounded transition-colors ${isChecked ? 'bg-blue-50' : ''}`}>
                                 <input
                                   type="checkbox"
+                                  name="groupBy"
+                                  data-testid="groupby-checkbox"
                                   className="w-4 h-4 rounded border-[#DFE1E6] text-[#0052CC]"
                                   checked={isChecked}
                                   onChange={(e) => {
                                     const currentList = String((selectedNode.data.config as any)?.groupBy || '').split(',').map(s => s.trim()).filter(s => s);
-                                    let newList = e.target.checked ? [...currentList, col] : currentList.filter(s => s !== col);
+                                    const newList = e.target.checked ? [...currentList, col] : currentList.filter(s => s !== col);
                                     const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), groupBy: newList.join(', ') } } };
                                     setSelectedNode(updatedNode);
                                     setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
@@ -1640,6 +1802,8 @@ function Dashboard() {
                               }}
                             ><Trash2 size={12} /></button>
                             <select
+                              name="agg-column"
+                              data-testid="agg-column-select"
                               value={agg.column}
                               onChange={(e) => {
                                 const aggs = [...(selectedNode.data.config as any).aggregations];
@@ -1654,6 +1818,8 @@ function Dashboard() {
                             </select>
                             <div className="flex space-x-1">
                               <select
+                                name="agg-operation"
+                                data-testid="agg-operation-select"
                                 value={agg.operation}
                                 onChange={(e) => {
                                   const aggs = [...(selectedNode.data.config as any).aggregations];
@@ -1670,6 +1836,8 @@ function Dashboard() {
                                 <option value="max">Max</option>
                               </select>
                               <input
+                                name="agg-alias"
+                                data-testid="agg-alias-input"
                                 placeholder="Alias"
                                 value={agg.alias}
                                 onChange={(e) => {
@@ -1805,7 +1973,7 @@ function Dashboard() {
                                 checked={isChecked}
                                 onChange={(e) => {
                                   const currentList = String((selectedNode.data.config as any)?.columns || '').split(',').map(s => s.trim()).filter(s => s);
-                                  let newList = e.target.checked ? [...currentList, col] : currentList.filter(s => s !== col);
+                                  const newList = e.target.checked ? [...currentList, col] : currentList.filter(s => s !== col);
                                   const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), columns: newList.join(', ') } } };
                                   setSelectedNode(updatedNode);
                                   setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
@@ -1817,6 +1985,208 @@ function Dashboard() {
                         })}
                       </div>
                       <SqlPreview sql={buildSql('distinct', selectedNode.data.config as any)} />
+                    </div>
+                  )}
+
+                  {/* Pivot Data UI */}
+                  {selectedNode.data.subtype === 'pivot' && (
+                    <div className="space-y-4">
+                      <div>
+                        <label className="block text-xs font-semibold text-[#6B778C] mb-1">On (Column to Pivot)</label>
+                        <select
+                          value={String((selectedNode.data.config as any)?.on || '')}
+                          onChange={(e) => {
+                            const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), on: e.target.value } } };
+                            setSelectedNode(updatedNode);
+                            setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
+                          }}
+                          className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-sm text-[#171717] focus:ring-[#0052CC] focus:border-[#0052CC]"
+                        >
+                          <option value="">Select column to become headers...</option>
+                          {getUpstreamColumns(selectedNode.id).map(c => <option key={c} value={c}>{c}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-[#6B778C] mb-1">Using (Aggregation)</label>
+                        <input
+                          value={String((selectedNode.data.config as any)?.using || '')}
+                          onChange={(e) => {
+                            const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), using: e.target.value } } };
+                            setSelectedNode(updatedNode);
+                            setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
+                          }}
+                          className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-sm text-[#171717] focus:ring-[#0052CC] focus:border-[#0052CC]"
+                          placeholder="e.g. sum(amount)"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-[#6B778C] mb-1">Group By</label>
+                        <input
+                          value={String((selectedNode.data.config as any)?.groupBy || '')}
+                          onChange={(e) => {
+                            const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), groupBy: e.target.value } } };
+                            setSelectedNode(updatedNode);
+                            setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
+                          }}
+                          className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-sm text-[#171717] focus:ring-[#0052CC] focus:border-[#0052CC]"
+                          placeholder="e.g. department, date"
+                        />
+                      </div>
+                      <SqlPreview sql={buildSql('pivot', selectedNode.data.config as any)} />
+                    </div>
+                  )}
+
+                  {/* Unpivot Data UI */}
+                  {selectedNode.data.subtype === 'unpivot' && (
+                    <div className="space-y-4">
+                      <div>
+                        <label className="block text-xs font-semibold text-[#6B778C] mb-1">On (Columns to Unpivot)</label>
+                        <input
+                          value={String((selectedNode.data.config as any)?.on || '')}
+                          onChange={(e) => {
+                            const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), on: e.target.value } } };
+                            setSelectedNode(updatedNode);
+                            setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
+                          }}
+                          className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-sm text-[#171717] focus:ring-[#0052CC] focus:border-[#0052CC]"
+                          placeholder="e.g. Q1, Q2, Q3, Q4"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-[#6B778C] mb-1">Into Name (Header Column)</label>
+                        <input
+                          value={String((selectedNode.data.config as any)?.intoName || '')}
+                          onChange={(e) => {
+                            const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), intoName: e.target.value } } };
+                            setSelectedNode(updatedNode);
+                            setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
+                          }}
+                          className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-sm text-[#171717] focus:ring-[#0052CC] focus:border-[#0052CC]"
+                          placeholder="e.g. quarter"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-[#6B778C] mb-1">Into Value (Value Column)</label>
+                        <input
+                          value={String((selectedNode.data.config as any)?.intoValue || '')}
+                          onChange={(e) => {
+                            const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), intoValue: e.target.value } } };
+                            setSelectedNode(updatedNode);
+                            setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
+                          }}
+                          className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-sm text-[#171717] focus:ring-[#0052CC] focus:border-[#0052CC]"
+                          placeholder="e.g. revenue"
+                        />
+                      </div>
+                      <SqlPreview sql={buildSql('unpivot', selectedNode.data.config as any)} />
+                    </div>
+                  )}
+
+                  {/* Sample Data UI */}
+                  {selectedNode.data.subtype === 'sample' && (
+                    <div className="space-y-4">
+                      <div>
+                        <label className="block text-xs font-semibold text-[#6B778C] mb-1">Method</label>
+                        <select
+                          value={String((selectedNode.data.config as any)?.method || 'PERCENT')}
+                          onChange={(e) => {
+                            const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), method: e.target.value } } };
+                            setSelectedNode(updatedNode);
+                            setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
+                          }}
+                          className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-sm text-[#171717] focus:ring-[#0052CC] focus:border-[#0052CC]"
+                        >
+                          <option value="PERCENT">PERCENT (%)</option>
+                          <option value="ROWS">ROWS (Count)</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-[#6B778C] mb-1">Value</label>
+                        <input
+                          type="number"
+                          value={Number((selectedNode.data.config as any)?.value || 10)}
+                          onChange={(e) => {
+                            const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), value: Number(e.target.value) } } };
+                            setSelectedNode(updatedNode);
+                            setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
+                          }}
+                          className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-sm text-[#171717] focus:ring-[#0052CC] focus:border-[#0052CC]"
+                        />
+                      </div>
+                      <SqlPreview sql={buildSql('sample', selectedNode.data.config as any)} />
+                    </div>
+                  )}
+
+                  {/* Unnest / JSON UI */}
+                  {selectedNode.data.subtype === 'unnest' && (
+                    <div className="space-y-4">
+                      <div>
+                        <label className="block text-xs font-semibold text-[#6B778C] mb-1">Column to Unnest</label>
+                        <select
+                          value={String((selectedNode.data.config as any)?.column || '')}
+                          onChange={(e) => {
+                            const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), column: e.target.value } } };
+                            setSelectedNode(updatedNode);
+                            setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
+                          }}
+                          className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-sm text-[#171717] focus:ring-[#0052CC] focus:border-[#0052CC]"
+                        >
+                          <option value="">Select column...</option>
+                          {getUpstreamColumns(selectedNode.id).map(c => <option key={c} value={c}>{c}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-[#6B778C] mb-1">Output Alias</label>
+                        <input
+                          value={String((selectedNode.data.config as any)?.alias || '')}
+                          onChange={(e) => {
+                            const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), alias: e.target.value } } };
+                            setSelectedNode(updatedNode);
+                            setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
+                          }}
+                          className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-sm text-[#171717] focus:ring-[#0052CC] focus:border-[#0052CC]"
+                          placeholder="e.g. unnested_value"
+                        />
+                      </div>
+                      <SqlPreview sql={buildSql('unnest', selectedNode.data.config as any)} />
+                    </div>
+                  )}
+
+                  {/* Remote File / S3 UI */}
+                  {selectedNode.data.subtype === 'remote_file' && (
+                    <div className="space-y-4">
+                      <div>
+                        <label className="block text-xs font-semibold text-[#6B778C] mb-1">Remote URL (HTTP / S3)</label>
+                        <input
+                          value={String((selectedNode.data.config as any)?.url || '')}
+                          onChange={(e) => {
+                            const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), url: e.target.value } } };
+                            setSelectedNode(updatedNode);
+                            setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
+                          }}
+                          className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-sm text-[#171717] focus:ring-[#0052CC] focus:border-[#0052CC]"
+                          placeholder="https://... or s3://..."
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Write to DB UI */}
+                  {selectedNode.data.subtype === 'db_write' && (
+                    <div className="space-y-4">
+                      <div>
+                        <label className="block text-xs font-semibold text-[#6B778C] mb-1">Target Table Name</label>
+                        <input
+                          value={String((selectedNode.data.config as any)?.tableName || '')}
+                          onChange={(e) => {
+                            const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), tableName: e.target.value } } };
+                            setSelectedNode(updatedNode);
+                            setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
+                          }}
+                          className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-sm text-[#171717] focus:ring-[#0052CC] focus:border-[#0052CC]"
+                          placeholder="e.g. my_processed_data"
+                        />
+                      </div>
                     </div>
                   )}
 
@@ -2394,6 +2764,8 @@ Please fix the SQL. Return ONLY the raw SQL query.`;
                       <div>
                         <label className="block text-xs font-semibold text-[#6B778C] mb-1">Sort Column</label>
                         <select
+                          name="column"
+                          data-testid="sort-column-select"
                           value={String((selectedNode.data.config as any)?.column || '')}
                           onChange={(e) => {
                             const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), column: e.target.value } } };
@@ -2411,6 +2783,8 @@ Please fix the SQL. Return ONLY the raw SQL query.`;
                       <div>
                         <label className="block text-xs font-semibold text-[#6B778C] mb-1">Direction</label>
                         <select
+                          name="direction"
+                          data-testid="sort-direction-select"
                           value={String((selectedNode.data.config as any)?.direction || 'asc')}
                           onChange={(e) => {
                             const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), direction: e.target.value } } };
@@ -2433,6 +2807,8 @@ Please fix the SQL. Return ONLY the raw SQL query.`;
                       <label className="block text-xs font-semibold text-[#6B778C] mb-1">Row Limit</label>
                       <input
                         type="number"
+                        name="count"
+                        data-testid="limit-input"
                         value={Number((selectedNode.data.config as any)?.count || 100)}
                         onChange={(e) => {
                           const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), count: parseInt(e.target.value) } } };
@@ -2452,6 +2828,8 @@ Please fix the SQL. Return ONLY the raw SQL query.`;
                   <div>
                     <label className="block text-xs font-semibold text-[#6B778C] mb-1">Export Format</label>
                     <select
+                      name="format"
+                      data-testid="output-format-select"
                       value={String((selectedNode.data.config as Record<string, unknown>)?.format || 'CSV')}
                       onChange={(e) => setSelectedNode({ ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), format: e.target.value } } })}
                       className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-sm text-[#171717] focus:ring-[#0052CC] focus:border-[#0052CC]"
@@ -2465,6 +2843,8 @@ Please fix the SQL. Return ONLY the raw SQL query.`;
                     <label className="block text-xs font-semibold text-[#6B778C] mb-1">File Name</label>
                     <input
                       type="text"
+                      name="filename"
+                      data-testid="output-filename-input"
                       value={String((selectedNode.data.config as Record<string, unknown>)?.filename || 'aggregated_results.csv')}
                       onChange={(e) => {
                         const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), filename: e.target.value } } };
@@ -2730,25 +3110,31 @@ Please fix the SQL. Return ONLY the raw SQL query.`;
       {/* Load Modal */}
       {isLoadModalOpen && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-lg p-6 border border-[#DFE1E6] animate-in fade-in zoom-in duration-200">
-            <h3 className="text-lg font-bold text-[#172B4D] mb-4 font-inter">Open Pipeline</h3>
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-lg border border-[#DFE1E6] animate-in fade-in zoom-in duration-200 flex flex-col max-h-[calc(100vh-2rem)]">
+            <div className="p-6 pb-4 flex-shrink-0">
+              <h3 className="text-lg font-bold text-[#172B4D] font-inter">Open Pipeline</h3>
+            </div>
             {availableWorkflows.length === 0 ? (
-              <p className="text-sm text-[#6B778C] mb-6">No saved pipelines found on server.</p>
+              <div className="px-6 pb-6 flex-shrink-0">
+                <p className="text-sm text-[#6B778C]">No saved pipelines found on server.</p>
+              </div>
             ) : (
-              <div className="space-y-2 mb-6 max-h-[350px] overflow-y-auto px-1">
-                {availableWorkflows.map(name => (
-                  <button
-                    key={name}
-                    onClick={() => handleLoadWorkflow(name)}
-                    className="w-full text-left px-4 py-3 text-sm text-[#172B4D] hover:bg-[#F4F5F7] border border-[#DFE1E6] rounded-md transition-all flex items-center justify-between group hover:border-[#0052CC]"
-                  >
-                    <span className="font-medium">{name}</span>
-                    <FolderOpen size={14} className="text-[#6B778C] opacity-0 group-hover:opacity-100 transition-opacity" />
-                  </button>
-                ))}
+              <div className="px-6 pb-4 flex-1 overflow-y-auto min-h-0">
+                <div className="space-y-2 pr-1">
+                  {availableWorkflows.map(name => (
+                    <button
+                      key={name}
+                      onClick={() => handleLoadWorkflow(name)}
+                      className="w-full text-left px-4 py-3 text-sm text-[#172B4D] hover:bg-[#F4F5F7] border border-[#DFE1E6] rounded-md transition-all flex items-center justify-between group hover:border-[#0052CC]"
+                    >
+                      <span className="font-medium">{name}</span>
+                      <FolderOpen size={14} className="text-[#6B778C] opacity-0 group-hover:opacity-100 transition-opacity" />
+                    </button>
+                  ))}
+                </div>
               </div>
             )}
-            <div className="flex justify-end">
+            <div className="p-6 pt-4 border-t border-[#DFE1E6] flex justify-end flex-shrink-0">
               <button
                 onClick={() => setIsLoadModalOpen(false)}
                 className="px-4 py-2 text-sm text-[#6B778C] hover:bg-gray-100 rounded-md transition-colors"
@@ -2787,7 +3173,7 @@ Please fix the SQL. Return ONLY the raw SQL query.`;
 
       {/* Success Notification for Query Execution */}
       {executionSuccess && (
-        <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[100] animate-in slide-in-from-bottom-4 duration-300">
+        <div data-testid="execution-success" className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[100] animate-in slide-in-from-bottom-4 duration-300">
           <div className={`${executionMessage?.type === 'error' ? 'bg-[#FF5630]' : 'bg-[#36B37E]'} text-white px-6 py-3 rounded-full shadow-2xl flex items-center space-x-3 border-2 border-white/20 backdrop-blur-md`}>
             <div className="bg-white/20 p-1.5 rounded-full">
               {(() => {

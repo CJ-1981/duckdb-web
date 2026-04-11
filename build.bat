@@ -48,6 +48,7 @@ pyinstaller --name "data-analyst-web" ^
             --onedir ^
             --clean ^
             --add-data "out;out" ^
+            --add-data "fonts;fonts" ^
             --hidden-import uvicorn.logging ^
             --hidden-import uvicorn.loops ^
             --hidden-import uvicorn.loops.auto ^

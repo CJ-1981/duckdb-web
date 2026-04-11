@@ -6,19 +6,16 @@ import {
   Background,
   Controls,
   MiniMap,
-  useNodesState,
-  useEdgesState,
   addEdge,
   Connection,
   Edge,
-  Panel,
   Node,
   OnSelectionChangeParams,
   useReactFlow,
-  ReactFlowProvider,
   Handle,
   Position,
   SelectionMode,
+  Viewport,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 
@@ -28,8 +25,8 @@ const CustomNode = ({ data, type, selected }: any) => {
   if (type === 'output') borderColor = '#36B37E';
 
   return (
-    <div 
-      className={`bg-white border-2 rounded-md shadow-lg font-medium text-gray-800 text-sm transition-all duration-200 relative min-w-[200px] ${selected ? 'ring-2 ring-[#0052CC] ring-offset-2 shadow-xl border-[#0052CC]' : ''}`} 
+    <div
+      className={`react-flow__node-custom bg-white border-2 rounded-md shadow-lg font-medium text-gray-800 text-sm transition-all duration-200 relative min-w-[200px] ${selected ? 'ring-2 ring-[#0052CC] ring-offset-2 shadow-xl border-[#0052CC]' : ''}`}
       style={{ borderColor }}
     >
       <style>{`
@@ -106,10 +103,6 @@ const nodeTypes = {
   output: CustomNode,
 };
 
-const initialNodes: Node[] = [];
-
-const initialEdges: Edge[] = [];
-
 interface WorkspaceCanvasProps {
   nodes: Node[];
   edges: Edge[];
@@ -118,6 +111,7 @@ interface WorkspaceCanvasProps {
   setNodes: any;
   setEdges: any;
   onNodeSelect?: (node: Node | null) => void;
+  onAfterConnect?: (connection: Connection) => void;
   layoutCounter?: number;
   isBottomPanelVisible?: boolean;
   bottomPanelHeight?: number;
@@ -125,14 +119,15 @@ interface WorkspaceCanvasProps {
   children?: React.ReactNode;
 }
 
-function WorkspaceCanvas({ 
-  nodes, 
-  edges, 
-  onNodesChange, 
-  onEdgesChange, 
-  setNodes, 
-  setEdges, 
+function WorkspaceCanvas({
+  nodes,
+  edges,
+  onNodesChange,
+  onEdgesChange,
+  setNodes,
+  setEdges,
   onNodeSelect,
+  onAfterConnect,
   layoutCounter = 0,
   isBottomPanelVisible = false,
   bottomPanelHeight = 0,
@@ -142,36 +137,75 @@ function WorkspaceCanvas({
   const [history, setHistory] = useState<{ nodes: Node[]; edges: Edge[] }[]>([]);
   const [redoStack, setRedoStack] = useState<{ nodes: Node[]; edges: Edge[] }[]>([]);
   const reactFlowWrapper = React.useRef<HTMLDivElement>(null);
-  const { fitView, screenToFlowPosition } = useReactFlow();
+  const { screenToFlowPosition, setViewport } = useReactFlow();
 
-  const fitOptions = React.useMemo(() => {
-    // We use ratios (0.1 = 10%) for padding.
-    // For the bottom panel, we calculate the ratio based on its pixel height.
-    const h = reactFlowWrapper.current?.offsetHeight || 800; // default to 800px if not yet rendered
-    const bottomRatio = isBottomPanelVisible ? (bottomPanelHeight / h) + 0.1 : 0.1;
+  // Custom fit-to-view function that accounts for bottom panel
+  const fitViewWithPanel = useCallback(() => {
+    const wrapper = reactFlowWrapper.current;
+    if (!wrapper || nodes.length === 0) return;
 
-    const padding = {
-      top: 0.1,
-      right: 0.1,
-      bottom: Math.min(bottomRatio, 0.8), // Cap at 80% to avoid disappearing
-      left: 0.1,
+    const wrapperWidth = wrapper.offsetWidth;
+    const wrapperHeight = wrapper.offsetHeight;
+
+    // Calculate available height (subtract bottom panel area)
+    // When panel is visible, we only want to use the space above it
+    const availableHeight = isBottomPanelVisible
+      ? wrapperHeight - bottomPanelHeight
+      : wrapperHeight;
+
+    // Get node dimensions (standard node size is ~200x100)
+    const nodeWidth = 220;
+    const nodeHeight = 120;
+    const padding = 80;
+
+    // Find bounds of all nodes
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    nodes.forEach(node => {
+      const x = node.position.x;
+      const y = node.position.y;
+      if (x < minX) minX = x;
+      if (y < minY) minY = y;
+      if (x + nodeWidth > maxX) maxX = x + nodeWidth;
+      if (y + nodeHeight > maxY) maxY = y + nodeHeight;
+    });
+
+    const contentWidth = maxX - minX;
+    const contentHeight = maxY - minY;
+
+    // Calculate zoom to fit content in available area
+    // When panel is visible, fit into the smaller available height
+    const zoomX = (wrapperWidth - padding * 2) / contentWidth;
+    const zoomY = (availableHeight - padding * 2) / contentHeight;
+    const zoom = Math.min(zoomX, zoomY, 1); // Cap at 1.0
+
+    // Calculate center point of content
+    const centerX = minX + contentWidth / 2;
+    const centerY = minY + contentHeight / 2;
+
+    // Center the content in the available area
+    // When panel is visible, center in the upper portion (above the panel)
+    const centerYOffset = isBottomPanelVisible
+      ? (availableHeight / 2) // Center in the available area
+      : (wrapperHeight / 2);   // Center in full height
+
+    const viewport: Viewport = {
+      x: wrapperWidth / 2 - centerX * zoom,
+      y: centerYOffset - centerY * zoom,
+      zoom: Math.max(zoom, 0.1), // Minimum zoom
     };
-    
-    return {
-      padding,
-      duration: 600,
-    };
-  }, [isBottomPanelVisible, bottomPanelHeight]);
+
+    setViewport(viewport, { duration: (typeof process !== 'undefined' && process.env.CI) ? 0 : 600 });
+  }, [nodes, isBottomPanelVisible, bottomPanelHeight, setViewport]);
 
   // Refit view when layout changes (e.g. after beautify)
   React.useEffect(() => {
     if (layoutCounter > 0) {
       const timer = setTimeout(() => {
-        fitView(fitOptions);
-      }, 50);
+        fitViewWithPanel();
+      }, 100);
       return () => clearTimeout(timer);
     }
-  }, [layoutCounter, fitView, fitOptions]);
+  }, [layoutCounter, fitViewWithPanel]);
 
   const takeSnapshot = useCallback(() => {
     setHistory((prev) => [...prev.slice(-49), { nodes: JSON.parse(JSON.stringify(nodes)), edges: JSON.parse(JSON.stringify(edges)) }]);
@@ -247,8 +281,13 @@ function WorkspaceCanvas({
     (params: Connection | Edge) => {
       takeSnapshot();
       setEdges((eds: Edge[]) => addEdge({ ...params, animated: true } as Edge, eds));
+
+      // Call the callback after connection is made for schema propagation
+      if (onAfterConnect) {
+        onAfterConnect(params as Connection);
+      }
     },
-    [setEdges, takeSnapshot],
+    [setEdges, takeSnapshot, onAfterConnect],
   );
 
   const onSelectionChange = useCallback(
@@ -260,11 +299,15 @@ function WorkspaceCanvas({
     [onNodeSelect]
   );
 
-  const onNodeClick = useCallback((event: React.MouseEvent, node: Node) => {
-    if (onNodeSelect) {
-      onNodeSelect(node);
-    }
-  }, [onNodeSelect]);
+  const onNodeClick = useCallback((_event: React.MouseEvent, node: Node) => {
+    // Manually trigger selection for this node
+    setNodes((nds: Node[]) =>
+      nds.map((n) => ({
+        ...n,
+        selected: n.id === node.id ? true : false
+      }))
+    );
+  }, [setNodes]);
 
 
   const onDragOver = useCallback((event: React.DragEvent) => {
@@ -335,21 +378,22 @@ function WorkspaceCanvas({
         selectionMode={SelectionMode.Partial}
         panOnDrag={[1, 2]}
         connectionRadius={40}
-        defaultEdgeOptions={{ 
-          animated: true, 
-          style: { strokeWidth: 3, stroke: '#B1B1B7' } 
+        defaultEdgeOptions={{
+          animated: true,
+          style: { strokeWidth: 3, stroke: '#B1B1B1' }
         }}
-        fitView
-        fitViewOptions={fitOptions}
         className="bg-[#FAFBFC]"
+        fitView
+        minZoom={0.1}
+        maxZoom={2}
       >
         <Background gap={16} size={1} color="#DFE1E6" />
         {children}
-        <Controls 
-          position="top-left" 
-          showInteractive={false} 
-          fitViewOptions={fitOptions}
-          className="bg-white shadow-lg border border-[#DFE1E6] rounded-md" 
+        <Controls
+          position="top-left"
+          showInteractive={false}
+          onFitView={fitViewWithPanel}
+          className="bg-white shadow-lg border border-[#DFE1E6] rounded-md"
         />
         <MiniMap 
           position="top-right"

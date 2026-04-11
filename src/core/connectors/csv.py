@@ -7,12 +7,53 @@ and integration with DuckDB database.
 
 import csv
 import os
+import logging
 from typing import List, Dict, Any, Iterator, Optional, Callable
 from pathlib import Path
 from datetime import datetime
 
 from .base import BaseConnector
 from ..database import DatabaseConnection
+
+logger = logging.getLogger(__name__)
+
+
+def clean_invisible_unicode(text: str) -> str:
+    """
+    Remove invisible Unicode characters that can cause SQL errors or display issues.
+
+    This utility function strips BOM (Byte Order Mark), zero-width characters,
+    and converts non-breaking spaces to regular spaces. Used by both CSV
+    column name cleaning and SQL identifier quoting.
+
+    Args:
+        text: Raw string potentially containing invisible Unicode characters
+
+    Returns:
+        Cleaned string with invisible characters removed
+
+    Examples:
+        >>> clean_invisible_unicode('﻿Hello')  # BOM prefix
+        'Hello'
+        >>> clean_invisible_unicode('Hello\\u200bWorld')  # Zero Width Space
+        'HelloWorld'
+        >>> clean_invisible_unicode('Hello\\u00a0World')  # Non-breaking space
+        'Hello World'
+    """
+    if not text:
+        return text
+
+    # Ensure we are working with a string
+    cleaned = str(text) if not isinstance(text, str) else text
+    
+    cleaned = cleaned.replace('\ufeff', '')  # BOM (Byte Order Mark)
+    cleaned = cleaned.replace('\u200b', '')  # Zero Width Space
+    cleaned = cleaned.replace('\u200c', '')  # Zero Width Non-Joiner
+    cleaned = cleaned.replace('\u200d', '')  # Zero Width Joiner
+    cleaned = cleaned.replace('\u00a0', ' ')  # Non-breaking space to regular space
+    cleaned = cleaned.strip()
+
+    return cleaned
 
 
 class CSVConnector(BaseConnector):
@@ -140,6 +181,47 @@ class CSVConnector(BaseConnector):
             return None
         return value
 
+    def _clean_korean_number(self, value: str) -> str:
+        """
+        Clean Korean number format for type inference
+
+        Handles Korean number formats including:
+        - Commas as thousand separators (1,000,000)
+        - Currency symbols (₩, $, ¥, €, £)
+        - Negative numbers in parentheses ((1,000) → -1000)
+        - Leading/trailing whitespace
+
+        Args:
+            value: Raw string value from CSV
+
+        Returns:
+            Cleaned string ready for type conversion
+        """
+        if not value:
+            return '0'
+
+        cleaned = value.strip()
+
+        # Remove currency symbols
+        cleaned = cleaned.replace('₩', '')  # Won
+        cleaned = cleaned.replace('$', '')  # Dollar
+        cleaned = cleaned.replace('¥', '')  # Yen
+        cleaned = cleaned.replace('€', '')  # Euro
+        cleaned = cleaned.replace('£', '')  # Pound
+
+        # Remove commas (thousand separators)
+        cleaned = cleaned.replace(',', '')
+
+        # Handle negative numbers in parentheses: (1,000) → -1000
+        if cleaned.startswith('(') and cleaned.endswith(')'):
+            cleaned = '-' + cleaned[1:-1]
+
+        # Handle edge case: just a minus sign or empty after cleaning
+        if not cleaned or cleaned == '-':
+            return '0'
+
+        return cleaned
+
     def _infer_type(self, values: List[str]) -> str:
         """
         Infer DuckDB data type from list of string values
@@ -162,18 +244,20 @@ class CSVConnector(BaseConnector):
         if not non_empty:
             return 'VARCHAR'  # Default for empty columns
 
-        # Try INTEGER
+        # Try INTEGER with Korean format cleaning
         try:
             for v in non_empty:
-                int(v)
+                cleaned = self._clean_korean_number(v)
+                int(cleaned)
             return 'INTEGER'
         except (ValueError, TypeError):
             pass
 
-        # Try FLOAT
+        # Try FLOAT with Korean format cleaning
         try:
             for v in non_empty:
-                float(v)
+                cleaned = self._clean_korean_number(v)
+                float(cleaned)
             return 'FLOAT'
         except (ValueError, TypeError):
             pass
@@ -211,42 +295,110 @@ class CSVConnector(BaseConnector):
         # Default to VARCHAR
         return 'VARCHAR'
 
-    def infer_schema(self, file_path: str) -> Dict[str, str]:
+    def infer_schema(self, file_path: str, max_rows: int = 1000) -> Dict[str, str]:
         """
         Infer schema from CSV file
 
         Args:
             file_path: Path to CSV file
+            max_rows: Maximum number of rows to sample for inference (default: 1000)
 
         Returns:
             Dictionary mapping column names to inferred types
         """
-        # Read all rows to analyze types
+        # Read limited rows to analyze types
         rows = []
-        with open(file_path, 'r', encoding=self.encoding, newline='') as f:
-            reader = csv.DictReader(f, delimiter=self.delimiter)
+        encodings_to_try = [self.encoding, 'utf-8-sig', 'cp949', 'euc-kr', 'utf-16', 'latin-1']
+        # Remove duplicates while preserving order
+        encodings_to_try = list(dict.fromkeys([e for e in encodings_to_try if e]))
+
+        last_error = None
+        success = False
+        fallback_enc = 'utf-8'  # Initialize with default
+
+        for encoding in encodings_to_try:
             try:
-                for row in reader:
-                    rows.append(row)
-            except Exception:
-                # If DictReader fails, fall back to standard reader
-                f.seek(0)
-                reader = csv.reader(f, delimiter=self.delimiter)
-                rows = [dict(enumerate(row)) for row in reader]
+                # First, sniff delimiter with this encoding
+                with open(file_path, 'r', encoding=encoding, newline='') as f:
+                    sample = f.read(8192)
+                    if not sample:
+                        continue
+                    try:
+                        dialect = csv.Sniffer().sniff(sample, delimiters=',\t;|')
+                        self.delimiter = dialect.delimiter
+                    except Exception:
+                        pass # Keep current delimiter
+
+                # Now read rows
+                with open(file_path, 'r', encoding=encoding, newline='') as f:
+                    reader = csv.DictReader(f, delimiter=self.delimiter)
+                    for i, row in enumerate(reader):
+                        if i >= max_rows:
+                            break
+                        # Filter out null characters and trim keys/values
+                        clean_row = {
+                            str(k).strip(): (str(v).strip() if v is not None else None) 
+                            for k, v in row.items() if k is not None
+                        }
+                        rows.append(clean_row)
+                
+                if rows:
+                    success = True
+                    self.encoding = encoding
+                    fallback_enc = encoding  # Track for fallback use
+                    break
+            except (UnicodeDecodeError, Exception) as e:
+                last_error = e
+                rows = []
+                continue
+                
+        if not success:
+            # Log detailed error information for CSV parsing failures
+            logger.error(
+                f">>> [CSV PARSE] Failed to parse CSV file with DictReader: {file_path}",
+                extra={
+                    "error": str(last_error),
+                    "error_type": type(last_error).__name__ if last_error else "Unknown",
+                    "file_path": file_path,
+                    "encodings_tried": encodings_to_try,
+                    "delimiter": self.delimiter,
+                    "has_header": self.has_header
+                }
+            )
+            
+            # Use DuckDB as a fallback for schema inference if DictReader failed
+            # This is much more robust for messy files
+            try:
+                import duckdb
+                conn = duckdb.connect(database=':memory:')
+                # Try reading with auto-detection using the best encoding found so far
+                fallback_enc = encoding if success else 'utf-8'
+                rel = conn.execute("SELECT * FROM read_csv_auto(?, ALL_VARCHAR=TRUE, ENCODING=?) LIMIT 100", [file_path, fallback_enc])
+                df = rel.df()
+                rows = df.to_dict('records')
+                if rows:
+                    success = True
+                    self.encoding = fallback_enc
+                    logger.info(f">>> [CSV FALLBACK] Successfully inferred schema using DuckDB for {file_path} (encoding: {fallback_enc})")
+            except Exception as de:
+                logger.error(f">>> [CSV FALLBACK] DuckDB inference also failed: {de}")
 
         if not rows:
             return {}
 
-        # Collect all column names
+        # Collect all column names, stripping any weird characters
         columns = set()
         for row in rows:
             columns.update(row.keys())
+        
+        # Clean column names (strip BOM, nulls, etc.)
+        cleaned_columns = {col: clean_invisible_unicode(str(col)) for col in columns}
 
         # Infer type for each column
         schema = {}
-        for col in columns:
-            values = [row.get(col, '') for row in rows]
-            schema[col] = self._infer_type(values)
+        for raw_col, clean_col in cleaned_columns.items():
+            values = [row.get(raw_col, '') for row in rows]
+            schema[clean_col] = self._infer_type(values)
 
         return schema
 
@@ -346,14 +498,39 @@ class CSVConnector(BaseConnector):
         path = Path(file_path)
 
         if not path.exists():
+            logger.error(
+                f">>> [CSV VALIDATION] CSV file not found: {file_path}",
+                extra={
+                    "file_path": file_path,
+                    "resolved_path": str(path.absolute()),
+                    "error": "FileNotFoundError"
+                }
+            )
             raise FileNotFoundError(f"CSV file not found: {file_path}")
 
         if not path.is_file():
+            logger.error(
+                f">>> [CSV VALIDATION] Path is not a file: {file_path}",
+                extra={
+                    "file_path": file_path,
+                    "resolved_path": str(path.absolute()),
+                    "error": "NotAFileError"
+                }
+            )
             raise ValueError(f"Path is not a file: {file_path}")
 
         if path.stat().st_size == 0:
+            logger.warning(
+                f">>> [CSV VALIDATION] Empty CSV file: {file_path}",
+                extra={
+                    "file_path": file_path,
+                    "file_size": 0,
+                    "error": "EmptyFileError"
+                }
+            )
             raise ValueError(f"Empty CSV file: {file_path}")
 
+        logger.debug(f">>> [CSV VALIDATION] File validated successfully: {file_path}")
         return True
 
     # ========================================================================
@@ -377,6 +554,8 @@ class CSVConnector(BaseConnector):
 
         rows = []
         columns = set()
+        row_count = 0
+        col_count = 0
 
         with open(file_path, 'r', encoding=self.encoding, newline='') as f:
             if self.has_header:
@@ -385,7 +564,18 @@ class CSVConnector(BaseConnector):
                     for row in reader:
                         rows.append(row)
                         columns.update(row.keys())
-                except Exception:
+                except Exception as e:
+                    # Log detailed error for header parsing failures
+                    logger.error(
+                        f">>> [CSV STATISTICS] Failed to parse CSV header in: {file_path}",
+                        extra={
+                            "error": str(e),
+                            "error_type": type(e).__name__,
+                            "file_path": file_path,
+                            "encoding": self.encoding,
+                            "delimiter": self.delimiter
+                        }
+                    )
                     # If header parsing fails, count rows instead
                     f.seek(0)
                     reader = csv.reader(f, delimiter=self.delimiter)
@@ -400,19 +590,26 @@ class CSVConnector(BaseConnector):
                 rows = list(reader)
                 row_count = len(rows)
                 if rows:
+                    # csv.reader returns lists, not dicts
                     col_count = len(rows[0])
                 else:
                     col_count = 0
 
         if self.has_header and rows:
             row_count = len(rows)
-            columns = set(rows[0].keys()) if rows else set()
+            # Handle both DictReader (dicts) and reader (lists)
+            if isinstance(rows[0], dict):
+                columns = set(rows[0].keys())
+            else:
+                # For csv.reader, rows are lists, use integer indices
+                columns = set(range(len(rows[0]))) if rows and rows[0] else set()
             col_count = len(columns)
 
         return {
             'row_count': row_count,
             'column_count': col_count,
-            'columns': list(columns),
+            # Convert all column names to strings (handles fallback from integer keys)
+            'columns': [str(col) for col in list(columns)],
             'file_size': file_size,
             'file_size_mb': file_size / (1024 * 1024),
         }
@@ -445,13 +642,15 @@ class CSVConnector(BaseConnector):
 
         # Create table with inferred schema
         if schema:
-            columns_def = ', '.join([f'"{col}" {dtype}' for col, dtype in schema.items()])
+            # Ensure all column names are strings (handles fallback from integer keys)
+            columns_def = ', '.join([f'"{str(col)}" {dtype}' for col, dtype in schema.items()])
         else:
             # Fallback: read first row to get columns
             rows = list(self.read_csv(csv_path))
             if rows:
                 columns = rows[0].keys()
-                columns_def = ', '.join([f'"{col}" VARCHAR' for col in columns])
+                # Ensure all column names are strings (handles fallback from integer keys)
+                columns_def = ', '.join([f'"{str(col)}" VARCHAR' for col in columns])
             else:
                 raise ValueError(f"Unable to determine schema from {csv_path}")
 
@@ -481,7 +680,8 @@ class CSVConnector(BaseConnector):
                     # Convert missing values to None for DuckDB
                     values = [self._normalize_missing_values(row.get(col)) for col in columns]
                     placeholders = ', '.join(['?' for _ in values])
-                    cols_str = ', '.join([f'"{col}"' for col in columns])
+                    # Ensure all column names are strings (handles fallback from integer keys)
+                    cols_str = ', '.join([f'"{str(col)}"' for col in columns])
 
                     insert_sql = f'INSERT INTO {table_name} ({cols_str}) VALUES ({placeholders})'
                     db_connection.execute(insert_sql, values)
@@ -511,7 +711,8 @@ class CSVConnector(BaseConnector):
                 # Convert missing values to None for DuckDB
                 values = [self._normalize_missing_values(row.get(col)) for col in columns]
                 placeholders = ', '.join(['?' for _ in values])
-                cols_str = ', '.join([f'"{col}"' for col in columns])
+                # Ensure all column names are strings (handles fallback from integer keys)
+                cols_str = ', '.join([f'"{str(col)}"' for col in columns])
 
                 insert_sql = f'INSERT INTO {table_name} ({cols_str}) VALUES ({placeholders})'
                 db_connection.execute(insert_sql, values)
@@ -523,6 +724,20 @@ class CSVConnector(BaseConnector):
                     'total_rows': len(rows),
                     'percentage': 100.0,
                 })
+
+    def _clean_column_name(self, name: Any) -> str:
+        """
+        Clean column name by removing invisible Unicode characters.
+
+        Args:
+            name: Raw column name from CSV (string or integer index)
+
+        Returns:
+            Cleaned column name with BOM and invisible characters removed
+        """
+        # Convert to string if it's an integer (from fallback parsing)
+        str_name = str(name) if not isinstance(name, str) else name
+        return clean_invisible_unicode(str_name)
 
     # ========================================================================
     #  Configuration

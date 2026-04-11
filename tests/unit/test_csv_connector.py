@@ -650,6 +650,176 @@ class TestCSVConnectorStatistics:
             Path(temp_path).unlink(missing_ok=True)
 
 
+class TestKoreanNumberFormatSupport:
+    """Test Korean number format cleaning and type inference"""
+
+    def test_clean_korean_number_commas(self):
+        """Test cleaning comma-separated thousands"""
+        connector = CSVConnector()
+        assert connector._clean_korean_number("1,000") == "1000"
+        assert connector._clean_korean_number("1,234,567") == "1234567"
+        assert connector._clean_korean_number("10,000,000") == "10000000"
+
+    def test_clean_korean_number_currency_symbols(self):
+        """Test cleaning currency symbols"""
+        connector = CSVConnector()
+        assert connector._clean_korean_number("₩1,000") == "1000"
+        assert connector._clean_korean_number("$100") == "100"
+        assert connector._clean_korean_number("¥1,000") == "1000"
+        assert connector._clean_korean_number("€500") == "500"
+        assert connector._clean_korean_number("£250") == "250"
+
+    def test_clean_korean_number_negative_parentheses(self):
+        """Test cleaning negative numbers in parentheses"""
+        connector = CSVConnector()
+        assert connector._clean_korean_number("(1,000)") == "-1000"
+        assert connector._clean_korean_number("(500)") == "-500"
+        assert connector._clean_korean_number("₩(1,000)") == "-1000"
+
+    def test_clean_korean_number_combined_formats(self):
+        """Test cleaning combined Korean number formats"""
+        connector = CSVConnector()
+        assert connector._clean_korean_number("₩1,234,567") == "1234567"
+        assert connector._clean_korean_number("(₩1,000)") == "-1000"
+        assert connector._clean_korean_number("$1,234.56") == "1234.56"
+
+    def test_clean_korean_number_edge_cases(self):
+        """Test edge cases for number cleaning"""
+        connector = CSVConnector()
+        assert connector._clean_korean_number("") == "0"
+        assert connector._clean_korean_number("0") == "0"
+        assert connector._clean_korean_number("not a number") == "not a number"
+        assert connector._clean_korean_number("text123") == "text123"
+        assert connector._clean_korean_number("-") == "0"
+        # Test with None value - should return '0'
+        assert connector._clean_korean_number(None) == "0"  # type: ignore[arg-type]
+
+    def test_clean_column_name_bom(self):
+        """Test cleaning BOM character from column names"""
+        connector = CSVConnector()
+        assert connector._clean_column_name("﻿Source File") == "Source File"
+        assert connector._clean_column_name("﻿이름") == "이름"
+        assert connector._clean_column_name("normal") == "normal"
+
+    def test_clean_column_name_invisible_chars(self):
+        """Test cleaning various invisible Unicode characters"""
+        connector = CSVConnector()
+        assert connector._clean_column_name("col\u200bname") == "colname"  # Zero Width Space
+        assert connector._clean_column_name("col\u00a0name") == "col name"  # Non-breaking space
+        assert connector._clean_column_name("  col  ") == "col"  # Regular spaces
+
+    def test_infer_type_korean_integer_format(self):
+        """Test inferring INTEGER type from Korean number format"""
+        connector = CSVConnector()
+        assert connector._infer_type(["1,000", "2,000", "3,000"]) == "INTEGER"
+        assert connector._infer_type(["₩1,000", "₩2,500", "₩3,750"]) == "INTEGER"
+        assert connector._infer_type(["1,234,567", "9,876,543"]) == "INTEGER"
+
+    def test_infer_type_korean_float_format(self):
+        """Test inferring FLOAT type from Korean number format"""
+        connector = CSVConnector()
+        assert connector._infer_type(["1,000.50", "2,500.75", "3,750.25"]) == "FLOAT"
+        assert connector._infer_type(["₩1,234.56", "₩2,345.67"]) == "FLOAT"
+        assert connector._infer_type(["$100.50", "$200.75"]) == "FLOAT"
+
+    def test_infer_type_korean_negative_numbers(self):
+        """Test inferring type from negative Korean number formats"""
+        connector = CSVConnector()
+        assert connector._infer_type(["(1,000)", "(2,500)", "(3,000)"]) == "INTEGER"
+        assert connector._infer_type(["(₩1,000.50)", "(₩2,500.75)"]) == "FLOAT"
+
+    def test_infer_type_mixed_korean_formats(self):
+        """Test inferring type from mixed Korean number formats"""
+        connector = CSVConnector()
+        # Mixed currency symbols and commas
+        assert connector._infer_type(["₩1,000", "$2,000", "¥3,000"]) == "INTEGER"
+        # Mixed with regular numbers
+        assert connector._infer_type(["1000", "2,000", "₩3,000"]) == "INTEGER"
+
+    def test_infer_schema_from_korean_csv(self):
+        """Test inferring schema from CSV with Korean number formats"""
+        connector = CSVConnector()
+        csv_data = """이름,헌금총액,연봉,활동여부,가입일자
+김철수,"₩1,000,000","₩50,000,000",true,2023-01-15
+이영호,"₩2,500,000","₩60,000,000",false,2023-02-20
+박민수,"(₩500,000)","₩45,000,000",true,2023-03-10
+"""
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False, encoding='utf-8') as f:
+            f.write(csv_data)
+            temp_path = f.name
+
+        try:
+            schema = connector.infer_schema(temp_path)
+            assert '이름' in schema
+            assert '헌금총액' in schema
+            assert '연봉' in schema
+            assert '활동여부' in schema
+            assert '가입일자' in schema
+
+            # Check type inference for Korean number formats
+            assert schema['이름'] == 'VARCHAR'
+            assert schema['헌금총액'] in ('INTEGER', 'FLOAT')
+            assert schema['연봉'] in ('INTEGER', 'FLOAT')
+            assert schema['활동여부'] in ('BOOLEAN', 'VARCHAR')
+            assert schema['가입일자'] in ('DATE', 'VARCHAR')
+        finally:
+            Path(temp_path).unlink(missing_ok=True)
+
+    def test_infer_schema_with_sampling(self):
+        """Test schema inference with row sampling for performance"""
+        connector = CSVConnector()
+        csv_data = """id,name,value
+1,Item,100
+2,Item,200
+3,Item,300
+4,Item,400
+5,Item,500
+6,Item,600
+7,Item,700
+8,Item,800
+9,Item,900
+10,Item,1000
+"""
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False) as f:
+            f.write(csv_data)
+            temp_path = f.name
+
+        try:
+            # Infer with sampling (max_rows=5)
+            schema = connector.infer_schema(temp_path, max_rows=5)
+            assert 'id' in schema
+            assert 'name' in schema
+            assert 'value' in schema
+            assert schema['id'] == 'INTEGER'
+            assert schema['name'] == 'VARCHAR'
+            assert schema['value'] == 'INTEGER'
+        finally:
+            Path(temp_path).unlink(missing_ok=True)
+
+    def test_infer_schema_with_bom_columns(self):
+        """Test schema inference strips BOM from column names"""
+        connector = CSVConnector()
+        csv_data = """﻿Source File,﻿Amount,Name
+file1.csv,"₩1,000",Item1
+file2.csv,"₩2,500",Item2
+"""
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False, encoding='utf-8-sig') as f:
+            f.write(csv_data)
+            temp_path = f.name
+
+        try:
+            schema = connector.infer_schema(temp_path)
+            # BOM should be stripped from column names
+            assert 'Source File' in schema
+            assert 'Amount' in schema
+            assert 'Name' in schema
+            # Should NOT have BOM-prefixed versions
+            assert '﻿Source File' not in schema
+            assert '﻿Amount' not in schema
+        finally:
+            Path(temp_path).unlink(missing_ok=True)
+
+
 class TestConnectorRegistry:
     """Test connector registry functionality"""
 

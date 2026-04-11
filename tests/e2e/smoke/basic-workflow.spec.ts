@@ -59,7 +59,7 @@ test.describe('Smoke Tests - Basic Workflow', () => {
     if (nodes.length >= 2) {
       await canvas.connectNodes(nodes[0], nodes[1]);
 
-      const edgeCount = await page.locator('.react-flow__edge').count();
+      const edgeCount = await page.locator('.react-flow__edge, [data-testid^="rf__edge-"]').count();
       await expect(edgeCount).toBeGreaterThan(0);
     }
   });

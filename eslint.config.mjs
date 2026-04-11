@@ -12,7 +12,18 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    "tests/e2e/**",
+    "playwright-report/**",
+    "test-results/**",
+    ".venv/**"
   ]),
+  {
+    rules: {
+      "@typescript-eslint/no-explicit-any": "warn",
+      "react-hooks/exhaustive-deps": "warn",
+      "react-hooks/rules-of-hooks": "error"
+    }
+  }
 ]);
 
 export default eslintConfig;

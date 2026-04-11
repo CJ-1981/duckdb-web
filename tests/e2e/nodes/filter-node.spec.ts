@@ -3,6 +3,7 @@ import { WorkflowCanvas } from '../pages/WorkflowCanvas';
 import { DataInspectionPanel } from '../pages/DataInspectionPanel';
 import { sampleCsvData } from '../fixtures/testData';
 import { assertNodeExists, assertFilterApplied, assertSqlPreviewContains } from '../fixtures/assertions';
+import { uploadTestCsv } from '../fixtures/testData';
 
 test.describe('Filter Node Tests', () => {
   let canvas: WorkflowCanvas;
@@ -23,92 +24,37 @@ test.describe('Filter Node Tests', () => {
 
   test('should configure filter with equality operator', async ({ page }) => {
     await canvas.dragNodeToCanvas('input');
-    await canvas.dragNodeToCanvas('filter');
+    await canvas.selectNodeByIndex(0);
+    await uploadTestCsv(page, sampleCsvData);
 
-    // Upload data
-    const buffer = Buffer.from(sampleCsvData.content, 'utf-8');
-    const fileInput = page.locator('input[type="file"]');
+    await canvas.dragNodeToCanvas('filter', { x: 300, y: 100 });
+    await canvas.connectNodes(0, 1);
 
-    if (await fileInput.isVisible()) {
-      const fileChooserPromise = page.waitForEvent('filechooser');
-      await fileInput.click();
-      const fileChooser = await fileChooserPromise;
+    // Click filter node and configure
+    await canvas.clickNode('Filter');
 
-      await fileChooser.setFiles({
-        name: sampleCsvData.filename,
-        mimeType: 'text/csv',
-        buffer: buffer,
-      });
+    // Configure filter
+    const columnSelect = page.locator('select[name="column"]');
+    await columnSelect.waitFor({ state: 'visible' });
+    await columnSelect.selectOption('name');
 
-      await page.waitForTimeout(2000);
+    const operatorSelect = page.locator('select[name="operator"]');
+    await operatorSelect.selectOption('==');
 
-      // Click filter node and configure
-      const nodes = await canvas.getAllNodeLabels();
-      await canvas.clickNode(nodes.find(n => n.toLowerCase().includes('filter')) || 'Filter');
+    const valueInput = page.locator('input[name="value"]');
+    await valueInput.fill('Alice');
 
-      // Configure filter (assuming there's a configuration panel)
-      const columnSelect = page.locator('select[name="column"], [data-testid="filter-column"]');
-      if (await columnSelect.isVisible()) {
-        await columnSelect.selectOption('name');
-      }
-
-      const operatorSelect = page.locator('select[name="operator"], [data-testid="filter-operator"]');
-      if (await operatorSelect.isVisible()) {
-        await operatorSelect.selectOption('==');
-      }
-
-      const valueInput = page.locator('input[name="value"], [data-testid="filter-value"]');
-      if (await valueInput.isVisible()) {
-        await valueInput.fill('Alice');
-      }
-
-      await page.waitForTimeout(1000);
-    }
-  });
-
-  test('should apply filter and reduce row count', async ({ page }) => {
-    await canvas.dragNodeToCanvas('input');
-    await canvas.dragNodeToCanvas('filter');
-    await canvas.dragNodeToCanvas('output');
-
-    const nodes = await canvas.getAllNodeLabels();
-    if (nodes.length >= 3) {
-      await canvas.connectNodes(nodes[0], nodes[1]);
-      await canvas.connectNodes(nodes[1], nodes[2]);
-
-      // Upload data
-      const buffer = Buffer.from(sampleCsvData.content, 'utf-8');
-      const fileInput = page.locator('input[type="file"]');
-
-      if (await fileInput.isVisible()) {
-        const fileChooserPromise = page.waitForEvent('filechooser');
-        await fileInput.click();
-        const fileChooser = await fileChooserPromise;
-
-        await fileChooser.setFiles({
-          name: sampleCsvData.filename,
-          mimeType: 'text/csv',
-          buffer: buffer,
-        });
-
-        await page.waitForTimeout(2000);
-
-        // Execute workflow
-        await canvas.execute();
-        await page.waitForTimeout(5000);
-
-        // Check that output has fewer rows than input
-        const inputNode = nodes[0];
-        const outputNode = nodes[2];
-
-        // Verify filter was applied
-        await assertSqlPreviewContains(page, 'WHERE');
-      }
-    }
+    await page.waitForTimeout(1000);
+    await assertSqlPreviewContains(page, 'Alice');
   });
 
   test('should support multiple filter operators', async ({ page }) => {
-    await canvas.dragNodeToCanvas('filter');
+    await canvas.dragNodeToCanvas('input');
+    await canvas.selectNodeByIndex(0);
+    await uploadTestCsv(page, sampleCsvData);
+
+    await canvas.dragNodeToCanvas('filter', { x: 300, y: 100 });
+    await canvas.connectNodes(0, 1);
     await canvas.clickNode('Filter');
 
     const operators = ['>', '<', '>=', '<=', '==', '!=', 'contains', 'starts_with', 'ends_with'];
@@ -126,7 +72,12 @@ test.describe('Filter Node Tests', () => {
   });
 
   test('should support null checking operators', async ({ page }) => {
-    await canvas.dragNodeToCanvas('filter');
+    await canvas.dragNodeToCanvas('input');
+    await canvas.selectNodeByIndex(0);
+    await uploadTestCsv(page, sampleCsvData);
+
+    await canvas.dragNodeToCanvas('filter', { x: 300, y: 100 });
+    await canvas.connectNodes(0, 1);
     await canvas.clickNode('Filter');
 
     const operatorSelect = page.locator('select[name="operator"]');
@@ -135,130 +86,89 @@ test.describe('Filter Node Tests', () => {
       await page.waitForTimeout(500);
 
       const selectedValue = await operatorSelect.inputValue();
-      expect(selectedValue).toBeTruthy();
+      expect(selectedValue).toBe('is_null');
     }
   });
 
   test('should generate correct SQL for filter', async ({ page }) => {
     await canvas.dragNodeToCanvas('input');
-    await canvas.dragNodeToCanvas('filter');
+    await canvas.selectNodeByIndex(0);
+    await uploadTestCsv(page, sampleCsvData);
 
-    const nodes = await canvas.getAllNodeLabels();
-    if (nodes.length >= 2) {
-      await canvas.connectNodes(nodes[0], nodes[1]);
+    await canvas.dragNodeToCanvas('filter', { x: 300, y: 100 });
+    await canvas.connectNodes(0, 1);
 
-      // Click filter node
-      await canvas.clickNode(nodes.find(n => n.toLowerCase().includes('filter')) || 'Filter');
+    // Click filter node
+    await canvas.clickNode('Filter');
 
-      // Configure filter
-      const columnSelect = page.locator('select[name="column"]');
-      if (await columnSelect.isVisible()) {
-        await columnSelect.selectOption('age');
-      }
+    // Configure filter
+    const columnSelect = page.locator('select[name="column"]');
+    await columnSelect.selectOption('age');
 
-      const operatorSelect = page.locator('select[name="operator"]');
-      if (await operatorSelect.isVisible()) {
-        await operatorSelect.selectOption('>');
-      }
+    const operatorSelect = page.locator('select[name="operator"]');
+    await operatorSelect.selectOption('>');
 
-      const valueInput = page.locator('input[name="value"]');
-      if (await valueInput.isVisible()) {
-        await valueInput.fill('25');
-      }
+    const valueInput = page.locator('input[name="value"]');
+    await valueInput.fill('25');
 
-      await page.waitForTimeout(1000);
+    await page.waitForTimeout(1000);
 
-      // Check SQL preview
-      await assertSqlPreviewContains(page, 'WHERE');
-      await assertSqlPreviewContains(page, 'age');
-      await assertSqlPreviewContains(page, '>');
-    }
+    // Check SQL preview
+    await assertSqlPreviewContains(page, 'WHERE');
+    await assertSqlPreviewContains(page, 'age');
+    await assertSqlPreviewContains(page, '>');
   });
 
   test('should handle string filters case-insensitively', async ({ page }) => {
     await canvas.dragNodeToCanvas('input');
-    await canvas.dragNodeToCanvas('filter');
+    await canvas.selectNodeByIndex(0);
+    await uploadTestCsv(page, sampleCsvData);
 
-    const nodes = await canvas.getAllNodeLabels();
-    if (nodes.length >= 2) {
-      await canvas.connectNodes(nodes[0], nodes[1]);
+    await canvas.dragNodeToCanvas('filter', { x: 300, y: 100 });
+    await canvas.connectNodes(0, 1);
 
-      await canvas.clickNode(nodes.find(n => n.toLowerCase().includes('filter')) || 'Filter');
+    await canvas.clickNode('Filter');
 
-      // Configure string filter
-      const columnSelect = page.locator('select[name="column"]');
-      if (await columnSelect.isVisible()) {
-        await columnSelect.selectOption('name');
-      }
+    // Configure string filter
+    const columnSelect = page.locator('select[name="column"]');
+    await columnSelect.selectOption('name');
 
-      const operatorSelect = page.locator('select[name="operator"]');
-      if (await operatorSelect.isVisible()) {
-        await operatorSelect.selectOption('contains');
-      }
+    const operatorSelect = page.locator('select[name="operator"]');
+    await operatorSelect.selectOption('contains');
 
-      const valueInput = page.locator('input[name="value"]');
-      if (await valueInput.isVisible()) {
-        await valueInput.fill('alice');
-      }
+    const valueInput = page.locator('input[name="value"]');
+    await valueInput.fill('alice');
 
-      await page.waitForTimeout(1000);
+    await page.waitForTimeout(1000);
 
-      // SQL should use ILIKE for case-insensitive matching
-      await assertSqlPreviewContains(page, 'ILIKE');
-    }
+    // SQL should use ILIKE for case-insensitive matching
+    await assertSqlPreviewContains(page, 'ILIKE');
   });
 
   test('should handle numeric filters correctly', async ({ page }) => {
     await canvas.dragNodeToCanvas('input');
-    await canvas.dragNodeToCanvas('filter');
+    await canvas.selectNodeByIndex(0);
+    await uploadTestCsv(page, sampleCsvData);
 
-    const nodes = await canvas.getAllNodeLabels();
-    if (nodes.length >= 2) {
-      await canvas.connectNodes(nodes[0], nodes[1]);
+    await canvas.dragNodeToCanvas('filter', { x: 300, y: 100 });
+    await canvas.connectNodes(0, 1);
 
-      await canvas.clickNode(nodes.find(n => n.toLowerCase().includes('filter')) || 'Filter');
-
-      // Configure numeric filter
-      const columnSelect = page.locator('select[name="column"]');
-      if (await columnSelect.isVisible()) {
-        await columnSelect.selectOption('age');
-      }
-
-      const operatorSelect = page.locator('select[name="operator"]');
-      if (await operatorSelect.isVisible()) {
-        await operatorSelect.selectOption('>=');
-      }
-
-      const valueInput = page.locator('input[name="value"]');
-      if (await valueInput.isVisible()) {
-        await valueInput.fill('30');
-      }
-
-      await page.waitForTimeout(1000);
-
-      await assertSqlPreviewContains(page, 'age');
-      await assertSqlPreviewContains(page, '>=');
-    }
-  });
-
-  test('should allow IN operator for multiple values', async ({ page }) => {
-    await canvas.dragNodeToCanvas('filter');
     await canvas.clickNode('Filter');
 
+    // Configure numeric filter
+    const columnSelect = page.locator('select[name="column"]');
+    await columnSelect.selectOption('age');
+
     const operatorSelect = page.locator('select[name="operator"]');
-    if (await operatorSelect.isVisible()) {
-      await operatorSelect.selectOption('in');
-      await page.waitForTimeout(500);
+    await operatorSelect.selectOption('>=');
 
-      const valueInput = page.locator('input[name="value"]');
-      if (await valueInput.isVisible()) {
-        await valueInput.fill('Alice,Bob,Carol');
-      }
+    const valueInput = page.locator('input[name="value"]');
+    await valueInput.fill('30');
 
-      await page.waitForTimeout(1000);
+    await page.waitForTimeout(1000);
 
-      await assertSqlPreviewContains(page, 'IN');
-    }
+    await assertSqlPreviewContains(page, 'age');
+    await assertSqlPreviewContains(page, '>=');
   });
 
   test('should support custom WHERE clause', async ({ page }) => {

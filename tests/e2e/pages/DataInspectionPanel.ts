@@ -22,12 +22,12 @@ export class DataInspectionPanel {
       page.locator('text=/select a node to inspect/i').locator('..')
     );
     this.tabs = {
-      data: page.locator('button:has-text("Data Table"), button:has-text("data")'),
-      schema: page.locator('button:has-text("Schema"), button:has-text("schema")'),
-      stats: page.locator('button:has-text("Statistics"), button:has-text("stats")'),
+      data: page.locator('button').filter({ hasText: /^Data Table$/i }).or(page.locator('button').filter({ hasText: /^data$/i })),
+      schema: page.locator('button').filter({ hasText: /^Schema$/i }).or(page.locator('button').filter({ hasText: /^schema$/i })),
+      stats: page.locator('button').filter({ hasText: /^Statistics$/i }).or(page.locator('button').filter({ hasText: /^stats$/i })),
     };
-    this.dataTable = page.locator('table:has(th)').first();
-    this.schemaTable = page.locator('table:has(th)').nth(1);
+    this.dataTable = page.locator('table').first();
+    this.schemaTable = page.locator('table').first();
     this.statsContainer = page.locator('[data-testid="column-stats"], .column-stats');
   }
 

@@ -108,7 +108,8 @@ class QueryExecutor:
         Returns:
             Cache key string
         """
+        import hashlib
         key = query
         if parameters:
             key += str(parameters)
-        return str(hash(key))
+        return hashlib.sha256(key.encode()).hexdigest()

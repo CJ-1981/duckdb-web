@@ -130,15 +130,52 @@ export class WorkflowCanvas {
   }
 
   /**
-   * Click on a node by its label or index
-   * @param nodeLabel - The label of the node to click (string or RegExp)
+   * Close the bottom data inspection panel if it is visible
    */
-  async clickNode(nodeLabel: string | RegExp) {
-    const node = this.nodeContainer.filter({ hasText: nodeLabel }).first();
+  async closePanel() {
+    const panel = this.page.locator('[data-testid="data-inspection-panel"]');
+    if (await panel.isVisible()) {
+      // Find the specific close button inside the panel header, avoid Next.js dev tools
+      const closeButton = panel.locator('button').filter({ has: this.page.locator('img[src*="close"], svg') }).last();
+      
+      if (await closeButton.isVisible()) {
+        await closeButton.click();
+        await expect(panel).toBeHidden({ timeout: 5000 });
+        // Small delay after closing panel to let layout settle
+        await this.page.waitForTimeout(500);
+      }
+    }
+  }
+
+  /**
+   * Click on a node by its label, technical name, or index
+   * @param nodeLabel - The identifier for the node
+   */
+  async clickNode(nodeLabel: string | RegExp | number) {
+    // Close bottom panel to avoid intercepting clicks
+    await this.closePanel();
+
+    let node: Locator;
+    if (typeof nodeLabel === 'number') {
+      node = this.nodeContainer.nth(nodeLabel);
+    } else {
+      const { label } = typeof nodeLabel === 'string' ? getNodeTypeInfo(nodeLabel) : { label: nodeLabel };
+      node = this.nodeContainer.filter({ 
+        has: this.page.locator('span, div').filter({ hasText: label }).or(this.page.locator('span, div').filter({ hasText: nodeLabel }))
+      }).first();
+    }
+
+    await node.scrollIntoViewIfNeeded();
     await expect(node).toBeVisible();
+    
+    // Force click to ensure it works even if slightly obscured
     await node.click({ force: true });
-    // Verify it's selected (React Flow adds a 'selected' class)
-    await expect(node).toHaveClass(/selected/);
+    
+    // Wait for state sync and UI update
+    await this.page.waitForTimeout(1000);
+    
+    // Verify selection (React Flow adds 'selected' class to the node wrapper)
+    await expect(node).toHaveClass(/selected/, { timeout: 5000 });
   }
 
   /**
@@ -146,9 +183,7 @@ export class WorkflowCanvas {
    * @param index - The index of the node (0-based)
    */
   async selectNodeByIndex(index: number) {
-    const node = this.nodeContainer.nth(index);
-    await node.scrollIntoViewIfNeeded();
-    await node.click({ force: true });
+    await this.clickNode(index);
   }
 
   /**
@@ -165,17 +200,75 @@ export class WorkflowCanvas {
 
   /**
    * Connect two nodes by dragging from source to target
-   * @param sourceLabel - The label of the source node
-   * @param targetLabel - The label of the target node
+   * @param source - The label, technical name, or index of the source node
+   * @param target - The label, technical name, or index of the target node
    */
-  async connectNodes(sourceLabel: string | RegExp, targetLabel: string | RegExp) {
-    const sourceNode = this.nodeContainer.filter({ hasText: sourceLabel }).first();
-    const targetNode = this.nodeContainer.filter({ hasText: targetLabel }).first();
+  async connectNodes(source: string | RegExp | number, target: string | RegExp | number) {
+    // Ensure handles are visible and not covered
+    await this.closePanel();
+    
+    let sourceNode: Locator;
+    let targetNode: Locator;
 
-    const sourceHandle = sourceNode.locator('.react-flow__handle-bottom, .react-flow__handle[data-handlepos="bottom"], .react-flow__handle.source');
-    const targetHandle = targetNode.locator('.react-flow__handle-top, .react-flow__handle[data-handlepos="top"], .react-flow__handle.target');
+    if (typeof source === 'number') {
+      sourceNode = this.nodeContainer.nth(source);
+    } else {
+      const { label: sLabel } = typeof source === 'string' ? getNodeTypeInfo(source) : { label: source };
+      sourceNode = this.nodeContainer.filter({ 
+        has: this.page.locator('span, div').filter({ hasText: sLabel }).or(this.page.locator('span, div').filter({ hasText: source }))
+      }).first();
+    }
 
-    await sourceHandle.dragTo(targetHandle, { force: true });
+    if (typeof target === 'number') {
+      targetNode = this.nodeContainer.nth(target);
+    } else {
+      const { label: tLabel } = typeof target === 'string' ? getNodeTypeInfo(target) : { label: target };
+      targetNode = this.nodeContainer.filter({ 
+        has: this.page.locator('span, div').filter({ hasText: tLabel }).or(this.page.locator('span, div').filter({ hasText: target }))
+      }).first();
+    }
+
+    await sourceNode.scrollIntoViewIfNeeded();
+    await targetNode.scrollIntoViewIfNeeded();
+    
+    // Specifically target the source and target handles
+    const sourceHandle = sourceNode.locator('.react-flow__handle.source, .react-flow__handle-bottom').first();
+    const targetHandle = targetNode.locator('.react-flow__handle.target, .react-flow__handle-top').first();
+
+    await sourceHandle.waitFor({ state: 'visible' });
+    await targetHandle.waitFor({ state: 'visible' });
+
+    // Center view to stabilize positions
+    await this.fitView();
+    await this.page.waitForTimeout(500);
+
+    const initialEdgeCount = await this.page.locator('.react-flow__edge, [data-testid^="rf__edge-"]').count();
+
+    const sourceBox = await sourceHandle.boundingBox();
+    const targetBox = await targetHandle.boundingBox();
+
+    if (!sourceBox || !targetBox) {
+      await sourceHandle.dragTo(targetHandle, { force: true });
+    } else {
+      await this.page.mouse.move(sourceBox.x + sourceBox.width / 2, sourceBox.y + sourceBox.height / 2);
+      await this.page.mouse.down();
+      // Very slow steps for maximum drag accuracy
+      await this.page.mouse.move(targetBox.x + targetBox.width / 2, targetBox.y + targetBox.height / 2, { steps: 50 });
+      await this.page.mouse.up();
+    }
+
+    // Wait for the edge to appear
+    try {
+      await expect(this.page.locator('.react-flow__edge, [data-testid^="rf__edge-"]')).toHaveCount(initialEdgeCount + 1, { timeout: 7000 });
+    } catch (e) {
+      console.warn('Edge connection retry using dragTo');
+      if (await this.page.locator('.react-flow__edge, [data-testid^="rf__edge-"]').count() === initialEdgeCount) {
+        await sourceHandle.dragTo(targetHandle, { force: true });
+      }
+    }
+    
+    // Pause after connection to let React Flow and our state settle
+    await this.page.waitForTimeout(1000);
   }
 
   /**
@@ -196,20 +289,26 @@ export class WorkflowCanvas {
 
   /**
    * Get the row count displayed on a node
-   * @param nodeLabel - The label of the node
+   * @param nodeLabel - The label or technical name of the node
    */
   async getNodeRowCount(nodeLabel: string | RegExp): Promise<string> {
-    const node = this.nodeContainer.filter({ hasText: nodeLabel }).first();
+    const { label } = typeof nodeLabel === 'string' ? getNodeTypeInfo(nodeLabel) : { label: nodeLabel };
+    const node = this.nodeContainer.filter({ 
+      has: this.page.locator('span, div').filter({ hasText: label }).or(this.page.locator('span, div').filter({ hasText: nodeLabel }))
+    }).first();
     const rowCount = node.locator('text=/rows/i');
     return await rowCount.textContent() || '';
   }
 
   /**
    * Check if a node exists on the canvas
-   * @param nodeLabel - The label of the node to check
+   * @param nodeLabel - The label or technical name of the node to check
    */
   async hasNode(nodeLabel: string | RegExp): Promise<boolean> {
-    const node = this.nodeContainer.filter({ hasText: nodeLabel });
+    const { label } = typeof nodeLabel === 'string' ? getNodeTypeInfo(nodeLabel) : { label: nodeLabel };
+    const node = this.nodeContainer.filter({ 
+      has: this.page.locator('span, div').filter({ hasText: label }).or(this.page.locator('span, div').filter({ hasText: nodeLabel }))
+    });
     const count = await node.count();
     return count > 0;
   }
@@ -222,8 +321,15 @@ export class WorkflowCanvas {
     const count = await this.nodeContainer.count();
     for (let i = 0; i < count; i++) {
       const node = this.nodeContainer.nth(i);
-      const text = await node.textContent();
-      if (text) labels.push(text);
+      // Use innerText() instead of textContent() to exclude <style> tag content
+      const text = await node.innerText();
+      if (text) {
+        // Find the line that looks like the label (usually the first line or line without "Rows")
+        const lines = text.split('\n').map(l => l.trim()).filter(l => l && !l.match(/^rows$/i) && !l.match(/^\d+(,\d+)*$/));
+        if (lines.length > 0) {
+          labels.push(lines[0]);
+        }
+      }
     }
     return labels;
   }

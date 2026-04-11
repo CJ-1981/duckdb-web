@@ -35,7 +35,7 @@ test.describe('Canvas and Node Tests', () => {
     await expect(configPanel).toBeVisible();
 
     // Verify file name is displayed
-    await expect(configPanel.locator(`text=${sampleCsvData.filename}`)).toBeVisible();
+    await expect(page.locator('[data-testid="file-path-input"]')).toHaveValue(new RegExp(sampleCsvData.filename));
   });
 
   test('filter node configuration', async ({ page }) => {
@@ -59,7 +59,7 @@ test.describe('Canvas and Node Tests', () => {
   });
 
   test('aggregate node configuration', async ({ page }) => {
-    // Add input node
+    // Add input node with data
     await canvas.dragNodeToCanvas('input');
     await canvas.selectNodeByIndex(0);
     await uploadTestCsv(page, sampleCsvData);
@@ -79,9 +79,14 @@ test.describe('Canvas and Node Tests', () => {
   });
 
   test('join node configuration', async ({ page }) => {
-    // Add two input nodes
+    // Add two input nodes with data
     await canvas.dragNodeToCanvas('input');
+    await canvas.selectNodeByIndex(0);
+    await uploadTestCsv(page, sampleCsvData);
+
     await canvas.dragNodeToCanvas('input', { x: 50, y: 200 });
+    await canvas.selectNodeByIndex(1);
+    await uploadTestCsv(page, sampleCsvData);
 
     // Add join node
     await canvas.dragNodeToCanvas('join', { x: 300, y: 150 });
@@ -175,7 +180,7 @@ test.describe('Canvas and Node Tests', () => {
     await canvas.connectNodes(/input|csv/i, /filter/i);
 
     // Verify connection exists (check for edge in DOM)
-    const edge = page.locator('.react-flow__edge').first();
+    const edge = page.locator('.react-flow__edge, [data-testid^="rf__edge-"]').first();
     await expect(edge).toBeVisible();
   });
 
@@ -185,30 +190,34 @@ test.describe('Canvas and Node Tests', () => {
     await canvas.dragNodeToCanvas('filter', { x: 300, y: 100 });
     await canvas.connectNodes(/input|csv/i, /filter/i);
 
+    // Wait for edge to be stable
+    const edge = page.locator('.react-flow__edge, [data-testid^="rf__edge-"]').first();
+    await expect(edge).toBeVisible();
+    
     // Click on the edge to select it
-    const edge = page.locator('.react-flow__edge').first();
-    await edge.click();
+    await edge.click({ force: true });
+    await page.waitForTimeout(500);
 
     // Delete the connection
     await page.keyboard.press('Delete');
+    await page.keyboard.press('Backspace');
 
     // Verify edge was removed
-    const edgeCount = await page.locator('.react-flow__edge').count();
-    expect(edgeCount).toBe(0);
+    await expect(page.locator('.react-flow__edge, [data-testid^="rf__edge-"]')).toHaveCount(0, { timeout: 5000 });
   });
 
   test('multiple nodes can be added and arranged', async ({ page }) => {
     // Add multiple nodes at different positions
-    await canvas.dragNodeToCanvas('input');
-    await canvas.dragNodeToCanvas('filter', { x: 300, y: 50 });
-    await canvas.dragNodeToCanvas('aggregate', { x: 300, y: 200 });
-    await canvas.dragNodeToCanvas('output', { x: 600, y: 125 });
+    await canvas.dragNodeToCanvas('input', { x: 100, y: 100 });
+    await canvas.dragNodeToCanvas('filter', { x: 400, y: 100 });
+    await canvas.dragNodeToCanvas('aggregate', { x: 100, y: 400 });
+    await canvas.dragNodeToCanvas('output', { x: 400, y: 400 });
 
     // Verify all nodes are present
-    expect(await canvas.getNodeCount()).toBe(4);
+    await expect(page.locator('.react-flow__node')).toHaveCount(4, { timeout: 10000 });
 
     // Verify all nodes are visible
-    const nodes = await canvas.getAllNodeLabels();
-    expect(nodes.length).toBe(4);
+    const labels = await canvas.getAllNodeLabels();
+    expect(labels.length).toBeGreaterThanOrEqual(4);
   });
 });

@@ -67,31 +67,20 @@ export async function assertNodesConnected(page: Page, sourceLabel: string, targ
     ({ srcId, tgtId }) => {
       // Access the React Flow instance if available
       const rfContainer = document.querySelector('.react-flow');
-      if (!rfContainer || !(window as any).__REACT_FLOW_INSTANCE__) {
-        // Fallback: check DOM for edge elements
-        const edges = document.querySelectorAll('.react-flow__edge');
-        for (const edge of edges) {
-          const source = edge.getAttribute('data-source');
-          const target = edge.getAttribute('data-target');
-          if ((source === srcId && target === tgtId) || 
-              (source === tgtId && target === srcId)) {
-            return true;
-          }
-        }
-        return false;
-      }
+      if (!rfContainer) return false;
       
-      // Try to use React Flow's internal API
-      try {
-        const instance = (window as any).__REACT_FLOW_INSTANCE__;
-        const edges = instance.getEdges?.() || [];
-        return edges.some((edge: any) => 
-          (edge.source === srcId && edge.target === tgtId) ||
-          (edge.source === tgtId && edge.target === srcId)
-        );
-      } catch {
-        return false;
+      // Look for edge elements in DOM
+      const edges = document.querySelectorAll('.react-flow__edge, [data-testid^="rf__edge-"]');
+      for (const edge of edges) {
+        const source = edge.getAttribute('data-source') || edge.getAttribute('aria-label')?.split('to')[0]?.trim();
+        const target = edge.getAttribute('data-target') || edge.getAttribute('aria-label')?.split('to')[1]?.trim();
+        
+        if ((source === srcId && target === tgtId) || 
+            (source === tgtId && target === srcId)) {
+          return true;
+        }
       }
+      return false;
     },
     { srcId: sourceId, tgtId: targetId }
   );

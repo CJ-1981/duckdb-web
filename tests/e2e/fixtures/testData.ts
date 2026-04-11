@@ -105,7 +105,11 @@ export async function uploadTestCsv(page: Page, testData: TestDataFile) {
 
   // Create a temporary file
   const fileChooserPromise = page.waitForEvent('filechooser');
-  await page.locator('input[type="file"]').or(page.locator('[data-testid="file-upload"]')).click();
+  
+  // The input is hidden inside the label, so we might need to click the label or force click the input
+  const fileInput = page.locator('input[type="file"]');
+  await fileInput.click({ force: true });
+  
   const fileChooser = await fileChooserPromise;
 
   await fileChooser.setFiles({
@@ -113,6 +117,9 @@ export async function uploadTestCsv(page: Page, testData: TestDataFile) {
     mimeType: 'text/csv',
     buffer: buffer,
   });
+
+  // Wait for upload to complete (frontend shows a success message)
+  await page.locator('text=/file uploaded/i').waitFor({ state: 'visible', timeout: 30000 });
 }
 
 /**

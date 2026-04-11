@@ -9,11 +9,18 @@ from fastapi import APIRouter, HTTPException, Depends, File, UploadFile
 from pydantic import BaseModel
 import os
 import uuid
+import logging
 
 from src.api.auth.decorators import require_permission
 from src.api.auth.dependencies import get_current_user_with_role, authorize_endpoint
 import csv
 import io
+
+logger = logging.getLogger(__name__)
+
+# File upload configuration
+MAX_FILE_SIZE = 500 * 1024 * 1024  # 500MB maximum file size
+MAX_FILE_SIZE_MB = MAX_FILE_SIZE / (1024 * 1024)  # For error messages
 
 def _is_numeric(v: str) -> bool:
     try:
@@ -46,14 +53,48 @@ router = APIRouter(prefix="/api/v1/data", tags=["Data"])
 
 @router.post("/upload")
 async def upload_file(file: UploadFile = File(...)):
-    """Upload a file to the server for processing."""
+    """Upload a file to the server for processing.
+
+    Enforces maximum file size limit (500MB) to prevent DoS attacks.
+    """
     import duckdb
     os.makedirs("uploads", exist_ok=True)
+
+    # Check file size before reading content (prevents DoS via large files)
+    # Use file.file which is a SpooledTemporaryFile that supports seeking
+    file.file.seek(0, os.SEEK_END)
+    file_size = file.file.tell()
+    file.file.seek(0)  # Reset position for normal reading
+
+    if file_size > MAX_FILE_SIZE:
+        logger.warning(
+            f">>> [FILE UPLOAD] Rejected file '{file.filename}': {file_size / (1024*1024):.1f}MB exceeds {MAX_FILE_SIZE_MB:.0f}MB limit"
+        )
+        raise HTTPException(
+            status_code=413,  # Payload Too Large
+            detail=f"File size ({file_size / (1024*1024):.1f}MB) exceeds maximum allowed size ({MAX_FILE_SIZE_MB:.0f}MB). Please upload a smaller file or contact support for assistance."
+        )
+
+    logger.info(f">>> [FILE UPLOAD] Uploading '{file.filename}': {file_size / (1024*1024):.2f}MB")
+
     file_id = f"{uuid.uuid4()}_{file.filename}"
     file_path = os.path.join("uploads", file_id)
+
+    # Read file content with size limit check
     content = await file.read()
+    if len(content) > MAX_FILE_SIZE:
+        logger.error(
+            f">>> [FILE UPLOAD] Size mismatch for '{file.filename}': reported {file_size} bytes, actual {len(content)} bytes"
+        )
+        raise HTTPException(
+            status_code=413,
+            detail=f"File content exceeds maximum allowed size ({MAX_FILE_SIZE_MB:.0f}MB)."
+        )
+
     with open(file_path, "wb") as buffer:
         buffer.write(content)
+
+    logger.info(f">>> [FILE UPLOAD] Successfully saved to {file_path}")
         
     # Discover columns and row count after upload
     try:
