@@ -64,11 +64,11 @@ test.describe('Output Node Tests', () => {
     await canvas.execute();
     await canvas.waitForExecutionComplete();
 
-    await canvas.clickNode('Export');
+    await canvas.clickNode(1);  // Use index
 
     // Look for download button
     const downloadButton = page.locator('button:has-text("Download"), button:has-text("Export")').first();
-    if (await downloadButton.isVisible()) {
+    if (await downloadButton.isVisible({ timeout: 5000 })) {
       const downloadPromise = page.waitForEvent('download');
       await downloadButton.click();
       const download = await downloadPromise;
@@ -88,15 +88,15 @@ test.describe('Output Node Tests', () => {
     await canvas.execute();
     await canvas.waitForExecutionComplete();
 
-    await canvas.clickNode('Export');
+    await canvas.clickNode(1);  // Use index
 
     // Look for format selector and download button
     const formatSelect = page.locator('select[name="format"]');
-    if (await formatSelect.isVisible()) {
-      await formatSelect.selectOption('JSON');
+    if (await formatSelect.isVisible({ timeout: 5000 })) {
+      await canvas.selectDropdownOption(formatSelect, 'JSON');
 
       const downloadButton = page.locator('button:has-text("Download")').first();
-      if (await downloadButton.isVisible()) {
+      if (await downloadButton.isVisible({ timeout: 3000 })) {
         const downloadPromise = page.waitForEvent('download');
         await downloadButton.click();
         const download = await downloadPromise;
@@ -108,11 +108,11 @@ test.describe('Output Node Tests', () => {
 
   test('should allow output name configuration', async ({ page }) => {
     await canvas.dragNodeToCanvas('output');
-    await canvas.clickNode('Export');
+    await canvas.clickNode(0);  // Use index
 
     // Look for name input
     const nameInput = page.locator('input[name="filename"]');
-    if (await nameInput.isVisible()) {
+    if (await nameInput.isVisible({ timeout: 5000 })) {
       await nameInput.fill('my_results.csv');
       await page.waitForTimeout(500);
 
@@ -132,11 +132,15 @@ test.describe('Output Node Tests', () => {
     await canvas.execute();
     await canvas.waitForExecutionComplete();
 
-    // Click output node and check data panel
-    await canvas.clickNode('Export');
+    // Click output node and check data panel - use index
+    await canvas.clickNode(1);
+    await page.waitForTimeout(1000);
+
     await dataPanel.switchToDataTab();
 
-    await expect(page.locator('table').first()).toBeVisible();
+    // Wait for table to be visible with rows
+    await expect(page.locator('table').first()).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('tbody tr').first()).toBeVisible({ timeout: 5000 });
   });
 
   test('should handle multiple output nodes', async ({ page }) => {

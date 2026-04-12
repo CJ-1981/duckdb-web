@@ -61,6 +61,18 @@ export class DataInspectionPanel {
     await this.tabs.stats.click();
     // Stats might take time to load, wait longer
     await expect(this.statsContainer).toBeVisible({ timeout: 10000 });
+
+    // Additional wait for stat blocks to appear - Phase 2 fix
+    await this.page.waitForTimeout(1500);
+
+    // Wait for at least one stat block to be present (if stats are computed)
+    const statBlocks = this.statsContainer.locator('[data-column-name]');
+    const hasStatBlocks = await statBlocks.count().catch(() => 0);
+    if (hasStatBlocks > 0) {
+      await expect(statBlocks.first()).toBeVisible({ timeout: 5000 }).catch(() => {
+        console.log('Stat blocks container visible but individual blocks not yet rendered');
+      });
+    }
   }
 
   /**
@@ -152,20 +164,50 @@ export class DataInspectionPanel {
     nullPct: string;
   } | null> {
     await this.switchToStatsTab();
-    
+
     // Find the specific column stat block using stable data-column-name attribute
     const statBlock = this.statsContainer.locator('[data-column-name]').filter({
       hasText: columnName
     }).first();
 
-    const isVisible = await statBlock.isVisible().catch(() => false);
-    if (!isVisible) return null;
+    // Wait for the specific stat block to appear with timeout - Phase 2 fix
+    try {
+      await expect(statBlock).toBeVisible({ timeout: 5000 });
+    } catch (e) {
+      // If stat block not visible, check if stats are still loading
+      const loadingIndicator = this.statsContainer.locator('text=/loading|computing|calculating/i');
+      const isLoading = await loadingIndicator.isVisible().catch(() => false);
+
+      if (isLoading) {
+        console.log(`Statistics for column "${columnName}" are still loading`);
+        return null;
+      }
+
+      // Check if stats container is empty (no stats computed)
+      const emptyState = this.statsContainer.locator('text=/no statistics|no data|execute workflow/i');
+      const isEmpty = await emptyState.isVisible().catch(() => false);
+
+      if (isEmpty) {
+        console.log(`No statistics available for column "${columnName}"`);
+        return null;
+      }
+
+      console.log(`Stat block for "${columnName}" not found/visible`);
+      return null;
+    }
 
     const getValueByLabel = async (label: string) => {
       const row = statBlock.locator('[data-testid="stat-row"]').filter({
         has: this.page.locator('[data-testid="stat-label"]', { hasText: label })
       });
-      return (await row.locator('[data-testid="stat-value"]').textContent())?.trim() || '';
+      const valueElement = row.locator('[data-testid="stat-value"]');
+
+      // Wait for the value to be present - Phase 2 fix
+      await expect(valueElement.first()).toBeVisible({ timeout: 3000 }).catch(() => {
+        console.log(`Stat value for "${label}" not visible for column "${columnName}"`);
+      });
+
+      return (await valueElement.textContent())?.trim() || '';
     };
 
     return {
@@ -213,6 +255,52 @@ export class DataInspectionPanel {
    */
   async waitForNoDataMessage() {
     await expect(this.panel.locator('text=/no sample data|execute the workflow/i')).toBeVisible();
+  }
+
+  /**
+   * Check if statistics are available for any column
+   */
+  async hasStatistics(): Promise<boolean> {
+    await this.switchToStatsTab();
+
+    const statBlocks = this.statsContainer.locator('[data-column-name]');
+    const count = await statBlocks.count();
+
+    // Check if there are visible stat blocks with actual content
+    if (count === 0) return false;
+
+    // Check if the first stat block has actual stat values
+    const firstBlock = statBlocks.first();
+    const hasValues = await firstBlock.locator('[data-testid="stat-value"]').count() > 0;
+
+    return hasValues;
+  }
+
+  /**
+   * Wait for statistics to be computed and ready
+   * @param columnName - Optional specific column to wait for
+   */
+  async waitForStatsReady(columnName?: string) {
+    await this.switchToStatsTab();
+
+    // Wait for stat blocks to appear
+    const statBlocks = this.statsContainer.locator('[data-column-name]');
+
+    if (columnName) {
+      // Wait for specific column stat block
+      const specificBlock = statBlocks.filter({ hasText: columnName });
+      await expect(specificBlock.first()).toBeVisible({ timeout: 10000 }).catch(() => {
+        console.log(`Specific stat block for "${columnName}" not visible after timeout`);
+      });
+    } else {
+      // Wait for any stat blocks to appear
+      await expect(statBlocks.first()).toBeVisible({ timeout: 10000 }).catch(() => {
+        console.log('No stat blocks visible after timeout');
+      });
+    }
+
+    // Additional wait for stat values to populate
+    await this.page.waitForTimeout(1000);
   }
 
   /**

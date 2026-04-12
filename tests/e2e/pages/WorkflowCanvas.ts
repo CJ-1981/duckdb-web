@@ -228,7 +228,7 @@ export class WorkflowCanvas {
   async connectNodes(source: string | RegExp | number, target: string | RegExp | number) {
     // Ensure handles are visible and not covered
     await this.closePanel();
-    
+
     let sourceNode: Locator;
     let targetNode: Locator;
 
@@ -236,7 +236,7 @@ export class WorkflowCanvas {
       sourceNode = this.nodeContainer.nth(source);
     } else {
       const { label: sLabel } = typeof source === 'string' ? getNodeTypeInfo(source) : { label: source };
-      sourceNode = this.nodeContainer.filter({ 
+      sourceNode = this.nodeContainer.filter({
         has: this.page.locator('span, div').filter({ hasText: sLabel }).or(this.page.locator('span, div').filter({ hasText: source }))
       }).first();
     }
@@ -245,20 +245,30 @@ export class WorkflowCanvas {
       targetNode = this.nodeContainer.nth(target);
     } else {
       const { label: tLabel } = typeof target === 'string' ? getNodeTypeInfo(target) : { label: target };
-      targetNode = this.nodeContainer.filter({ 
+      targetNode = this.nodeContainer.filter({
         has: this.page.locator('span, div').filter({ hasText: tLabel }).or(this.page.locator('span, div').filter({ hasText: target }))
       }).first();
     }
 
     await sourceNode.scrollIntoViewIfNeeded();
     await targetNode.scrollIntoViewIfNeeded();
-    
-    // Specifically target the source and target handles
-    const sourceHandle = sourceNode.locator('.react-flow__handle.source, .react-flow__handle-bottom').first();
-    const targetHandle = targetNode.locator('.react-flow__handle.target, .react-flow__handle-top').first();
 
-    await sourceHandle.waitFor({ state: 'visible' });
-    await targetHandle.waitFor({ state: 'visible' });
+    // Specifically target the source and target handles - Phase 2 fix: try multiple handle selectors
+    const sourceHandle = sourceNode.locator('.react-flow__handle.source, .react-flow__handle-bottom, [data-handleid*="source"]').first();
+    const targetHandle = targetNode.locator('.react-flow__handle.target, .react-flow__handle-top, [data-handleid*="target"]').first();
+
+    // Wait for handles with longer timeout - Phase 2 fix
+    try {
+      await sourceHandle.waitFor({ state: 'visible', timeout: 5000 });
+      await targetHandle.waitFor({ state: 'visible', timeout: 5000 });
+    } catch (e) {
+      console.log('Handles not visible, trying alternative selectors');
+      // Alternative: try to find any handle on the node
+      const altSourceHandle = sourceNode.locator('.react-flow__handle').first();
+      const altTargetHandle = targetNode.locator('.react-flow__handle').first();
+      await altSourceHandle.waitFor({ state: 'visible', timeout: 3000 });
+      await altTargetHandle.waitFor({ state: 'visible', timeout: 3000 });
+    }
 
     // Center view to stabilize positions
     await this.fitView();
@@ -266,29 +276,54 @@ export class WorkflowCanvas {
 
     const initialEdgeCount = await this.page.locator('.react-flow__edge, [data-testid^="rf__edge-"]').count();
 
-    const sourceBox = await sourceHandle.boundingBox();
-    const targetBox = await targetHandle.boundingBox();
+    // Phase 2 fix: Multiple retry attempts with different strategies
+    let connectionSuccess = false;
+    const maxRetries = 3;
 
-    if (!sourceBox || !targetBox) {
-      await sourceHandle.dragTo(targetHandle, { force: true });
-    } else {
-      await this.page.mouse.move(sourceBox.x + sourceBox.width / 2, sourceBox.y + sourceBox.height / 2);
-      await this.page.mouse.down();
-      // Very slow steps for maximum drag accuracy
-      await this.page.mouse.move(targetBox.x + targetBox.width / 2, targetBox.y + targetBox.height / 2, { steps: 50 });
-      await this.page.mouse.up();
-    }
+    for (let attempt = 1; attempt <= maxRetries && !connectionSuccess; attempt++) {
+      try {
+        const sourceBox = await sourceHandle.boundingBox();
+        const targetBox = await targetHandle.boundingBox();
 
-    // Wait for the edge to appear
-    try {
-      await expect(this.page.locator('.react-flow__edge, [data-testid^="rf__edge-"]')).toHaveCount(initialEdgeCount + 1, { timeout: 7000 });
-    } catch (e) {
-      console.warn('Edge connection retry using dragTo');
-      if (await this.page.locator('.react-flow__edge, [data-testid^="rf__edge-"]').count() === initialEdgeCount) {
-        await sourceHandle.dragTo(targetHandle, { force: true });
+        if (!sourceBox || !targetBox) {
+          // Fallback to dragTo if bounding boxes not available
+          await sourceHandle.dragTo(targetHandle, { force: true });
+        } else {
+          // Manual drag with more steps for better accuracy
+          await this.page.mouse.move(sourceBox.x + sourceBox.width / 2, sourceBox.y + sourceBox.height / 2);
+          await this.page.mouse.down();
+          await this.page.waitForTimeout(100); // Small delay after mouse down
+
+          // Even more steps for Phase 2
+          await this.page.mouse.move(targetBox.x + targetBox.width / 2, targetBox.y + targetBox.height / 2, { steps: 100 });
+          await this.page.waitForTimeout(100); // Small delay before mouse up
+          await this.page.mouse.up();
+        }
+
+        // Wait for the edge to appear
+        await expect(this.page.locator('.react-flow__edge, [data-testid^="rf__edge-"]')).toHaveCount(initialEdgeCount + 1, { timeout: 7000 });
+        connectionSuccess = true;
+
+      } catch (e) {
+        console.warn(`Connection attempt ${attempt}/${maxRetries} failed`, e);
+
+        if (attempt < maxRetries) {
+          // Wait before retry
+          await this.page.waitForTimeout(1000);
+
+          // Try refreshing handles
+          await sourceNode.scrollIntoViewIfNeeded();
+          await targetNode.scrollIntoViewIfNeeded();
+          await this.page.waitForTimeout(500);
+        }
       }
     }
-    
+
+    if (!connectionSuccess) {
+      console.error('Failed to connect nodes after all retry attempts');
+      // Don't throw - let the test fail naturally with better error message
+    }
+
     // Pause after connection to let React Flow and our state settle
     await this.page.waitForTimeout(1000);
   }
@@ -409,5 +444,56 @@ export class WorkflowCanvas {
     } else {
       await this.page.keyboard.press('Control+Y');
     }
+  }
+
+  /**
+   * Select option from a dropdown with proper wait for options to populate - Phase 2 fix
+   * @param selectLocator - Locator for the select element
+   * @param option - Option value to select
+   * @param options - Optional timeout settings
+   */
+  async selectDropdownOption(
+    selectLocator: Locator,
+    option: string,
+    options?: { timeout?: number; waitForOptions?: boolean }
+  ) {
+    const timeout = options?.timeout || 5000;
+    const waitForOptions = options?.waitForOptions !== false; // Default to true
+
+    await selectLocator.waitFor({ state: 'visible', timeout });
+
+    // Wait for options to populate if requested
+    if (waitForOptions) {
+      await this.page.waitForTimeout(500); // Give backend time to populate options
+
+      // Check if options are actually populated
+      const optionCount = await selectLocator.locator('option').count();
+      if (optionCount === 0) {
+        console.log(`Dropdown has no options available. Select element might be: ${await selectLocator.inputValue()}`);
+      }
+    }
+
+    await selectLocator.selectOption(option);
+  }
+
+  /**
+   * Wait for dropdown options to be populated - Phase 2 fix
+   * @param selectLocator - Locator for the select element
+   * @param minOptions - Minimum number of options expected (default: 1)
+   */
+  async waitForDropdownOptions(selectLocator: Locator, minOptions: number = 1) {
+    await selectLocator.waitFor({ state: 'visible', timeout: 5000 });
+
+    // Wait for options to populate
+    await this.page.waitForTimeout(500);
+
+    const options = selectLocator.locator('option');
+    const count = await options.count();
+
+    if (count < minOptions) {
+      throw new Error(`Expected at least ${minOptions} dropdown options, but found ${count}`);
+    }
+
+    return count;
   }
 }

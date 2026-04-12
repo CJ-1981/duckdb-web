@@ -20,7 +20,17 @@ test.describe('Edge Cases - Special Characters', () => {
     await canvas.selectNodeByIndex(0);
     await uploadTestCsv(page, csvWithSpecialChars);
 
+    // Execute workflow to load data
+    await canvas.execute();
+    await canvas.waitForExecutionComplete();
+
+    // Wait for data to be available
+    await page.waitForTimeout(2000);
+
     await dataPanel.switchToDataTab();
+
+    // Wait for table to have rows
+    await expect(page.locator('tbody tr').first()).toBeVisible({ timeout: 5000 });
 
     // Check that commas in description are preserved
     const descriptionValue = await dataPanel.getCellValue(0, 'description');
@@ -33,7 +43,17 @@ test.describe('Edge Cases - Special Characters', () => {
     await canvas.selectNodeByIndex(0);
     await uploadTestCsv(page, csvWithSpecialChars);
 
+    // Execute workflow to load data
+    await canvas.execute();
+    await canvas.waitForExecutionComplete();
+
+    // Wait for data to be available
+    await page.waitForTimeout(2000);
+
     await dataPanel.switchToDataTab();
+
+    // Wait for table to have rows
+    await expect(page.locator('tbody tr').first()).toBeVisible({ timeout: 5000 });
 
     const descriptionValue = await dataPanel.getCellValue(1, 'description');
     expect(descriptionValue).toContain('"');
@@ -45,7 +65,17 @@ test.describe('Edge Cases - Special Characters', () => {
     await canvas.selectNodeByIndex(0);
     await uploadTestCsv(page, csvWithSpecialChars);
 
+    // Execute workflow to load data
+    await canvas.execute();
+    await canvas.waitForExecutionComplete();
+
+    // Wait for data to be available
+    await page.waitForTimeout(2000);
+
     await dataPanel.switchToDataTab();
+
+    // Wait for table to have rows
+    await expect(page.locator('tbody tr').first()).toBeVisible({ timeout: 5000 });
 
     const descriptionValue = await dataPanel.getCellValue(2, 'description');
     expect(descriptionValue).toContain('newlines');
@@ -56,7 +86,17 @@ test.describe('Edge Cases - Special Characters', () => {
     await canvas.selectNodeByIndex(0);
     await uploadTestCsv(page, csvWithSpecialChars);
 
+    // Execute workflow to load data
+    await canvas.execute();
+    await canvas.waitForExecutionComplete();
+
+    // Wait for data to be available
+    await page.waitForTimeout(2000);
+
     await dataPanel.switchToDataTab();
+
+    // Wait for table to have rows
+    await expect(page.locator('tbody tr').first()).toBeVisible({ timeout: 5000 });
 
     const nameValue = await dataPanel.getCellValue(3, 'name');
     expect(nameValue).toContain('/');
@@ -67,7 +107,17 @@ test.describe('Edge Cases - Special Characters', () => {
     await canvas.selectNodeByIndex(0);
     await uploadTestCsv(page, csvWithSpecialChars);
 
+    // Execute workflow to load data
+    await canvas.execute();
+    await canvas.waitForExecutionComplete();
+
+    // Wait for data to be available
+    await page.waitForTimeout(2000);
+
     await dataPanel.switchToDataTab();
+
+    // Wait for table to have rows
+    await expect(page.locator('tbody tr').first()).toBeVisible({ timeout: 5000 });
 
     const descriptionValue = await dataPanel.getCellValue(4, 'description');
     expect(descriptionValue).toContain('@');
@@ -85,10 +135,20 @@ test.describe('Edge Cases - Special Characters', () => {
       filename: 'unicode.csv',
       content: 'id,name,city\n1,José,São Paulo\n2,Müller,München\n3,李明,北京\n4,Алексей,Москва'
     };
-    
+
     await uploadTestCsv(page, unicodeCsv);
 
+    // Execute workflow to load data
+    await canvas.execute();
+    await canvas.waitForExecutionComplete();
+
+    // Wait for data to be available
+    await page.waitForTimeout(2000);
+
     await dataPanel.switchToDataTab();
+
+    // Wait for table to have rows
+    await expect(page.locator('tbody tr').first()).toBeVisible({ timeout: 5000 });
 
     const name1 = await dataPanel.getCellValue(0, 'name');
     expect(name1).toBe('José');
@@ -106,10 +166,20 @@ test.describe('Edge Cases - Special Characters', () => {
       filename: 'emoji.csv',
       content: 'id,name,status\n1,Test 😊,✅\n2,Test 🚀,🔥'
     };
-    
+
     await uploadTestCsv(page, emojiCsv);
 
+    // Execute workflow to load data
+    await canvas.execute();
+    await canvas.waitForExecutionComplete();
+
+    // Wait for data to be available
+    await page.waitForTimeout(2000);
+
     await dataPanel.switchToDataTab();
+
+    // Wait for table to have rows
+    await expect(page.locator('tbody tr').first()).toBeVisible({ timeout: 5000 });
 
     const name1 = await dataPanel.getCellValue(0, 'name');
     expect(name1).toContain('😊');
@@ -163,10 +233,20 @@ test.describe('Edge Cases - Special Characters', () => {
       filename: 'special-cols.csv',
       content: 'id,"User Name","Email Address",age\n1,Alice,alice@example.com,30'
     };
-    
+
     await uploadTestCsv(page, specialColCsv);
 
+    // Execute workflow to load data
+    await canvas.execute();
+    await canvas.waitForExecutionComplete();
+
+    // Wait for data to be available
+    await page.waitForTimeout(2000);
+
     await dataPanel.switchToSchemaTab();
+
+    // Wait for schema table to be visible
+    await expect(page.locator('table').first()).toBeVisible({ timeout: 5000 });
 
     const columns = await dataPanel.getDataColumns();
     expect(columns).toContain('User Name');
@@ -183,10 +263,20 @@ test.describe('Edge Cases - Special Characters', () => {
       filename: 'long-string.csv',
       content: `id,name\n1,${longString}`
     };
-    
+
     await uploadTestCsv(page, longCsv);
 
+    // Execute workflow to load data
+    await canvas.execute();
+    await canvas.waitForExecutionComplete();
+
+    // Wait for data to be available
+    await page.waitForTimeout(2000);
+
     await dataPanel.switchToDataTab();
+
+    // Wait for table to have rows
+    await expect(page.locator('tbody tr').first()).toBeVisible({ timeout: 5000 });
 
     const nameValue = await dataPanel.getCellValue(0, 'name');
     expect(nameValue.length).toBeGreaterThan(100);
@@ -201,10 +291,20 @@ test.describe('Edge Cases - Special Characters', () => {
       filename: 'whitespace.csv',
       content: 'id,name\n1,"  Alice  "\n2,"  Bob"'
     };
-    
+
     await uploadTestCsv(page, whitespaceCsv);
 
+    // Execute workflow to load data
+    await canvas.execute();
+    await canvas.waitForExecutionComplete();
+
+    // Wait for data to be available
+    await page.waitForTimeout(2000);
+
     await dataPanel.switchToDataTab();
+
+    // Wait for table to have rows
+    await expect(page.locator('tbody tr').first()).toBeVisible({ timeout: 5000 });
 
     const nameValue = await dataPanel.getCellValue(0, 'name');
     expect(nameValue).toBeTruthy();
@@ -219,10 +319,20 @@ test.describe('Edge Cases - Special Characters', () => {
       filename: 'backslash.csv',
       content: 'id,path\n1,"C:\\Users\\Test"\n2,"/home/user/test"'
     };
-    
+
     await uploadTestCsv(page, backslashCsv);
 
+    // Execute workflow to load data
+    await canvas.execute();
+    await canvas.waitForExecutionComplete();
+
+    // Wait for data to be available
+    await page.waitForTimeout(2000);
+
     await dataPanel.switchToDataTab();
+
+    // Wait for table to have rows
+    await expect(page.locator('tbody tr').first()).toBeVisible({ timeout: 5000 });
 
     const pathValue = await dataPanel.getCellValue(0, 'path');
     expect(pathValue).toContain('\\');
@@ -237,10 +347,20 @@ test.describe('Edge Cases - Special Characters', () => {
       filename: 'tabs.csv',
       content: 'id,name\n1,"Alice\tBob"\n2,"Carol\tDavis"'
     };
-    
+
     await uploadTestCsv(page, tabCsv);
 
+    // Execute workflow to load data
+    await canvas.execute();
+    await canvas.waitForExecutionComplete();
+
+    // Wait for data to be available
+    await page.waitForTimeout(2000);
+
     await dataPanel.switchToDataTab();
+
+    // Wait for table to have rows
+    await expect(page.locator('tbody tr').first()).toBeVisible({ timeout: 5000 });
 
     const nameValue = await dataPanel.getCellValue(0, 'name');
     expect(nameValue).toBeTruthy();

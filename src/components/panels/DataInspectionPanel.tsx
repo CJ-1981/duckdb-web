@@ -181,6 +181,16 @@ export default function DataInspectionPanel({ nodeId, nodeLabel, nodeSamples, no
   const samples = nodeSamples[nodeId] || [];
   const types = nodeTypes[nodeId] || [];
 
+  // Phase 3 fix: Debug logging for missing data
+  if (samples.length === 0 && types.length === 0) {
+    console.log('[DataInspectionPanel] No data for node:', nodeId, {
+      availableNodeIds: Object.keys(nodeSamples),
+      availableTypeIds: Object.keys(nodeTypes),
+      nodeSamplesKeys: Object.keys(nodeSamples).slice(0, 3),
+      nodeTypesKeys: Object.keys(nodeTypes).slice(0, 3),
+    });
+  }
+
   const sampleStats = useMemo(() => computeSampleStats(samples, types), [samples, types]);
   const displayStats = useFullStats && fullStats ? fullStats.columns : sampleStats;
 

@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 import { WorkflowCanvas } from '../pages/WorkflowCanvas';
 import { DataInspectionPanel } from '../pages/DataInspectionPanel';
 import { salesData } from '../fixtures/testData';
-import { assertNodeExists, assertAggregateConfigured, assertSqlPreviewContains } from '../fixtures/assertions';
+import { assertNodeExists, assertSqlPreviewContains } from '../fixtures/assertions';
 import { uploadTestCsv } from '../fixtures/testData';
 
 test.describe('Aggregate Node Tests', () => {
@@ -27,31 +27,30 @@ test.describe('Aggregate Node Tests', () => {
     await canvas.selectNodeByIndex(0);
     await uploadTestCsv(page, salesData);
 
+    // Execute input node first - Phase 2 fix
+    await canvas.execute();
+    await canvas.waitForExecutionComplete();
+
     await canvas.dragNodeToCanvas('aggregate', { x: 300, y: 100 });
 
-    const nodes = await canvas.getAllNodeLabels();
-    if (nodes.length >= 2) {
-      await canvas.connectNodes(nodes[0], nodes[1]);
+    await canvas.connectNodes(0, 1);
+    await canvas.clickNode(1);  // Use index
 
-      // Click aggregate node and configure
-      await canvas.clickNode(nodes.find(n => n.toLowerCase().includes('aggregate')) || 'Aggregate');
-
-      // Configure group by (wait for options to be available)
-      const groupByInput = page.locator('[data-testid="groupby-checkbox"]').first();
-      if (await groupByInput.isVisible()) {
-        await groupByInput.check();
-      } else {
-        // Fallback if the UI uses a different input type for group by
-        const groupSelect = page.locator('input[name="groupBy"], [data-testid="group-by-input"]');
-        if (await groupSelect.isVisible()) {
-          await groupSelect.fill('region');
-        }
+    // Configure group by (wait for options to be available)
+    const groupByInput = page.locator('[data-testid="groupby-checkbox"]').first();
+    if (await groupByInput.isVisible({ timeout: 5000 })) {
+      await groupByInput.check();
+    } else {
+      // Fallback if the UI uses a different input type for group by
+      const groupSelect = page.locator('input[name="groupBy"], [data-testid="group-by-input"]');
+      if (await groupSelect.isVisible({ timeout: 3000 })) {
+        await groupSelect.fill('region');
       }
-
-      await page.waitForTimeout(1000);
-
-      await assertSqlPreviewContains(page, 'GROUP BY');
     }
+
+    await page.waitForTimeout(1000);
+
+    await assertSqlPreviewContains(page, 'GROUP BY');
   });
 
   test('should add aggregation column', async ({ page }) => {
@@ -59,25 +58,28 @@ test.describe('Aggregate Node Tests', () => {
     await canvas.selectNodeByIndex(0);
     await uploadTestCsv(page, salesData);
 
+    // Execute input node first so schema is available - Phase 2 fix
+    await canvas.execute();
+    await canvas.waitForExecutionComplete();
+
     await canvas.dragNodeToCanvas('aggregate', { x: 300, y: 100 });
 
     const nodes = await canvas.getAllNodeLabels();
     if (nodes.length >= 2) {
-      await canvas.connectNodes(nodes[0], nodes[1]);
+      await canvas.connectNodes(0, 1);
 
-      await canvas.clickNode(nodes.find(n => n.toLowerCase().includes('aggregate')) || 'Aggregate');
+      await canvas.clickNode(1);  // Use index
 
       // Look for add aggregation button
       const addAggButton = page.locator('button:has-text("Add"), button:has-text("Add Aggregation")');
-      if (await addAggButton.isVisible()) {
+      if (await addAggButton.isVisible({ timeout: 5000 })) {
         await addAggButton.click();
 
         const columnSelect = page.locator('select[name="agg-column"]');
-        await columnSelect.waitFor({ state: 'visible' });
-        await columnSelect.selectOption('sales');
+        await canvas.selectDropdownOption(columnSelect, 'sales');
 
         const operationSelect = page.locator('select[name="agg-operation"]');
-        await operationSelect.selectOption('sum');
+        await canvas.selectDropdownOption(operationSelect, 'sum');
 
         const aliasInput = page.locator('input[name="agg-alias"]');
         await aliasInput.fill('total_sales');
@@ -95,28 +97,28 @@ test.describe('Aggregate Node Tests', () => {
     await canvas.selectNodeByIndex(0);
     await uploadTestCsv(page, salesData);
 
+    // Execute input node first - Phase 2 fix
+    await canvas.execute();
+    await canvas.waitForExecutionComplete();
+
     await canvas.dragNodeToCanvas('aggregate', { x: 300, y: 100 });
 
-    const nodes = await canvas.getAllNodeLabels();
-    if (nodes.length >= 2) {
-      await canvas.connectNodes(nodes[0], nodes[1]);
+    await canvas.connectNodes(0, 1);
+    await canvas.clickNode(1);  // Use index
 
-      await canvas.clickNode(nodes.find(n => n.toLowerCase().includes('aggregate')) || 'Aggregate');
-
-      // Add multiple aggregations
-      const addAggButton = page.locator('button:has-text("Add")');
-      if (await addAggButton.isVisible()) {
-        await addAggButton.click();
-        await addAggButton.click();
-      }
-
-      await page.waitForTimeout(1000);
-
-      // Check that both aggregations are present
-      const aggRows = page.locator('select[name="agg-column"]');
-      const count = await aggRows.count();
-      expect(count).toBeGreaterThanOrEqual(2);
+    // Add multiple aggregations
+    const addAggButton = page.locator('button:has-text("Add")');
+    if (await addAggButton.isVisible({ timeout: 5000 })) {
+      await addAggButton.click();
+      await addAggButton.click();
     }
+
+    await page.waitForTimeout(1000);
+
+    // Check that both aggregations are present
+    const aggRows = page.locator('select[name="agg-column"]');
+    const count = await aggRows.count();
+    expect(count).toBeGreaterThanOrEqual(2);
   });
 
   test('should support all aggregation operations', async ({ page }) => {
@@ -124,9 +126,13 @@ test.describe('Aggregate Node Tests', () => {
     await canvas.selectNodeByIndex(0);
     await uploadTestCsv(page, salesData);
 
+    // Execute input node first - Phase 2 fix
+    await canvas.execute();
+    await canvas.waitForExecutionComplete();
+
     await canvas.dragNodeToCanvas('aggregate', { x: 300, y: 100 });
     await canvas.connectNodes(0, 1);
-    await canvas.clickNode('Aggregate');
+    await canvas.clickNode(1);  // Use index
 
     const operations = ['sum', 'avg', 'count', 'min', 'max'];
 
@@ -136,8 +142,8 @@ test.describe('Aggregate Node Tests', () => {
 
     for (const op of operations) {
       const operationSelect = page.locator('select[name="agg-operation"]').first();
-      if (await operationSelect.isVisible()) {
-        await operationSelect.selectOption(op);
+      if (await operationSelect.isVisible({ timeout: 3000 })) {
+        await canvas.selectDropdownOption(operationSelect, op, { waitForOptions: false });
         await page.waitForTimeout(500);
 
         const selectedValue = await operationSelect.inputValue();
@@ -151,33 +157,33 @@ test.describe('Aggregate Node Tests', () => {
     await canvas.selectNodeByIndex(0);
     await uploadTestCsv(page, salesData);
 
+    // Execute input node first - Phase 2 fix
+    await canvas.execute();
+    await canvas.waitForExecutionComplete();
+
     await canvas.dragNodeToCanvas('aggregate', { x: 300, y: 100 });
 
-    const nodes = await canvas.getAllNodeLabels();
-    if (nodes.length >= 2) {
-      await canvas.connectNodes(nodes[0], nodes[1]);
+    await canvas.connectNodes(0, 1);
+    await canvas.clickNode(1);  // Use index
 
-      await canvas.clickNode(nodes.find(n => n.toLowerCase().includes('aggregate')) || 'Aggregate');
+    // Add aggregation
+    const addAggButton = page.locator('button:has-text("Add")');
+    await addAggButton.click();
 
-      // Add aggregation
-      const addAggButton = page.locator('button:has-text("Add")');
-      await addAggButton.click();
+    const columnSelect = page.locator('select[name="agg-column"]');
+    await canvas.selectDropdownOption(columnSelect, 'sales');
 
-      const columnSelect = page.locator('select[name="agg-column"]');
-      await columnSelect.selectOption('sales');
+    const operationSelect = page.locator('select[name="agg-operation"]');
+    await canvas.selectDropdownOption(operationSelect, 'sum');
 
-      const operationSelect = page.locator('select[name="agg-operation"]');
-      await operationSelect.selectOption('sum');
+    const aliasInput = page.locator('input[name="agg-alias"]');
+    await aliasInput.fill('total');
 
-      const aliasInput = page.locator('input[name="agg-alias"]');
-      await aliasInput.fill('total');
+    await page.waitForTimeout(1000);
 
-      await page.waitForTimeout(1000);
-
-      // Verify SQL
-      await assertSqlPreviewContains(page, 'SELECT');
-      await assertSqlPreviewContains(page, 'SUM');
-    }
+    // Verify SQL
+    await assertSqlPreviewContains(page, 'SELECT');
+    await assertSqlPreviewContains(page, 'SUM');
   });
 
   test('should handle aggregation without group by', async ({ page }) => {
@@ -185,25 +191,25 @@ test.describe('Aggregate Node Tests', () => {
     await canvas.selectNodeByIndex(0);
     await uploadTestCsv(page, salesData);
 
+    // Execute input node first - Phase 2 fix
+    await canvas.execute();
+    await canvas.waitForExecutionComplete();
+
     await canvas.dragNodeToCanvas('aggregate', { x: 300, y: 100 });
 
-    const nodes = await canvas.getAllNodeLabels();
-    if (nodes.length >= 2) {
-      await canvas.connectNodes(nodes[0], nodes[1]);
+    await canvas.connectNodes(0, 1);
+    await canvas.clickNode(1);  // Use index
 
-      await canvas.clickNode(nodes.find(n => n.toLowerCase().includes('aggregate')) || 'Aggregate');
+    // Add aggregation
+    const addAggButton = page.locator('button:has-text("Add")');
+    await addAggButton.click();
 
-      // Add aggregation
-      const addAggButton = page.locator('button:has-text("Add")');
-      await addAggButton.click();
+    const operationSelect = page.locator('select[name="agg-operation"]');
+    await canvas.selectDropdownOption(operationSelect, 'count');
 
-      const operationSelect = page.locator('select[name="agg-operation"]');
-      await operationSelect.selectOption('count');
+    await page.waitForTimeout(1000);
 
-      await page.waitForTimeout(1000);
-
-      await assertSqlPreviewContains(page, 'COUNT');
-    }
+    await assertSqlPreviewContains(page, 'COUNT');
   });
 
   test('should remove aggregation column', async ({ page }) => {

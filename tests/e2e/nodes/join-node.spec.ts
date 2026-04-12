@@ -29,9 +29,8 @@ test.describe('Join Node Tests', () => {
 
     await assertNodeCount(page, 3);
 
-    const nodes = await canvas.getAllNodeLabels();
-    await canvas.connectNodes(nodes[0], nodes[2]);
-    await canvas.connectNodes(nodes[1], nodes[2]);
+    await canvas.connectNodes(0, 2);
+    await canvas.connectNodes(1, 2);
 
     // Check that both edges exist
     const edgeCount = await page.locator('.react-flow__edge').count();
@@ -40,15 +39,15 @@ test.describe('Join Node Tests', () => {
 
   test('should configure join type', async ({ page }) => {
     await canvas.dragNodeToCanvas('combine');
-    await canvas.clickNode('Join');
+    await canvas.clickNode(0);  // Use index
 
     // Look for join type selector
     const joinTypeSelect = page.locator('select[name="joinType"]');
-    if (await joinTypeSelect.isVisible()) {
+    if (await joinTypeSelect.isVisible({ timeout: 5000 })) {
       const joinTypes = ['inner', 'left', 'right', 'full'];
 
       for (const type of joinTypes) {
-        await joinTypeSelect.selectOption(type);
+        await canvas.selectDropdownOption(joinTypeSelect, type, { waitForOptions: false });
         await page.waitForTimeout(500);
 
         const selectedValue = await joinTypeSelect.inputValue();
@@ -66,22 +65,23 @@ test.describe('Join Node Tests', () => {
     await canvas.selectNodeByIndex(1);
     await uploadTestCsv(page, ordersData);
 
+    // Execute both input nodes first - Phase 2 fix
+    await canvas.execute();
+    await canvas.waitForExecutionComplete();
+
     await canvas.dragNodeToCanvas('combine', { x: 400, y: 200 });
 
-    const nodes = await canvas.getAllNodeLabels();
-    await canvas.connectNodes(nodes[0], nodes[2]);
-    await canvas.connectNodes(nodes[1], nodes[2]);
-
-    await canvas.clickNode(nodes[2]);
+    await canvas.connectNodes(0, 2);
+    await canvas.connectNodes(1, 2);
+    await canvas.clickNode(2);  // Use index
 
     // Configure left key
     const leftKeySelect = page.locator('select[name="leftColumn"]');
-    await leftKeySelect.waitFor({ state: 'visible' });
-    await leftKeySelect.selectOption('id');
+    await canvas.selectDropdownOption(leftKeySelect, 'id');
 
     // Configure right key
     const rightKeySelect = page.locator('select[name="rightColumn"]');
-    await rightKeySelect.selectOption('user_id');
+    await canvas.selectDropdownOption(rightKeySelect, 'user_id');
 
     await page.waitForTimeout(1000);
 
@@ -98,21 +98,23 @@ test.describe('Join Node Tests', () => {
     await canvas.selectNodeByIndex(1);
     await uploadTestCsv(page, ordersData);
 
+    // Execute both input nodes first - Phase 2 fix
+    await canvas.execute();
+    await canvas.waitForExecutionComplete();
+
     await canvas.dragNodeToCanvas('combine', { x: 400, y: 200 });
 
-    const nodes = await canvas.getAllNodeLabels();
-    await canvas.connectNodes(nodes[0], nodes[2]);
-    await canvas.connectNodes(nodes[1], nodes[2]);
-
-    await canvas.clickNode(nodes[2]);
+    await canvas.connectNodes(0, 2);
+    await canvas.connectNodes(1, 2);
+    await canvas.clickNode(2);  // Use index
 
     // Configure as inner join
     const joinTypeSelect = page.locator('select[name="joinType"]');
-    await joinTypeSelect.selectOption('inner');
+    await canvas.selectDropdownOption(joinTypeSelect, 'inner');
 
     // Configure keys to ensure valid SQL
-    await page.locator('select[name="leftColumn"]').selectOption('id');
-    await page.locator('select[name="rightColumn"]').selectOption('user_id');
+    await canvas.selectDropdownOption(page.locator('select[name="leftColumn"]'), 'id');
+    await canvas.selectDropdownOption(page.locator('select[name="rightColumn"]'), 'user_id');
 
     await page.waitForTimeout(1000);
 
@@ -124,16 +126,14 @@ test.describe('Join Node Tests', () => {
     await canvas.dragNodeToCanvas('input', { x: 100, y: 300 });
     await canvas.dragNodeToCanvas('combine', { x: 400, y: 200 });
 
-    const nodes = await canvas.getAllNodeLabels();
-    await canvas.connectNodes(nodes[0], nodes[2]);
-    await canvas.connectNodes(nodes[1], nodes[2]);
-
-    await canvas.clickNode(nodes[2]);
+    await canvas.connectNodes(0, 1);
+    await canvas.connectNodes(1, 2);
+    await canvas.clickNode(2);  // Use index
 
     // Look for union option
     const joinTypeSelect = page.locator('select[name="joinType"]');
-    if (await joinTypeSelect.isVisible()) {
-      await joinTypeSelect.selectOption('union');
+    if (await joinTypeSelect.isVisible({ timeout: 5000 })) {
+      await canvas.selectDropdownOption(joinTypeSelect, 'union');
       await page.waitForTimeout(1000);
       await assertSqlPreviewContains(page, 'UNION');
     }
@@ -148,20 +148,23 @@ test.describe('Join Node Tests', () => {
     await canvas.selectNodeByIndex(1);
     await uploadTestCsv(page, ordersData);
 
+    // Execute input nodes first - Phase 2 fix
+    await canvas.execute();
+    await canvas.waitForExecutionComplete();
+
     await canvas.dragNodeToCanvas('combine', { x: 400, y: 200 });
     await canvas.dragNodeToCanvas('output', { x: 700, y: 200 });
 
-    const nodes = await canvas.getAllNodeLabels();
-    await canvas.connectNodes(nodes[0], nodes[2]);
-    await canvas.connectNodes(nodes[1], nodes[2]);
-    await canvas.connectNodes(nodes[2], nodes[3]);
+    await canvas.connectNodes(0, 2);
+    await canvas.connectNodes(1, 2);
+    await canvas.connectNodes(2, 3);
 
     // Configure join
-    await canvas.clickNode(nodes[2]);
+    await canvas.clickNode(2);  // Use index
 
-    await page.locator('select[name="joinType"]').selectOption('inner');
-    await page.locator('select[name="leftColumn"]').selectOption('id');
-    await page.locator('select[name="rightColumn"]').selectOption('user_id');
+    await canvas.selectDropdownOption(page.locator('select[name="joinType"]'), 'inner');
+    await canvas.selectDropdownOption(page.locator('select[name="leftColumn"]'), 'id');
+    await canvas.selectDropdownOption(page.locator('select[name="rightColumn"]'), 'user_id');
 
     await page.waitForTimeout(1000);
 
@@ -170,9 +173,13 @@ test.describe('Join Node Tests', () => {
     await canvas.waitForExecutionComplete();
 
     // Check results
-    await canvas.clickNode(nodes[3]);
+    await canvas.clickNode(3);  // Use index for output
+    await page.waitForTimeout(1000);
+
     await dataPanel.switchToDataTab();
 
-    await expect(page.locator('table').first()).toBeVisible();
+    // Wait for table to be visible with rows
+    await expect(page.locator('table').first()).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('tbody tr').first()).toBeVisible({ timeout: 5000 });
   });
 });
