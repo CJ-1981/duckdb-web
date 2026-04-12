@@ -2,6 +2,7 @@ import { test, expect } from '@playwright/test';
 import { WorkflowCanvas } from '../pages/WorkflowCanvas';
 import { DataInspectionPanel } from '../pages/DataInspectionPanel';
 import { sampleCsvData } from '../fixtures/testData';
+import { uploadTestCsv } from '../fixtures/testData';
 
 test.describe('Smoke Tests - Basic Workflow', () => {
   let canvas: WorkflowCanvas;
@@ -161,6 +162,12 @@ test.describe('Smoke Tests - Basic Workflow', () => {
   test('should switch between data panel tabs', async ({ page }) => {
     await canvas.dragNodeToCanvas('input');
     await canvas.selectNodeByIndex(0);
+    await uploadTestCsv(page, sampleCsvData);
+
+    // Execute workflow to load data
+    await canvas.execute();
+    await canvas.waitForExecutionComplete();
+    await page.waitForTimeout(2000); // Wait for data propagation
 
     await dataPanel.switchToDataTab();
     await expect(dataPanel.dataTable).toBeVisible();
