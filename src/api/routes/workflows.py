@@ -1331,9 +1331,19 @@ async def execute_workflow_graph(
                             _NODE_CACHE[node_id]["schema"] = schema
                         else:
                             # Fallback to ALL_VARCHAR if schema inference fails
-                            # Treat empty strings as NULL during CSV load
-                            conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT * FROM read_csv_auto(?, ALL_VARCHAR=TRUE, nullstr='')", [file_path])
-                            logger.info(f">>> [CSV LOAD] Created table {table_name} with ALL_VARCHAR (schema inference failed)")
+                            # Load into temp view first, then create final table with NULLIF for empty string handling
+                            temp_view = f"{table_name}_raw"
+                            conn.execute(f"CREATE OR REPLACE TEMP TABLE {temp_view} AS SELECT * FROM read_csv_auto(?, ALL_VARCHAR=TRUE, nullstr='')", [file_path])
+
+                            # Get column names and create NULLIF expressions for all columns
+                            res = conn.execute(f"DESCRIBE {temp_view}").df()
+                            actual_cols = res['column_name'].tolist()
+
+                            # Build SELECT with NULLIF for all columns to convert empty strings to NULL
+                            nullif_exprs = [f"NULLIF(TRIM(CAST({quote_identifier(col)} AS VARCHAR)), '') AS {quote_identifier(col)}" for col in actual_cols]
+                            conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT {', '.join(nullif_exprs)} FROM {temp_view}")
+                            conn.execute(f"DROP TABLE IF EXISTS {temp_view}")
+                            logger.info(f">>> [CSV LOAD] Created table {table_name} with NULLIF handling (schema inference failed)")
                         node_to_table[node_id] = table_name
                 else:
                         # Standard Flat loading with schema inference
@@ -1364,9 +1374,19 @@ async def execute_workflow_graph(
                             _NODE_CACHE[node_id]["schema"] = schema
                         else:
                             # Fallback to ALL_VARCHAR if schema inference fails
-                            # Treat empty strings as NULL during CSV load
-                            conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT * FROM read_csv_auto(?, ALL_VARCHAR=TRUE, nullstr='')", [file_path])
-                            logger.info(f">>> [CSV LOAD] Created table {table_name} with ALL_VARCHAR (schema inference failed)")
+                            # Load into temp view first, then create final table with NULLIF for empty string handling
+                            temp_view = f"{table_name}_raw"
+                            conn.execute(f"CREATE OR REPLACE TEMP TABLE {temp_view} AS SELECT * FROM read_csv_auto(?, ALL_VARCHAR=TRUE, nullstr='')", [file_path])
+
+                            # Get column names and create NULLIF expressions for all columns
+                            res = conn.execute(f"DESCRIBE {temp_view}").df()
+                            actual_cols = res['column_name'].tolist()
+
+                            # Build SELECT with NULLIF for all columns to convert empty strings to NULL
+                            nullif_exprs = [f"NULLIF(TRIM(CAST({quote_identifier(col)} AS VARCHAR)), '') AS {quote_identifier(col)}" for col in actual_cols]
+                            conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT {', '.join(nullif_exprs)} FROM {temp_view}")
+                            conn.execute(f"DROP TABLE IF EXISTS {temp_view}")
+                            logger.info(f">>> [CSV LOAD] Created table {table_name} with NULLIF handling (schema inference failed)")
 
                         node_to_table[node_id] = table_name
                 
@@ -2174,8 +2194,18 @@ async def inspect_node_dataset(request: InspectRequest):
                         conn.execute(f"DROP TABLE IF EXISTS {temp_view}")
                     else:
                         # Fallback to DuckDB auto-detection if schema inference fails
-                        # Treat empty strings as NULL during CSV load
-                        conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT * FROM read_csv_auto(?, ALL_VARCHAR=TRUE, nullstr='')", [fp])
+                        # Load into temp view first, then create final table with NULLIF for empty string handling
+                        temp_view = f"{table_name}_raw"
+                        conn.execute(f"CREATE OR REPLACE TEMP TABLE {temp_view} AS SELECT * FROM read_csv_auto(?, ALL_VARCHAR=TRUE, nullstr='')", [fp])
+
+                        # Get column names and create NULLIF expressions for all columns
+                        res = conn.execute(f"DESCRIBE {temp_view}").df()
+                        actual_cols = res['column_name'].tolist()
+
+                        # Build SELECT with NULLIF for all columns to convert empty strings to NULL
+                        nullif_exprs = [f"NULLIF(TRIM(CAST({quote_identifier(col)} AS VARCHAR)), '') AS {quote_identifier(col)}" for col in actual_cols]
+                        conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT {', '.join(nullif_exprs)} FROM {temp_view}")
+                        conn.execute(f"DROP TABLE IF EXISTS {temp_view}")
                     node_to_table[node_id] = table_name
                 elif prev_table:
                     # Pass-through execution for all transformation nodes
