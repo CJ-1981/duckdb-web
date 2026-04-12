@@ -91,6 +91,12 @@ test.describe('Input Node Tests', () => {
       });
 
       await page.waitForTimeout(3000);
+
+      // Execute workflow to load data and compute statistics
+      await canvas.execute();
+      await canvas.waitForExecutionComplete();
+      await page.waitForTimeout(2000); // Wait for stats computation
+
       await dataPanel.switchToStatsTab();
 
       // Should show null counts
@@ -118,6 +124,12 @@ test.describe('Input Node Tests', () => {
       });
 
       await page.waitForTimeout(3000);
+
+      // Execute workflow to load data
+      await canvas.execute();
+      await canvas.waitForExecutionComplete();
+      await page.waitForTimeout(2000); // Wait for data to propagate
+
       await dataPanel.switchToDataTab();
 
       // Should preserve special characters
