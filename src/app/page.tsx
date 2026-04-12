@@ -806,6 +806,16 @@ function Dashboard() {
     try {
       const result = await executeWorkflow(getNodes(), getEdges(), previewLimit);
       setExecutionResult(result);
+
+      // Debug logging
+      console.log('[handleExecute] Workflow execution result:', {
+        node_samples_keys: Object.keys(result.node_samples || {}),
+        node_types_keys: Object.keys(result.node_types || {}),
+        node_samples_sample: result.node_samples ? Object.entries(result.node_samples).slice(0, 2) : {},
+        selectedNode_id: selectedNode?.id,
+        selectedNode_id_type: typeof selectedNode?.id
+      });
+
       if (result.node_samples) {
         setNodeSamples(result.node_samples);
       }
@@ -1363,7 +1373,7 @@ function Dashboard() {
                   <div className="flex-1 overflow-hidden bg-white flex flex-col">
                     {activeBottomTab === 0 && (
                       <DataInspectionPanel
-                        nodeId={selectedNode.id}
+                        nodeId={String(selectedNode.id)}
                         nodeLabel={String(selectedNode.data.label)}
                         nodeSamples={nodeSamples}
                         nodeTypes={nodeTypes}
