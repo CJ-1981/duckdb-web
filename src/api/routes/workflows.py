@@ -330,15 +330,17 @@ def build_cast_expressions(schema: Dict[str, str], table_alias: str = "", actual
 
         if col_type == 'INTEGER':
             # Clean Korean format (commas, currency) and cast to INTEGER
+            # Use COALESCE to handle NULL values after cleaning
             clean_expr = _build_regex_clean_expression(col_ref)
             cast_expressions.append(
-                f"TRY_CAST({clean_expr} AS INTEGER) AS {quoted_clean}"
+                f"COALESCE(TRY_CAST({clean_expr} AS INTEGER), NULL::INTEGER) AS {quoted_clean}"
             )
         elif col_type == 'FLOAT':
             # Clean Korean format and cast to DOUBLE (FLOAT in DuckDB)
+            # Use COALESCE to handle NULL values after cleaning
             clean_expr = _build_regex_clean_expression(col_ref)
             cast_expressions.append(
-                f"TRY_CAST({clean_expr} AS DOUBLE) AS {quoted_clean}"
+                f"COALESCE(TRY_CAST({clean_expr} AS DOUBLE), NULL::DOUBLE) AS {quoted_clean}"
             )
         elif col_type == 'DATE':
             # Cast to DATE
