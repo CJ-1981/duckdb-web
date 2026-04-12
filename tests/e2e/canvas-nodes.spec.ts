@@ -50,6 +50,9 @@ test.describe('Canvas and Node Tests', () => {
     // Add filter node
     await canvas.dragNodeToCanvas('filter', { x: 300, y: 100 });
 
+    // Phase 3 fix: Wait for nodes to stabilize before connecting
+    await canvas.waitForNodesStable();
+
     // Connect input to filter using flexible labels
     await canvas.connectNodes(/input|csv/i, /filter/i);
 
@@ -79,6 +82,9 @@ test.describe('Canvas and Node Tests', () => {
 
     // Add aggregate node
     await canvas.dragNodeToCanvas('aggregate', { x: 300, y: 100 });
+
+    // Phase 3 fix: Wait for nodes to stabilize before connecting
+    await canvas.waitForNodesStable();
 
     // Connect nodes using flexible labels
     await canvas.connectNodes(/input|csv/i, /aggregate/i);
@@ -113,6 +119,9 @@ test.describe('Canvas and Node Tests', () => {
     // Add join node
     await canvas.dragNodeToCanvas('join', { x: 300, y: 150 });
 
+    // Phase 3 fix: Wait for nodes to stabilize before connecting
+    await canvas.waitForNodesStable();
+
     // Connect both inputs to join
     await canvas.connectNodes(0, 2);
     await canvas.connectNodes(1, 2);
@@ -138,6 +147,9 @@ test.describe('Canvas and Node Tests', () => {
     // Add input and output nodes
     await canvas.dragNodeToCanvas('input');
     await canvas.dragNodeToCanvas('output', { x: 300, y: 100 });
+
+    // Phase 3 fix: Wait for nodes to stabilize before connecting
+    await canvas.waitForNodesStable();
 
     // Connect input to output
     await canvas.connectNodes(0, 1);
@@ -213,6 +225,9 @@ test.describe('Canvas and Node Tests', () => {
     await canvas.dragNodeToCanvas('input');
     await canvas.dragNodeToCanvas('filter', { x: 300, y: 100 });
 
+    // Phase 3 fix: Wait for nodes to stabilize before connecting
+    await canvas.waitForNodesStable();
+
     // Connect them using flexible labels
     await canvas.connectNodes(/input|csv/i, /filter/i);
 
@@ -225,6 +240,10 @@ test.describe('Canvas and Node Tests', () => {
     // Add and connect two nodes
     await canvas.dragNodeToCanvas('input');
     await canvas.dragNodeToCanvas('filter', { x: 300, y: 100 });
+
+    // Phase 3 fix: Wait for nodes to stabilize before connecting
+    await canvas.waitForNodesStable();
+
     await canvas.connectNodes(0, 1);
 
     // Wait for edge to be stable
