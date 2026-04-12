@@ -232,6 +232,13 @@ class CSVConnector(BaseConnector):
         Returns:
             DuckDB type name (INTEGER, FLOAT, BOOLEAN, DATE, VARCHAR)
         """
+        # Check for empty strings BEFORE filtering
+        # If column has empty values, default to VARCHAR to avoid casting errors
+        has_empty_values = any(
+            v == '' or (isinstance(v, str) and v.strip() == '')
+            for v in values
+        )
+
         # Filter out missing values and ensure all values are strings
         non_empty = []
         for v in values:
@@ -243,6 +250,14 @@ class CSVConnector(BaseConnector):
 
         if not non_empty:
             return 'VARCHAR'  # Default for empty columns
+
+        # If column has empty values, be conservative and use VARCHAR
+        # This prevents "Invalid value '' for dtype 'Int32'" errors during CAST
+        # The workflow will handle NULL values properly with TRY_CAST
+        if has_empty_values and len(non_empty) < len(values):
+            # Column has some empty values - use VARCHAR to be safe
+            # This ensures empty strings are preserved and handled by NULLIF later
+            return 'VARCHAR'
 
         # Try INTEGER with Korean format cleaning
         try:
@@ -371,10 +386,13 @@ class CSVConnector(BaseConnector):
             try:
                 import duckdb
                 conn = duckdb.connect(database=':memory:')
-                # Try reading with auto-detection
+                # Try reading with explicit parameters to avoid type detection errors
+                # Use read_csv (not read_csv_auto) with ALL_VARCHAR to prevent dtype errors
                 # Treat empty strings as NULL during CSV load
-                # Note: read_csv_auto automatically detects encoding
-                rel = conn.execute("SELECT * FROM read_csv_auto(?, ALL_VARCHAR=TRUE, nullstr='') LIMIT 100", [file_path])
+                rel = conn.execute(
+                    """SELECT * FROM read_csv(?, ALL_VARCHAR=TRUE, nullstr='', delim=',', header=True, quote='"') LIMIT 100""",
+                    [file_path]
+                )
                 # Convert to list of dictionaries directly, avoiding .df() conversion issues
                 columns = [desc[0] for desc in rel.description]
                 rows = [dict(zip(columns, row)) for row in rel.fetchall()]
