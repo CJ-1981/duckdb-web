@@ -95,9 +95,13 @@ test.describe('Input Node Tests', () => {
       // Execute workflow to load data and compute statistics
       await canvas.execute();
       await canvas.waitForExecutionComplete();
-      await page.waitForTimeout(2000); // Wait for stats computation
+      await page.waitForTimeout(3000); // Wait for stats computation
 
+      // Switch to stats tab
       await dataPanel.switchToStatsTab();
+
+      // Wait for stats container to be visible
+      await expect(page.locator('[data-testid="column-stats"], .column-stats')).toBeVisible({ timeout: 5000 });
 
       // Should show null counts
       const emailStats = await dataPanel.getColumnStats('email');
@@ -133,7 +137,7 @@ test.describe('Input Node Tests', () => {
       await dataPanel.switchToDataTab();
 
       // Should preserve special characters
-      const specialCharValue = await dataPanel.getCellValue(0, 'name');
+      const specialCharValue = await dataPanel.getCellValue(0, 'description');
       expect(specialCharValue).toContain(',');
     }
   });

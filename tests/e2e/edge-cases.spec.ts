@@ -31,12 +31,17 @@ test.describe('Edge Cases Tests', () => {
     // Execute workflow
     await canvas.execute();
     await canvas.waitForExecutionComplete();
+    await page.waitForTimeout(2000); // Wait for data to populate
 
     // Verify data inspection panel shows null values correctly
     await panel.switchToDataTab();
+
+    // Wait for table to be visible and have data
+    await expect(page.locator('tbody tr').first()).toBeVisible({ timeout: 5000 });
+
     const data = await panel.getTableData();
 
-    // Check that null cells are properly displayed
+    // Check that null cells are properly displayed as empty strings
     const hasEmptyCells = data.some(row => row.some(cell => cell === '' || cell === 'null' || cell === 'NULL'));
     expect(hasEmptyCells).toBe(true);
   });

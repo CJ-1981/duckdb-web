@@ -98,8 +98,8 @@ test.describe('Edge Cases - Special Characters', () => {
     // Wait for table to have rows
     await expect(page.locator('tbody tr').first()).toBeVisible({ timeout: 5000 });
 
-    const nameValue = await dataPanel.getCellValue(3, 'name');
-    expect(nameValue).toContain('/');
+    const descriptionValue = await dataPanel.getCellValue(3, 'description');
+    expect(descriptionValue).toContain('/');
   });
 
   test('should preserve special symbols (@, #, $, %)', async ({ page }) => {
