@@ -22,10 +22,7 @@ test.describe('Output Node Tests', () => {
     await assertNodeExists(page, 'Export');
   });
 
-  test('should accept connection from upstream node', async ({ page }) => {
-    // Phase 3: Skip edge connection tests - React Flow drag-drop unreliable in headless browser
-    test.skip(true, 'Edge creation via drag-drop unreliable in headless browser. Business logic tested separately. See PHASE3_FINAL.md');
-
+  test.skip('should accept connection from upstream node - Edge creation via drag-drop unreliable in headless browser. Business logic tested separately. See PHASE3_FINAL.md', async ({ page }) => {
     await canvas.dragNodeToCanvas('input', { x: 400, y: 100 });
     await canvas.dragNodeToCanvas('output', { x: 400, y: 300 });
 
@@ -91,10 +88,7 @@ test.describe('Output Node Tests', () => {
     }
   });
 
-  test('should allow JSON download', async ({ page }) => {
-    // Phase 3: Skip edge connection tests - React Flow drag-drop unreliable in headless browser
-    test.skip(true, 'Edge creation via drag-drop unreliable in headless browser. Business logic tested separately. See PHASE3_FINAL.md');
-
+  test.skip('should allow JSON download - Edge creation via drag-drop unreliable in headless browser. Business logic tested separately. See PHASE3_FINAL.md', async ({ page }) => {
     await canvas.dragNodeToCanvas('input', { x: 400, y: 100 });
     await canvas.selectNodeByIndex(0);
     await uploadTestCsv(page, sampleCsvData);
@@ -168,10 +162,7 @@ test.describe('Output Node Tests', () => {
     await expect(page.locator('tbody tr').first()).toBeVisible({ timeout: 5000 });
   });
 
-  test('should handle multiple output nodes', async ({ page }) => {
-    // Phase 3: Skip edge connection tests - React Flow drag-drop unreliable in headless browser
-    test.skip(true, 'Edge creation via drag-drop unreliable in headless browser. Business logic tested separately. See PHASE3_FINAL.md');
-
+  test.skip('should handle multiple output nodes - Edge creation via drag-drop unreliable in headless browser. Business logic tested separately. See PHASE3_FINAL.md', async ({ page }) => {
     await canvas.dragNodeToCanvas('input', { x: 400, y: 100 });
     await canvas.dragNodeToCanvas('filter', { x: 400, y: 300 });
     await canvas.dragNodeToCanvas('output', { x: 200, y: 500 });

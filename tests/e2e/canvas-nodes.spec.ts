@@ -41,12 +41,7 @@ test.describe('Canvas and Node Tests', () => {
     await expect(fileNameDisplay).toBeVisible({ timeout: 5000 });
   });
 
-  test('filter node configuration', async ({ page }) => {
-    // Phase 3: Skip edge connection tests - React Flow drag-drop unreliable in headless browser
-    // Manual testing confirms edges work correctly in production.
-    // See: tests/e2e/PHASE3_FINAL.md for detailed analysis.
-    test.skip(true, 'Edge creation via drag-drop unreliable in headless browser. Business logic tested separately. See PHASE3_FINAL.md');
-
+  test.skip('filter node configuration - Edge creation via drag-drop unreliable in headless browser. Business logic tested separately. See PHASE3_FINAL.md', async ({ page }) => {
     // Add input node with data
     await canvas.dragNodeToCanvas('input');
     await canvas.selectNodeByIndex(0);
@@ -79,9 +74,7 @@ test.describe('Canvas and Node Tests', () => {
     });
   });
 
-  test('aggregate node configuration', async ({ page }) => {
-    // Phase 3: Skip edge connection tests - React Flow drag-drop unreliable in headless browser
-    test.skip(true, 'Edge creation via drag-drop unreliable in headless browser. Business logic tested separately. See PHASE3_FINAL.md');
+  test.skip('aggregate node configuration - Edge creation via drag-drop unreliable in headless browser. Business logic tested separately. See PHASE3_FINAL.md', async ({ page }) => {
 
     // Add input node with data
     await canvas.dragNodeToCanvas('input');
@@ -114,9 +107,7 @@ test.describe('Canvas and Node Tests', () => {
     });
   });
 
-  test('join node configuration', async ({ page }) => {
-    // Phase 3: Skip edge connection tests - React Flow drag-drop unreliable in headless browser
-    test.skip(true, 'Edge creation via drag-drop unreliable in headless browser. Business logic tested separately. See PHASE3_FINAL.md');
+  test.skip('join node configuration - Edge creation via drag-drop unreliable in headless browser. Business logic tested separately. See PHASE3_FINAL.md', async ({ page }) => {
 
     // Add two input nodes with data
     await canvas.dragNodeToCanvas('input');
@@ -231,9 +222,7 @@ test.describe('Canvas and Node Tests', () => {
     expect(rowCount).toMatch(/\d+/);
   });
 
-  test('can connect nodes with valid connection', async ({ page }) => {
-    // Phase 3: Skip edge connection tests - React Flow drag-drop unreliable in headless browser
-    test.skip(true, 'Edge creation via drag-drop unreliable in headless browser. Business logic tested separately. See PHASE3_FINAL.md');
+  test.skip('can connect nodes with valid connection - Edge creation via drag-drop unreliable in headless browser. Business logic tested separately. See PHASE3_FINAL.md', async ({ page }) => {
 
     // Add two nodes
     await canvas.dragNodeToCanvas('input');
@@ -250,9 +239,7 @@ test.describe('Canvas and Node Tests', () => {
     await expect(edge).toBeVisible();
   });
 
-  test('can disconnect nodes', async ({ page }) => {
-    // Phase 3: Skip edge connection tests - React Flow drag-drop unreliable in headless browser
-    test.skip(true, 'Edge creation via drag-drop unreliable in headless browser. Business logic tested separately. See PHASE3_FINAL.md');
+  test.skip('can disconnect nodes - Edge creation via drag-drop unreliable in headless browser. Business logic tested separately. See PHASE3_FINAL.md', async ({ page }) => {
 
     // Add and connect two nodes
     await canvas.dragNodeToCanvas('input');
@@ -279,10 +266,7 @@ test.describe('Canvas and Node Tests', () => {
     await expect(page.locator('.react-flow__edge, [data-testid^="rf__edge-"]')).toHaveCount(0, { timeout: 5000 });
   });
 
-  test('multiple nodes can be added and arranged', async ({ page }) => {
-    // Phase 3: Skip edge connection tests - React Flow drag-drop unreliable in headless browser
-    // This test requires connections, so skip it
-    test.skip(true, 'Edge creation via drag-drop unreliable in headless browser. Business logic tested separately. See PHASE3_FINAL.md');
+  test.skip('multiple nodes can be added and arranged - Edge creation via drag-drop unreliable in headless browser. Business logic tested separately. See PHASE3_FINAL.md', async ({ page }) => {
 
     // Add multiple nodes at different positions
     await canvas.dragNodeToCanvas('input', { x: 100, y: 100 });
