@@ -2,8 +2,12 @@
 
 import React, { useState, useEffect } from 'react';
 import WorkspaceCanvas from '@/components/workflow/canvas';
+import { SqlPreview } from '@/components/workflow/SqlPreview';
+import { buildSql, getConditionSql } from '@/components/workflow/SqlHelpers';
+import { WorkflowToolbar } from '@/components/workflow/WorkflowToolbar';
 import { Database, Filter, ArrowRightLeft, Table, Settings, Play, Search, LayoutDashboard, SlidersHorizontal, FileText, FileDown, Save, FolderOpen, Sigma, Eye, ChevronRight, SortAsc, ListOrdered, Calculator, Code, Fingerprint, PenLine, GitBranch, BarChart3, Plus, Trash2, Wand2, Microscope, PanelLeftClose, PanelLeftOpen, PanelBottomClose, Copy, X, CheckCheck, AlertCircle, RefreshCw, Globe, Repeat, Dices, Braces, DatabaseBackup } from 'lucide-react';
 import { Node, Edge, useReactFlow, ReactFlowProvider, useNodesState, useEdgesState, Panel } from '@xyflow/react';
+import { useWorkflowState } from '@/hooks/useWorkflowState';
 import { executeWorkflow, uploadFile, saveWorkflow, listSavedWorkflows, loadWorkflowGraph, generateReport, inspectNode, renameWorkflow, deleteWorkflow, validateSql, previewSql, getBackendUrl } from '@/lib/api-unified';
 import DataInspectionPanel, { type ColumnTypeDef, type FullStats } from '@/components/panels/DataInspectionPanel';
 import AiSqlBuilderPanel from '@/components/panels/AiSqlBuilderPanel';
@@ -20,172 +24,11 @@ interface WorkflowTab {
 }
 
 // ─── SQL Preview helpers ──────────────────────────────────────────────────────
-function SqlPreview({ sql }: { sql: string }) {
-  if (!sql) return null;
-  return (
-    <div className="mt-3">
-      <label className="flex items-center gap-1.5 text-xs font-semibold text-[#6B778C] mb-1">
-        <span className="inline-block w-2 h-2 rounded-full bg-green-400" />
-        Generated SQL Preview
-      </label>
-      <pre data-testid="sql-preview" className="bg-[#1E1E2E] text-[#CDD6F4] text-[11px] rounded-md p-3 font-mono overflow-x-auto whitespace-pre-wrap leading-relaxed">{sql}</pre>
-    </div>
-  );
-}
-
-function buildSql(subtype: string, cfg: any): string {
-  const T = '<prev_table>';
-  switch (subtype) {
-    case 'filter': {
-      if (cfg?.isAdvanced && cfg?.customWhere) {
-        return `SELECT *\nFROM ${T}\nWHERE ${cfg.customWhere}`;
-      }
-      const col = cfg?.column ? `"${cfg.column}"` : '/* column */';
-      const op = cfg?.operator || '==';
-      const val = String(cfg?.value || '');
-      const opMap: Record<string, string> = {
-        '==': `${col} = '${val}'`, '!=': `${col} != '${val}'`,
-        '>': `${col} > ${val}`, '<': `${col} < ${val}`,
-        '>=': `${col} >= ${val}`, '<=': `${col} <= ${val}`,
-        'contains': `${col} ILIKE '%${val}%'`,
-        'not_contains': `${col} NOT ILIKE '%${val}%'`,
-        'starts_with': `${col} ILIKE '${val}%'`,
-        'ends_with': `${col} ILIKE '%${val}'`,
-        'is_null': `${col} IS NULL`, 'is_not_null': `${col} IS NOT NULL`,
-        'in': `${col} IN (${val})`, 'not_in': `${col} NOT IN (${val})`,
-      };
-      return `SELECT *\nFROM ${T}\nWHERE ${opMap[op] ?? `${col} ${op} '${val}'`}`;
-    }
-    case 'combine': {
-      const jt = (cfg?.joinType || 'inner').toUpperCase();
-      if (['UNION', 'UNION ALL', 'APPEND'].includes(jt)) {
-        return `SELECT * FROM <left_table>\nUNION ALL\nSELECT * FROM <right_table>`;
-      }
-      const lc = cfg?.leftColumn ? `"${cfg.leftColumn}"` : '/* left_key */';
-      const rc = cfg?.rightColumn ? `"${cfg.rightColumn}"` : '/* right_key */';
-      return `SELECT *\nFROM <left_table>\n${jt} JOIN <right_table>\n  ON <left_table>.${lc} = <right_table>.${rc}`;
-    }
-    case 'clean': {
-      const col = cfg?.column || '/* column */';
-      const op = cfg?.operation || 'trim';
-      const exprMap: Record<string, string> = {
-        trim: `TRIM(CAST("${col}" AS VARCHAR))`,
-        upper: `UPPER(CAST("${col}" AS VARCHAR))`,
-        lower: `LOWER(CAST("${col}" AS VARCHAR))`,
-        numeric: `REGEXP_REPLACE(CAST("${col}" AS VARCHAR), '[^0-9.]', '', 'g')`,
-        replace_null: `COALESCE(NULLIF(CAST("${col}" AS VARCHAR), ''), '${cfg?.newValue || ''}')`,
-        to_date: `TRY_CAST("${col}" AS DATE)`,
-      };
-      return `SELECT * REPLACE (\n  ${exprMap[op] ?? `"${col}"`} AS "${col}"\n)\nFROM ${T}`;
-    }
-    case 'aggregate': {
-      const groups = (cfg?.groupBy || '').split(',').map((c: string) => c.trim()).filter(Boolean);
-      const aggs: any[] = cfg?.aggregations || [];
-      const aggParts = aggs.length
-        ? aggs.map((a: any) => `${(a.operation || 'COUNT').toUpperCase()}("${a.column || '*'}") AS "${a.alias || 'agg'}"`)
-        : ['COUNT(*) AS count_all'];
-      const sel = [...groups.map((c: string) => `"${c}"`), ...aggParts].join(',\n  ');
-      const gb = groups.length ? `\nGROUP BY ${groups.map((c: string) => `"${c}"`).join(', ')}` : '';
-      return `SELECT\n  ${sel}\nFROM ${T}${gb}`;
-    }
-    case 'sort': {
-      const col = cfg?.column ? `"${cfg.column}"` : '/* column */';
-      const dir = (cfg?.direction || 'asc').toUpperCase();
-      return `SELECT *\nFROM ${T}\nORDER BY ${col} ${dir}`;
-    }
-    case 'limit':
-      return `SELECT *\nFROM ${T}\nLIMIT ${cfg?.count || 100}`;
-    case 'select': {
-      const cols = (cfg?.columns || '').split(',').map((c: string) => `"${c.trim()}"`).filter((c: string) => c !== '""');
-      return `SELECT ${cols.length ? cols.join(', ') : '*'}\nFROM ${T}`;
-    }
-    case 'computed': {
-      const expr = cfg?.expression || '/* expression */';
-      const alias = cfg?.alias || 'new_column';
-      return `SELECT *,\n  ${expr} AS "${alias}"\nFROM ${T}`;
-    }
-    case 'rename': {
-      const maps: any[] = cfg?.mappings || [];
-      const items = maps.filter((m: any) => m.old && m.new).map((m: any) => `"${m.old}" AS "${m.new}"`);
-      return `SELECT * REPLACE (\n  ${items.length ? items.join(',\n  ') : '/* add mappings */'}\n)\nFROM ${T}`;
-    }
-    case 'distinct': {
-      const cols = (cfg?.columns || '').split(',').map((c: string) => `"${c.trim()}"`).filter((c: string) => c !== '""');
-      return `SELECT DISTINCT ${cols.length ? cols.join(', ') : '*'}\nFROM ${T}`;
-    }
-    case 'case_when': {
-      const conds: any[] = cfg?.conditions || [];
-      const alias = cfg?.alias || 'case_result';
-      const elsePart = cfg?.elseValue || 'NULL';
-      const whenLines = conds.filter((c: any) => c.when && c.then)
-        .map((c: any) => `  WHEN ${c.when} THEN '${c.then}'`).join('\n') || '  WHEN /* condition */ THEN /* value */';
-      return `SELECT *,\n  CASE\n${whenLines}\n  ELSE ${elsePart}\n  END AS "${alias}"\nFROM ${T}`;
-    }
-    case 'window': {
-      const fn = cfg?.function || 'ROW_NUMBER()';
-      const partition = cfg?.partitionBy ? `PARTITION BY ${cfg.partitionBy.split(',').map((c: string) => `"${c.trim()}"`).join(', ')}` : '';
-      const order = cfg?.orderBy ? `ORDER BY ${cfg.orderBy.split(',').map((c: string) => `"${c.trim()}"`).join(', ')}` : '';
-      const over = [partition, order].filter(Boolean).join(' ');
-      const alias = cfg?.alias || 'window_result';
-      return `SELECT *,\n  ${fn} OVER (${over}) AS "${alias}"\nFROM ${T}`;
-    }
-    case 'pivot': {
-      const on = cfg?.on ? `"${cfg.on}"` : '/* column to pivot */';
-      const using = cfg?.using || 'sum(/* value_column */)';
-      const groupBy = cfg?.groupBy ? cfg.groupBy.split(',').map((c: string) => `"${c.trim()}"`).join(', ') : '/* columns to keep */';
-      return `PIVOT ${T}\nON ${on}\nUSING ${using}\nGROUP BY ${groupBy}`;
-    }
-    case 'unpivot': {
-      const on = cfg?.on ? cfg.on.split(',').map((c: string) => `"${c.trim()}"`).join(', ') : '/* columns to unpivot */';
-      const name = cfg?.intoName ? `"${cfg.intoName}"` : '"name"';
-      const value = cfg?.intoValue ? `"${cfg.intoValue}"` : '"value"';
-      return `UNPIVOT ${T}\nON ${on}\nINTO\n  NAME ${name}\n  VALUE ${value}`;
-    }
-    case 'sample': {
-      const method = cfg?.method || 'PERCENT';
-      const value = cfg?.value || 10;
-      return `SELECT *\nFROM ${T}\nUSING SAMPLE ${value} ${method}`;
-    }
-    case 'unnest': {
-      const col = cfg?.column ? `"${cfg.column}"` : '/* column */';
-      return `SELECT * EXCLUDE (${col}), UNNEST(${col}) AS "${cfg?.alias || 'unnested_value'}"\nFROM ${T}`;
-    }
-    case 'raw_sql':
-      return cfg?.sql ? cfg.sql.replace(/\{\{input\}\}/g, T) : `SELECT * FROM ${T}`;
-    default:
-      return '';
-  }
-}
-
-function getConditionSql(col: string, op: string, val: string): string {
-  const column = col ? `"${col}"` : '/* column */';
-  const value = val || '';
-  const opMap: Record<string, string> = {
-    '==': `${column} = '${value}'`,
-    '!=': `${column} != '${value}'`,
-    '>': `${column} > ${value}`,
-    '<': `${column} < ${value}`,
-    '>=': `${column} >= ${value}`,
-    '<=': `${column} <= ${value}`,
-    'contains': `${column} ILIKE '%${value}%'`,
-    'not_contains': `${column} NOT ILIKE '%${value}%'`,
-    'starts_with': `${column} ILIKE '${value}%'`,
-    'ends_with': `${column} ILIKE '%${value}'`,
-    'is_null': `${column} IS NULL`,
-    'is_not_null': `${column} IS NOT NULL`,
-    'in': `${column} IN (${value})`,
-    'not_in': `${column} NOT IN (${value})`,
-  };
-  return opMap[op] ?? `${column} ${op} '${value}'`;
-}
-// ─────────────────────────────────────────────────────────────────────────────
 
 
 function Dashboard() {
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
-  const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
-  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
-  const { getNodes, getEdges } = useReactFlow();
+  const { nodes, setNodes, onNodesChange, edges, setEdges, onEdgesChange, history, pushToHistory, undo, redo, getNodes, getEdges } = useWorkflowState([], []);
   const [layoutCounter, setLayoutCounter] = useState(0);
 
   const [isSaveModalOpen, setIsSaveModalOpen] = useState(false);
@@ -1006,102 +849,23 @@ function Dashboard() {
 
   return (
     <div className="flex flex-col h-screen bg-[#FAFBFC] overflow-hidden text-[#171717]">
-      <header className="h-16 flex items-center justify-between px-6 bg-white border-b border-[#DFE1E6] shrink-0">
-        <div className="flex items-center space-x-3">
-          <button
-            onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
-            onMouseEnter={(e) => showHeaderTooltip(e, isSidebarCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar', `Toggle the component palette sidebar (${isMac ? '⌘' : 'Ctrl'}+[).`)}
-            onMouseLeave={hideTooltip}
-            className="p-2 text-[#6B778C] hover:bg-gray-100 rounded-md transition-colors mr-1"
-          >
-            {isSidebarCollapsed ? <PanelLeftOpen size={20} /> : <PanelLeftClose size={20} />}
-          </button>
-          <div className="p-2 bg-[#0052CC] text-white rounded-md">
-            <LayoutDashboard size={20} />
-          </div>
-          <div className="flex items-baseline gap-2">
-            <h1 className="text-xl font-bold text-[#171717]">
-              Data Analyst Platform
-            </h1>
-            {currentPipelineName && (
-              <button
-                onClick={() => {
-                  setNewName(currentPipelineName);
-                  setIsRenameModalOpen(true);
-                }}
-                onMouseEnter={(e) => showHeaderTooltip(e, 'Rename Pipeline', 'Click to change the name of this pipeline.')}
-                onMouseLeave={hideTooltip}
-                className="text-sm font-medium text-[#6B778C] border-l border-[#DFE1E6] pl-3 flex items-center gap-1.5 hover:bg-gray-50 rounded px-1.5 py-0.5 transition-colors group animate-in fade-in slide-in-from-left-2 duration-300"
-              >
-                <FileText size={14} className="text-[#0052CC]/70 group-hover:text-[#0052CC]" />
-                <span className="group-hover:text-[#172B4D]">{currentPipelineName}</span>
-                <PenLine size={12} className="opacity-0 group-hover:opacity-100 transition-opacity ml-1" />
-              </button>
-            )}
-          </div>
-        </div>
-
-        <div className="flex items-center space-x-3">
-          <button
-            onClick={() => setIsAiPipelinePanelOpen(true)}
-            onMouseEnter={(e) => showHeaderTooltip(e, 'AI Pipeline Builder', 'Generate a pipeline using natural language.')}
-            onMouseLeave={hideTooltip}
-            className="flex items-center space-x-2 px-3 py-2 text-sm font-medium text-[#0052CC] bg-[#EAE6FF] hover:bg-[#DED7FF] rounded-md transition-colors"
-          >
-            <Wand2 size={16} />
-            <span>AI Builder</span>
-          </button>
-          <button
-            onClick={handleBeautify}
-            onMouseEnter={(e) => showHeaderTooltip(e, 'Beautify Layout', `Automatically organize nodes into a clean, hierarchical structure (${mod}B).`)}
-            onMouseLeave={hideTooltip}
-            className="flex items-center space-x-2 px-3 py-2 text-sm font-medium text-[#0052CC] bg-white border border-[#0052CC]/30 hover:bg-blue-50 rounded-md transition-colors"
-          >
-            <SlidersHorizontal size={16} />
-            <span>Beautify</span>
-          </button>
-          <button
-            onClick={() => {
-              setWorkflowName(currentPipelineName || "");
-              setIsSaveModalOpen(true);
-            }}
-            onMouseEnter={(e) => showHeaderTooltip(e, 'Save Pipeline', `Save your current workflow configuration to the server (${mod}S or ${mod}L).`)}
-            onMouseLeave={hideTooltip}
-            className="flex items-center space-x-2 px-3 py-2 text-sm font-medium text-[#6B778C] bg-white border border-[#DFE1E6] hover:bg-gray-50 rounded-md transition-colors"
-          >
-            <Save size={16} />
-            <span>Save</span>
-          </button>
-          <button
-            onClick={() => setIsSettingsOpen(true)}
-            onMouseEnter={(e) => showHeaderTooltip(e, 'Settings', 'Configure backend API connection and other settings.')}
-            onMouseLeave={hideTooltip}
-            className="flex items-center space-x-2 px-3 py-2 text-sm font-medium text-[#6B778C] bg-white border border-[#DFE1E6] hover:bg-gray-50 rounded-md transition-colors"
-          >
-            <Settings size={16} />
-            <span>Settings</span>
-          </button>
-          <button
-            onClick={openLoadModal}
-            onMouseEnter={(e) => showHeaderTooltip(e, 'Open Pipeline', `Load a previously saved workflow from your library (${mod}O, ${mod}I, or ${mod}E).`)}
-            onMouseLeave={hideTooltip}
-            className="flex items-center space-x-2 px-3 py-2 text-sm font-medium text-[#6B778C] bg-white border border-[#DFE1E6] hover:bg-gray-50 rounded-md transition-colors"
-          >
-            <FolderOpen size={16} />
-            <span>Open</span>
-          </button>
-          <button
-            onClick={handleExecute}
-            onMouseEnter={(e) => showHeaderTooltip(e, 'Execute Workflow', `Run the entire pipeline processing logic and generate results (${mod}R or ${mod}Enter).`)}
-            onMouseLeave={hideTooltip}
-            disabled={isExecuting}
-            className={`flex items-center space-x-2 px-4 py-2 text-sm font-medium text-white rounded-md transition-colors shadow-sm ${isExecuting ? 'bg-gray-400' : 'bg-[#0052CC] hover:bg-[#0065FF]'}`}
-          >
-            <Play size={16} fill="currentColor" />
-            <span>{isExecuting ? 'Running...' : 'Run'}</span>
-          </button>
-        </div>
-      </header>
+      <WorkflowToolbar
+        workflowName={currentPipelineName || ''}
+        onOpenLoadModal={openLoadModal}
+        onOpenSaveModal={() => { setWorkflowName(currentPipelineName || ''); setIsSaveModalOpen(true); }}
+        onOpenSettings={() => setIsSettingsOpen(true)}
+        onExecute={handleExecute}
+        isExecuting={isExecuting}
+        onRenameClick={() => { setNewName(currentPipelineName || ''); setIsRenameModalOpen(true); }}
+        isSidebarCollapsed={isSidebarCollapsed}
+        setIsSidebarCollapsed={setIsSidebarCollapsed}
+        showHeaderTooltip={showHeaderTooltip}
+        hideTooltip={hideTooltip}
+        isMac={isMac}
+        setIsAiPipelinePanelOpen={setIsAiPipelinePanelOpen}
+        handleBeautify={handleBeautify}
+        mod={mod}
+      />
 
       <div className="flex items-center px-2 bg-[#F4F5F7] border-b border-[#DFE1E6] h-9 shrink-0 overflow-x-auto no-scrollbar">
         {tabs.map((tab) => {
@@ -1274,6 +1038,9 @@ function Dashboard() {
             onEdgesChange={onEdgesChange}
             setNodes={setNodes}
             setEdges={setEdges}
+            undo={undo}
+            redo={redo}
+            pushToHistory={pushToHistory}
             onNodeSelect={(node) => {
               if (node?.id !== selectedNode?.id) {
                 setSelectedNode(node);
