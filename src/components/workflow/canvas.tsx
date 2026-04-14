@@ -114,8 +114,11 @@ interface WorkspaceCanvasProps {
   onAfterConnect?: (connection: Connection) => void;
   layoutCounter?: number;
   isBottomPanelVisible?: boolean;
-  bottomPanelHeight?: number;
   shortcutsEnabled?: boolean;
+  undo?: () => void;
+  redo?: () => void;
+  pushToHistory?: (nodes: Node[], edges: Edge[]) => void;
+  bottomPanelHeight?: number;
   children?: React.ReactNode;
 }
 
@@ -132,10 +135,11 @@ function WorkspaceCanvas({
   isBottomPanelVisible = false,
   bottomPanelHeight = 0,
   shortcutsEnabled = true,
+  undo = () => {},
+  redo = () => {},
+  pushToHistory = () => {},
   children
 }: WorkspaceCanvasProps) {
-  const [history, setHistory] = useState<{ nodes: Node[]; edges: Edge[] }[]>([]);
-  const [redoStack, setRedoStack] = useState<{ nodes: Node[]; edges: Edge[] }[]>([]);
   const reactFlowWrapper = React.useRef<HTMLDivElement>(null);
   const { screenToFlowPosition, setViewport } = useReactFlow();
 
@@ -208,27 +212,9 @@ function WorkspaceCanvas({
   }, [layoutCounter, fitViewWithPanel]);
 
   const takeSnapshot = useCallback(() => {
-    setHistory((prev) => [...prev.slice(-49), { nodes: JSON.parse(JSON.stringify(nodes)), edges: JSON.parse(JSON.stringify(edges)) }]);
-    setRedoStack([]);
-  }, [nodes, edges]);
+    pushToHistory?.(JSON.parse(JSON.stringify(nodes)), JSON.parse(JSON.stringify(edges)));
+  }, [pushToHistory, nodes, edges]);
 
-  const undo = useCallback(() => {
-    if (history.length === 0) return;
-    const last = history[history.length - 1];
-    setRedoStack((prev) => [...prev, { nodes: JSON.parse(JSON.stringify(nodes)), edges: JSON.parse(JSON.stringify(edges)) }]);
-    setNodes(last.nodes);
-    setEdges(last.edges);
-    setHistory((prev) => prev.slice(0, -1));
-  }, [history, nodes, edges, setNodes, setEdges]);
-
-  const redo = useCallback(() => {
-    if (redoStack.length === 0) return;
-    const next = redoStack[redoStack.length - 1];
-    setHistory((prev) => [...prev, { nodes: JSON.parse(JSON.stringify(nodes)), edges: JSON.parse(JSON.stringify(edges)) }]);
-    setNodes(next.nodes);
-    setEdges(next.edges);
-    setRedoStack((prev) => prev.slice(0, -1));
-  }, [redoStack, nodes, edges, setNodes, setEdges]);
 
   const undoRef = React.useRef(undo);
   const redoRef = React.useRef(redo);
