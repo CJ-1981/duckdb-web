@@ -95,16 +95,46 @@ async def upload_file(file: UploadFile = File(...)):
         buffer.write(content)
 
     logger.info(f">>> [FILE UPLOAD] Successfully saved to {file_path}")
-        
+
+    # Evict stale schema cache for this path so re-uploads are re-inferred
+    try:
+        from src.api.routes.workflows import _CSV_SCHEMA_CACHE
+        _CSV_SCHEMA_CACHE.pop(os.path.abspath(file_path), None)
+        _CSV_SCHEMA_CACHE.pop(file_path, None)
+    except Exception:
+        pass
+
     # Discover columns and row count after upload
     try:
+        # Auto-detect delimiter from first 8 KB (handles ';', '\t', '|', ',')
+        detected_delim = ','
+        try:
+            with open(file_path, 'r', encoding='utf-8', errors='ignore') as _f:
+                _sample = _f.read(8192)
+            if _sample:
+                import csv as _csv_mod
+                _dialect = _csv_mod.Sniffer().sniff(_sample, delimiters=',\t;|')
+                detected_delim = _dialect.delimiter
+        except Exception:
+            pass
+
         conn = duckdb.connect(database=':memory:')
+        safe_delim = detected_delim.replace("'", "''")
+        _csv_frag = (
+            f"read_csv('{file_path.replace(chr(39), chr(39)+chr(39))}', "
+            f"ALL_VARCHAR=TRUE, nullstr='', delim='{safe_delim}', header=True)"
+        )
         # Using DESCRIBE for columns and types
-        desc_df = conn.execute(f"DESCRIBE SELECT * FROM read_csv_auto('{file_path}')").df()
+        desc_df = conn.execute(f"DESCRIBE SELECT * FROM {_csv_frag}").df()
         columns = desc_df['column_name'].tolist()
         column_types = desc_df[['column_name', 'column_type']].to_dict(orient='records')
-        row_count = conn.execute(f"SELECT COUNT(*) FROM read_csv_auto('{file_path}')").fetchone()[0]
-        
+        row_count = conn.execute(f"SELECT COUNT(*) FROM {_csv_frag}").fetchone()[0]
+
+        logger.info(
+            f">>> [FILE UPLOAD] Discovered {len(columns)} columns "
+            f"(delim='{detected_delim}') for {file_path}"
+        )
+
         # Detect if it's KV format
         with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
             sample_text = "".join([f.readline() for _ in range(25)])
@@ -112,8 +142,9 @@ async def upload_file(file: UploadFile = File(...)):
             sample_rows = [r for r in reader if r]
             is_kv = detect_kv(sample_rows)
             detected_format = "kv" if is_kv else "flat"
-            
+
     except Exception as e:
+        logger.warning(f">>> [FILE UPLOAD] Column discovery failed: {e}")
         columns = []
         column_types = []
         row_count = 0

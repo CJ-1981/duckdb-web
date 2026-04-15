@@ -112,6 +112,29 @@ def get_connection():
         _GLOBAL_CONN = duckdb.connect(database=':memory:')
     return _GLOBAL_CONN
 
+
+def _read_csv_sql(file_param: str, delimiter: str = ',') -> str:
+    """
+    Build a DuckDB read_csv() SQL fragment for a local CSV file.
+
+    Uses explicit delimiter so semicolon/tab-delimited files are loaded
+    correctly instead of being treated as a single-column file.
+
+    Args:
+        file_param: Either the literal file path string (quoted) or a '?'
+                    placeholder for a parameterised query.
+        delimiter:  The column separator character (e.g. ',', ';', '\t').
+
+    Returns:
+        SQL fragment such as ``read_csv(?, ALL_VARCHAR=TRUE, …, delim=';')``
+    """
+    # Escape single quotes inside the delimiter (edge-case safety)
+    safe_delim = delimiter.replace("'", "''")
+    return (
+        f"read_csv({file_param}, ALL_VARCHAR=TRUE, nullstr='', "
+        f"delim='{safe_delim}', header=True)"
+    )
+
 def get_or_infer_csv_schema(file_path: str) -> Dict[str, Any]:
     """
     Get cached CSV schema or infer from file
@@ -1310,15 +1333,15 @@ async def execute_workflow_graph(
                         infer_result = get_or_infer_csv_schema(file_path)
                         schema = infer_result["schema"]
                         encoding = infer_result.get("encoding", "utf-8")
+                        delim = infer_result.get("delimiter", ",")
 
                         if schema:
                             # Build CAST expressions with proper types
                             # Load with ALL_VARCHAR first, then SELECT with CAST expressions
                             temp_view = f"{table_name}_raw"
 
-                            # Treat empty strings as NULL during CSV load
-                            # Note: read_csv_auto automatically detects encoding
-                            conn.execute(f"CREATE OR REPLACE TEMP TABLE {temp_view} AS SELECT * FROM read_csv_auto(?, ALL_VARCHAR=TRUE, nullstr='')", [file_path])
+                            # Use detected delimiter so semicolon/tab CSVs load correctly
+                            conn.execute(f"CREATE OR REPLACE TEMP TABLE {temp_view} AS SELECT * FROM {_read_csv_sql('?', delim)}", [file_path])
 
                             # Get actual column names from the loaded table to handle BOM/whitespace issues
                             # Use fetchall() to avoid .df() conversion issues
@@ -1329,7 +1352,7 @@ async def execute_workflow_graph(
                             conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT {', '.join(cast_exprs)} FROM {temp_view}")
                             conn.execute(f"DROP TABLE IF EXISTS {temp_view}")
 
-                            logger.info(f">>> [CSV LOAD] Created table {table_name} with {len(schema)} typed columns (encoding: {encoding})")
+                            logger.info(f">>> [CSV LOAD] Created table {table_name} with {len(schema)} typed columns (encoding: {encoding}, delim: '{delim}')")
 
                             # Store schema in cache for raw_sql processing
                             # Use a temporary node cache entry that will be overwritten later
@@ -1339,30 +1362,30 @@ async def execute_workflow_graph(
                             # Fallback to ALL_VARCHAR if schema inference fails
                             # Load into temp view first, then create final table with NULLIF for empty string handling
                             temp_view = f"{table_name}_raw"
-                            conn.execute(f"CREATE OR REPLACE TEMP TABLE {temp_view} AS SELECT * FROM read_csv_auto(?, ALL_VARCHAR=TRUE, nullstr='')", [file_path])
+                            conn.execute(f"CREATE OR REPLACE TEMP TABLE {temp_view} AS SELECT * FROM {_read_csv_sql('?', delim)}", [file_path])
 
                             # Get column names and create NULLIF expressions for all columns
-                            res = conn.execute(f"DESCRIBE {temp_view}").df()
-                            actual_cols = res['column_name'].tolist()
+                            res = conn.execute(f"DESCRIBE {temp_view}")
+                            actual_cols = [row[0] for row in res.fetchall()]
 
                             # Build SELECT with NULLIF for all columns to convert empty strings to NULL
                             nullif_exprs = [f"NULLIF(TRIM(CAST({quote_identifier(col)} AS VARCHAR)), '') AS {quote_identifier(col)}" for col in actual_cols]
                             conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT {', '.join(nullif_exprs)} FROM {temp_view}")
                             conn.execute(f"DROP TABLE IF EXISTS {temp_view}")
-                            logger.info(f">>> [CSV LOAD] Created table {table_name} with NULLIF handling (schema inference failed)")
+                            logger.info(f">>> [CSV LOAD] Created table {table_name} with NULLIF handling (schema inference failed, delim: '{delim}')")
                         node_to_table[node_id] = table_name
                 else:
                         # Standard Flat loading with schema inference
                         infer_result = get_or_infer_csv_schema(file_path)
                         schema = infer_result["schema"]
                         encoding = infer_result.get("encoding", "utf-8")
+                        delim = infer_result.get("delimiter", ",")
 
                         if schema:
                             # Use schema inference for automatic type detection
                             temp_view = f"{table_name}_raw"
-                            # Treat empty strings as NULL during CSV load
-                            # Note: read_csv_auto automatically detects encoding
-                            conn.execute(f"CREATE OR REPLACE TEMP TABLE {temp_view} AS SELECT * FROM read_csv_auto(?, ALL_VARCHAR=TRUE, nullstr='')", [file_path])
+                            # Use detected delimiter so semicolon/tab CSVs load correctly
+                            conn.execute(f"CREATE OR REPLACE TEMP TABLE {temp_view} AS SELECT * FROM {_read_csv_sql('?', delim)}", [file_path])
 
                             # Get actual column names from the loaded table to handle BOM/whitespace issues
                             # Use fetchall() to avoid .df() conversion issues
@@ -1373,7 +1396,7 @@ async def execute_workflow_graph(
                             conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT {', '.join(cast_exprs)} FROM {temp_view}")
                             conn.execute(f"DROP TABLE IF EXISTS {temp_view}")
 
-                            logger.info(f">>> [CSV LOAD] Created table {table_name} with {len(schema)} typed columns")
+                            logger.info(f">>> [CSV LOAD] Created table {table_name} with {len(schema)} typed columns (encoding: {encoding}, delim: '{delim}')")
 
                             # Store schema in cache for raw_sql processing
                             _NODE_CACHE[node_id] = _NODE_CACHE.get(node_id, {})
@@ -1382,17 +1405,17 @@ async def execute_workflow_graph(
                             # Fallback to ALL_VARCHAR if schema inference fails
                             # Load into temp view first, then create final table with NULLIF for empty string handling
                             temp_view = f"{table_name}_raw"
-                            conn.execute(f"CREATE OR REPLACE TEMP TABLE {temp_view} AS SELECT * FROM read_csv_auto(?, ALL_VARCHAR=TRUE, nullstr='')", [file_path])
+                            conn.execute(f"CREATE OR REPLACE TEMP TABLE {temp_view} AS SELECT * FROM {_read_csv_sql('?', delim)}", [file_path])
 
                             # Get column names and create NULLIF expressions for all columns
-                            res = conn.execute(f"DESCRIBE {temp_view}").df()
-                            actual_cols = res['column_name'].tolist()
+                            res = conn.execute(f"DESCRIBE {temp_view}")
+                            actual_cols = [row[0] for row in res.fetchall()]
 
                             # Build SELECT with NULLIF for all columns to convert empty strings to NULL
                             nullif_exprs = [f"NULLIF(TRIM(CAST({quote_identifier(col)} AS VARCHAR)), '') AS {quote_identifier(col)}" for col in actual_cols]
                             conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT {', '.join(nullif_exprs)} FROM {temp_view}")
                             conn.execute(f"DROP TABLE IF EXISTS {temp_view}")
-                            logger.info(f">>> [CSV LOAD] Created table {table_name} with NULLIF handling (schema inference failed)")
+                            logger.info(f">>> [CSV LOAD] Created table {table_name} with NULLIF handling (schema inference failed, delim: '{delim}')")
 
                         node_to_table[node_id] = table_name
                 
@@ -2182,36 +2205,56 @@ async def inspect_node_dataset(request: InspectRequest):
                                 # Final fallback to ALL_VARCHAR if schema inference fails
                                 # Treat empty strings as NULL during CSV load
                                 conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT * FROM read_csv_auto(?, ALL_VARCHAR=TRUE, nullstr='')", [fp])
-                    # Use schema-aware CSV loading with TRY_CAST for null handling
+                    # Always use read_csv_auto for loading — DuckDB's delimiter/encoding
+                    # auto-detection is more reliable than Python's csv.Sniffer.
                     infer_result = get_or_infer_csv_schema(fp)
                     schema = infer_result["schema"]
-                    if schema:
-                        temp_view = f"{table_name}_raw"
-                        # Treat empty strings as NULL during CSV load
-                        # Note: read_csv_auto automatically detects encoding
-                        conn.execute(f"CREATE OR REPLACE TEMP TABLE {temp_view} AS SELECT * FROM read_csv_auto(?, ALL_VARCHAR=TRUE, nullstr='')", [fp])
+                    temp_view = f"{table_name}_raw"
 
-                        # Get actual column names to handle BOM/whitespace issues
-                        res = conn.execute(f"DESCRIBE {temp_view}").df()
-                        actual_cols = res['column_name'].tolist()
+                    # Load with DuckDB's auto-detection (handles ';', '\t', etc.)
+                    conn.execute(
+                        f"CREATE OR REPLACE TEMP TABLE {temp_view} AS "
+                        f"SELECT * FROM read_csv_auto(?, ALL_VARCHAR=TRUE, nullstr='')",
+                        [fp]
+                    )
 
+                    # Get the actual column names that DuckDB resolved
+                    res = conn.execute(f"DESCRIBE {temp_view}")
+                    actual_cols = [row[0] for row in res.fetchall()]
+
+                    # ── SCHEMA / COLUMN CROSS-VALIDATION ─────────────────────────────
+                    # If the Python-inferred schema keys don't match the actual columns
+                    # (can happen when Python's Sniffer picks the wrong delimiter while
+                    # DuckDB's auto-detect is correct), fall back to the safe NULLIF
+                    # approach rather than generating a Binder Error.
+                    schema_keys = {clean_invisible_unicode(k) for k in schema.keys()} if schema else set()
+                    actual_keys = set(actual_cols)
+                    schema_matches = bool(schema) and schema_keys.issubset(actual_keys)
+
+                    if schema_matches:
                         cast_exprs = build_cast_expressions(schema, temp_view, actual_cols=actual_cols)
-                        conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT {', '.join(cast_exprs)} FROM {temp_view}")
-                        conn.execute(f"DROP TABLE IF EXISTS {temp_view}")
+                        logger.info(
+                            f">>> [INSPECT LOAD] Using schema-based CAST for {fp} "
+                            f"({len(schema)} cols)"
+                        )
                     else:
-                        # Fallback to DuckDB auto-detection if schema inference fails
-                        # Load into temp view first, then create final table with NULLIF for empty string handling
-                        temp_view = f"{table_name}_raw"
-                        conn.execute(f"CREATE OR REPLACE TEMP TABLE {temp_view} AS SELECT * FROM read_csv_auto(?, ALL_VARCHAR=TRUE, nullstr='')", [fp])
+                        if schema and not schema_matches:
+                            logger.warning(
+                                f">>> [INSPECT LOAD] Schema/column mismatch for {fp}: "
+                                f"schema_keys={schema_keys} vs actual={actual_keys}. "
+                                f"Falling back to NULLIF on actual columns."
+                            )
+                        cast_exprs = [
+                            f"NULLIF(TRIM(CAST({quote_identifier(col)} AS VARCHAR)), '') AS {quote_identifier(col)}"
+                            for col in actual_cols
+                        ]
+                    # ─────────────────────────────────────────────────────────────────
 
-                        # Get column names and create NULLIF expressions for all columns
-                        res = conn.execute(f"DESCRIBE {temp_view}").df()
-                        actual_cols = res['column_name'].tolist()
-
-                        # Build SELECT with NULLIF for all columns to convert empty strings to NULL
-                        nullif_exprs = [f"NULLIF(TRIM(CAST({quote_identifier(col)} AS VARCHAR)), '') AS {quote_identifier(col)}" for col in actual_cols]
-                        conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT {', '.join(nullif_exprs)} FROM {temp_view}")
-                        conn.execute(f"DROP TABLE IF EXISTS {temp_view}")
+                    conn.execute(
+                        f"CREATE OR REPLACE TEMP TABLE {table_name} AS "
+                        f"SELECT {', '.join(cast_exprs)} FROM {temp_view}"
+                    )
+                    conn.execute(f"DROP TABLE IF EXISTS {temp_view}")
                     node_to_table[node_id] = table_name
                 elif prev_table:
                     # Pass-through execution for all transformation nodes

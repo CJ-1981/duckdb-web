@@ -330,6 +330,7 @@ class CSVConnector(BaseConnector):
         last_error = None
         success = False
         fallback_enc = 'utf-8'  # Initialize with default
+        detected_delimiter = self.delimiter  # Track best-guess delimiter across iterations
 
         for encoding in encodings_to_try:
             try:
@@ -341,6 +342,7 @@ class CSVConnector(BaseConnector):
                     try:
                         dialect = csv.Sniffer().sniff(sample, delimiters=',\t;|')
                         self.delimiter = dialect.delimiter
+                        detected_delimiter = dialect.delimiter  # Persist across retries
                     except Exception:
                         pass # Keep current delimiter
 
@@ -357,6 +359,42 @@ class CSVConnector(BaseConnector):
                         }
                         rows.append(clean_row)
                 
+                if rows:
+                    # ── FALSE-SUCCESS GUARD ──────────────────────────────────────────
+                    # If DictReader produced only ONE column and that column's name
+                    # itself contains a different delimiter character, the sniffer
+                    # chose the wrong separator (e.g. picked ',' because data values
+                    # contain commas, while the real separator is ';').  Discard the
+                    # bad rows and retry immediately with the embedded delimiter.
+                    first_keys = list(rows[0].keys())
+                    if len(first_keys) == 1:
+                        single_key = str(first_keys[0]).strip()
+                        for alt_delim in [';', '\t', '|', ',']:
+                            if alt_delim != self.delimiter and alt_delim in single_key:
+                                logger.warning(
+                                    f">>> [CSV PARSE] False-success with delim='{self.delimiter}': "
+                                    f"single column '{single_key[:60]}' contains '{alt_delim}'. "
+                                    f"Retrying with alt_delim='{alt_delim}'."
+                                )
+                                self.delimiter = alt_delim
+                                detected_delimiter = alt_delim
+                                rows = []  # discard bad rows
+                                try:
+                                    with open(file_path, 'r', encoding=encoding, newline='') as _f:
+                                        _reader = csv.DictReader(_f, delimiter=alt_delim)
+                                        for _i, _row in enumerate(_reader):
+                                            if _i >= max_rows:
+                                                break
+                                            rows.append({
+                                                str(k).strip(): (str(v).strip() if v is not None else None)
+                                                for k, v in _row.items() if k is not None
+                                            })
+                                except Exception as _e:
+                                    logger.warning(f">>> [CSV PARSE] Alt-delimiter retry failed: {_e}")
+                                    rows = []
+                                break  # only try the first matching alt delimiter
+                    # ────────────────────────────────────────────────────────────────
+
                 if rows:
                     success = True
                     self.encoding = encoding
@@ -381,26 +419,37 @@ class CSVConnector(BaseConnector):
                 }
             )
             
-            # Use DuckDB as a fallback for schema inference if DictReader failed
-            # This is much more robust for messy files
+            # Use DuckDB read_csv_auto as fallback — its delimiter/encoding
+            # auto-detection is more reliable than Python's csv.Sniffer.
             try:
                 import duckdb
-                conn = duckdb.connect(database=':memory:')
-                # Try reading with explicit parameters to avoid type detection errors
-                # Use read_csv (not read_csv_auto) with ALL_VARCHAR to prevent dtype errors
-                # Treat empty strings as NULL during CSV load
-                rel = conn.execute(
-                    """SELECT * FROM read_csv(?, ALL_VARCHAR=TRUE, nullstr='', delim=',', header=True, quote='"') LIMIT 100""",
+                _fb_conn = duckdb.connect(database=':memory:')
+                rel = _fb_conn.execute(
+                    "SELECT * FROM read_csv_auto(?, ALL_VARCHAR=TRUE, nullstr='') LIMIT 100",
                     [file_path]
                 )
-                # Convert to list of dictionaries directly, avoiding .df() conversion issues
                 columns = [desc[0] for desc in rel.description]
                 rows = [dict(zip(columns, row)) for row in rel.fetchall()]
                 if rows:
                     success = True
-                    # Set default encoding since DuckDB auto-detects
                     self.encoding = 'utf-8'
-                    logger.info(f">>> [CSV FALLBACK] Successfully inferred schema using DuckDB for {file_path} (encoding: auto-detected)")
+                    # Infer the real delimiter from the raw header line by comparing
+                    # how many times each candidate char appears.
+                    if len(columns) > 1:
+                        try:
+                            with open(file_path, 'r', encoding='utf-8', errors='ignore') as _hf:
+                                first_line = _hf.readline()
+                            for _d in [';', '\t', '|', ',']:
+                                if first_line.count(_d) >= len(columns) - 1:
+                                    self.delimiter = _d
+                                    detected_delimiter = _d
+                                    break
+                        except Exception:
+                            pass
+                    logger.info(
+                        f">>> [CSV FALLBACK] DuckDB auto-detected schema for {file_path} "
+                        f"({len(columns)} cols, confirmed delim='{self.delimiter}')"
+                    )
             except Exception as de:
                 logger.error(f">>> [CSV FALLBACK] DuckDB inference also failed: {de}")
 
