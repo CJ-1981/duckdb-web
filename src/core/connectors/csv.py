@@ -257,6 +257,9 @@ class CSVConnector(BaseConnector):
         if has_empty_values and len(non_empty) < len(values):
             # Column has some empty values - use VARCHAR to be safe
             # This ensures empty strings are preserved and handled by NULLIF later
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.info(f">>> [SCHEMA] Column has empty values ({len(non_empty)} non-empty out of {len(values)} total), defaulting to VARCHAR")
             return 'VARCHAR'
 
         # Try INTEGER with Korean format cleaning
@@ -419,13 +422,13 @@ class CSVConnector(BaseConnector):
                 }
             )
             
-            # Use DuckDB read_csv_auto as fallback — its delimiter/encoding
+            # Use DuckDB read_csv as fallback — its delimiter/encoding
             # auto-detection is more reliable than Python's csv.Sniffer.
             try:
                 import duckdb
                 _fb_conn = duckdb.connect(database=':memory:')
                 rel = _fb_conn.execute(
-                    "SELECT * FROM read_csv_auto(?, ALL_VARCHAR=TRUE, nullstr='') LIMIT 100",
+                    "SELECT * FROM read_csv(?, ALL_VARCHAR=TRUE, nullstr='', delim=',', header=True, quote='\"') LIMIT 100",
                     [file_path]
                 )
                 columns = [desc[0] for desc in rel.description]

@@ -26,6 +26,23 @@ from reportlab.pdfbase.ttfonts import TTFont
 
 logger = logging.getLogger(__name__)
 
+# Feature flag: Use pandas for CSV parsing (better NULL handling)
+USE_PANDAS_CSV = os.getenv('USE_PANDAS_CSV', 'false').lower() == 'true'
+
+# Conditional import based on feature flag
+if USE_PANDAS_CSV:
+    try:
+        from src.core.connectors.csv_pandas import PandasCSVConnector
+        logger.info(">>> [CONFIG] Using PandasCSVConnector for CSV parsing (NULL-aware)")
+    except ImportError as e:
+        logger.warning(f">>> [CONFIG] Failed to import PandasCSVConnector: {e}")
+        logger.warning(">>> [CONFIG] Falling back to CSVConnector")
+        USE_PANDAS_CSV = False
+        from src.core.connectors.csv import CSVConnector
+else:
+    from src.core.connectors.csv import CSVConnector
+    logger.info(">>> [CONFIG] Using CSVConnector (DictReader) for CSV parsing")
+
 # Pre-compiled regex patterns for SQL injection prevention
 # Compiled at module load for better performance (avoids recompilation on every validation)
 # IMPORTANT: All patterns use re.IGNORECASE because SQL is case-insensitive
@@ -132,8 +149,47 @@ def _read_csv_sql(file_param: str, delimiter: str = ',') -> str:
     safe_delim = delimiter.replace("'", "''")
     return (
         f"read_csv({file_param}, ALL_VARCHAR=TRUE, nullstr='', "
-        f"delim='{safe_delim}', header=True)"
+        f"delim='{safe_delim}', header=True, quote='\"')"
     )
+
+
+def load_csv_with_pandas(file_path: str, conn, table_name: str) -> Dict[str, Any]:
+    """
+    Load CSV using pandas and register directly with DuckDB.
+
+    This is the RECOMMENDED method for files with NULL values because:
+    1. Pandas automatically detects empty strings as NaN (NULL)
+    2. Bypasses DuckDB's CSV parsing issues
+    3. Uses zero-copy registration when possible
+
+    Args:
+        file_path: Path to CSV file
+        conn: DuckDB connection
+        table_name: Name for the registered table
+
+    Returns:
+        Dictionary with schema and metadata
+    """
+    if not USE_PANDAS_CSV:
+        raise ValueError("Pandas connector not enabled. Set USE_PANDAS_CSV=true to use this function.")
+
+    try:
+        import pandas as pd
+        from src.core.connectors.csv_pandas import PandasCSVConnector
+
+        connector = PandasCSVConnector()
+        result = connector.register_with_duckdb(file_path, conn, table_name)
+
+        logger.info(
+            f">>> [PANDAS LOAD] Successfully loaded {result['row_count']} rows "
+            f"as DuckDB table '{table_name}'"
+        )
+
+        return result
+
+    except Exception as e:
+        logger.error(f">>> [PANDAS LOAD] Failed to load CSV with pandas: {str(e)}")
+        raise
 
 def get_or_infer_csv_schema(file_path: str) -> Dict[str, Any]:
     """
@@ -155,9 +211,8 @@ def get_or_infer_csv_schema(file_path: str) -> Dict[str, Any]:
         return cache_entry
 
     # Determine sample size based on file size
-    import os
     file_size = os.path.getsize(file_path) if os.path.exists(file_path) else 0
-    sample_rows = 1000 if file_size > 100 * 1024 * 1024 else None  # 100MB threshold
+    sample_rows = 1000 if file_size > 100 * 1024 * 1024 else 1000  # Always sample for performance
 
     if sample_rows:
         logger.info(f">>> [CSV SCHEMA] Inferring schema from {file_path} (sampling {sample_rows} rows, file size: {file_size / (1024*1024):.1f}MB)")
@@ -166,10 +221,19 @@ def get_or_infer_csv_schema(file_path: str) -> Dict[str, Any]:
 
     # Infer schema
     try:
-        connector = CSVConnector()
-        schema = connector.infer_schema(file_path, max_rows=sample_rows)
-        encoding = connector.encoding
-        delimiter = connector.delimiter
+        # Use pandas connector if feature flag is enabled
+        if USE_PANDAS_CSV:
+            connector = PandasCSVConnector()
+            schema = connector.infer_schema(file_path, max_rows=sample_rows)
+            encoding = connector.encoding
+            delimiter = connector.delimiter
+            logger.info(f">>> [CSV SCHEMA] Pandas detected {len(schema)} columns with encoding {encoding}, delim '{delimiter}'")
+        else:
+            connector = CSVConnector()
+            schema = connector.infer_schema(file_path, max_rows=sample_rows)
+            encoding = connector.encoding
+            delimiter = connector.delimiter
+            logger.info(f">>> [CSV SCHEMA] DictReader detected {len(schema)} columns with encoding {encoding}, delim '{delimiter}'")
 
         # Cache the result
         entry = {
@@ -180,7 +244,6 @@ def get_or_infer_csv_schema(file_path: str) -> Dict[str, Any]:
         }
         _CSV_SCHEMA_CACHE[file_path] = entry
 
-        logger.info(f">>> [CSV SCHEMA] Detected {len(schema)} columns with encoding {encoding}, delim '{delimiter}'")
         return entry
 
     except Exception as e:
@@ -1279,7 +1342,7 @@ async def execute_workflow_graph(
                         else:
                             # Try CSV first
                             # Treat empty strings as NULL during CSV load
-                            conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT * FROM read_csv_auto('{url}', ALL_VARCHAR=TRUE, nullstr='')")
+                            conn.execute(f'CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT * FROM read_csv(\'{url}\', ALL_VARCHAR=TRUE, nullstr=\'\', delim=\',\', header=True, quote=\'"\')')
                         node_to_table[node_id] = table_name
                     except Exception as e:
                         logger.error(f"Failed to load remote file {url}: {e}")
@@ -1294,6 +1357,25 @@ async def execute_workflow_graph(
                 logger.info(f">>> [INPUT NODE] File exists: {os.path.exists(file_path)}")
 
                 load_format = config.get("format", "flat")
+
+                # Use pandas connector if feature flag is enabled (better NULL handling)
+                if USE_PANDAS_CSV and load_format == "flat":
+                    try:
+                        logger.info(f">>> [INPUT NODE] Using pandas connector for NULL-aware CSV loading")
+                        result = load_csv_with_pandas(file_path, conn, table_name)
+                        schema = result["schema"]
+
+                        # Store schema in cache for raw_sql processing
+                        _NODE_CACHE[node_id] = _NODE_CACHE.get(node_id, {})
+                        _NODE_CACHE[node_id]["schema"] = schema
+
+                        node_to_table[node_id] = table_name
+                        logger.info(f">>> [INPUT NODE] Pandas loaded {result['row_count']} rows as '{table_name}'")
+                        continue  # Skip the rest of the CSV loading logic
+                    except Exception as e:
+                        logger.warning(f">>> [INPUT NODE] Pandas loading failed, falling back to standard method: {str(e)}")
+                        # Continue to standard loading method
+
                 if load_format == "kv":
                     # Schema-discovery for KV format (Union of all detected keys)
                     import csv
@@ -2166,7 +2248,7 @@ async def inspect_node_dataset(request: InspectRequest):
                             else:
                                 # Try CSV first
                                 # Treat empty strings as NULL during CSV load
-                                conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT * FROM read_csv_auto('{url}', ALL_VARCHAR=TRUE, nullstr='')")
+                                conn.execute(f'CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT * FROM read_csv(\'{url}\', ALL_VARCHAR=TRUE, nullstr=\'\', delim=\',\', header=True, quote=\'"\')')
                             node_to_table[node_id] = table_name
                         except Exception as e:
                             logger.error(f"Failed to load remote file {url}: {e}")
@@ -2192,7 +2274,7 @@ async def inspect_node_dataset(request: InspectRequest):
                                 temp_view = f"{table_name}_raw"
                                 # Treat empty strings as NULL during CSV load
                                 # Note: read_csv_auto automatically detects encoding
-                                conn.execute(f"CREATE OR REPLACE TEMP TABLE {temp_view} AS SELECT * FROM read_csv_auto(?, ALL_VARCHAR=TRUE, nullstr='')", [fp])
+                                conn.execute(f'CREATE OR REPLACE TEMP TABLE {temp_view} AS SELECT * FROM read_csv(?, ALL_VARCHAR=TRUE, nullstr=\'\', delim=\',\', header=True, quote=\'"\')', [fp])
                                 
                                 # Get actual column names to handle BOM/whitespace issues
                                 res = conn.execute(f"DESCRIBE {temp_view}").df()
@@ -2204,7 +2286,7 @@ async def inspect_node_dataset(request: InspectRequest):
                             else:
                                 # Final fallback to ALL_VARCHAR if schema inference fails
                                 # Treat empty strings as NULL during CSV load
-                                conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT * FROM read_csv_auto(?, ALL_VARCHAR=TRUE, nullstr='')", [fp])
+                                conn.execute(f'CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT * FROM read_csv(?, ALL_VARCHAR=TRUE, nullstr=\'\', delim=\',\', header=True, quote=\'"\')', [fp])
                     # Always use read_csv_auto for loading — DuckDB's delimiter/encoding
                     # auto-detection is more reliable than Python's csv.Sniffer.
                     infer_result = get_or_infer_csv_schema(fp)
@@ -2213,8 +2295,8 @@ async def inspect_node_dataset(request: InspectRequest):
 
                     # Load with DuckDB's auto-detection (handles ';', '\t', etc.)
                     conn.execute(
-                        f"CREATE OR REPLACE TEMP TABLE {temp_view} AS "
-                        f"SELECT * FROM read_csv_auto(?, ALL_VARCHAR=TRUE, nullstr='')",
+                        f'CREATE OR REPLACE TEMP TABLE {temp_view} AS '
+                        f'SELECT * FROM read_csv(?, ALL_VARCHAR=TRUE, nullstr=\'\', delim=\',\', header=True, quote=\'"\')',
                         [fp]
                     )
 
