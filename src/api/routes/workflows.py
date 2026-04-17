@@ -13,7 +13,7 @@ import time
 import re
 import pandas as pd
 from fastapi import APIRouter, Depends, HTTPException, status, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 import duckdb
 import math
 from reportlab.pdfgen import canvas
@@ -886,9 +886,7 @@ class SqlValidationRequest(BaseModel):
     columns: Optional[List[Any]] = None  # Deprecated: Use input_tables instead
     input_tables: Optional[List[Dict[str, Any]]] = None  # NEW: Multi-input support
 
-    class Config:
-        # For backwards compatibility, allow extra fields
-        extra = "allow"
+    model_config = ConfigDict(extra="allow")  # For backwards compatibility
 
 class SqlPreviewRequest(BaseModel):
     nodes: List[Dict[str, Any]]

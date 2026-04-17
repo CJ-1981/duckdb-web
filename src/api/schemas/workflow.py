@@ -4,7 +4,7 @@ Workflow Schemas
 Pydantic schemas for workflow CRUD operations.
 """
 
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator, ConfigDict
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 from uuid import UUID
@@ -34,7 +34,8 @@ class WorkflowDefinition(BaseModel):
     nodes: List[WorkflowNode]
     edges: List[WorkflowEdge]
 
-    @validator('nodes')
+    @field_validator('nodes')
+    @classmethod
     def validate_unique_node_ids(cls, v):
         """Ensure all node IDs are unique."""
         ids = [node.id for node in v]
@@ -42,13 +43,14 @@ class WorkflowDefinition(BaseModel):
             raise ValueError("Node IDs must be unique")
         return v
 
-    @validator('edges')
-    def validate_edge_references(cls, v, values):
+    @field_validator('edges')
+    @classmethod
+    def validate_edge_references(cls, v, info):
         """Ensure all edges reference valid nodes."""
-        if 'nodes' not in values:
+        if not hasattr(info, 'data') or 'nodes' not in info.data:
             return v
 
-        node_ids = {node.id for node in values['nodes']}
+        node_ids = {node.id for node in info.data['nodes']}
         for edge in v:
             if edge.source not in node_ids:
                 raise ValueError(f"Edge references non-existent node: {edge.source}")
@@ -82,8 +84,7 @@ class WorkflowResponse(WorkflowBase):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class WorkflowListResponse(BaseModel):

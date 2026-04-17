@@ -6,7 +6,7 @@ range validation, and enum support.
 """
 
 from typing import Any, Dict, List, Optional, Type
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator, ConfigDict
 from pydantic import RootModel
 from enum import Enum
 
@@ -37,9 +37,7 @@ class DatabaseConfig(BaseModel):
     user: str = Field(default="")
     password: str = Field(default="")
 
-    class Config:
-        extra = "allow"  # Allow additional fields
-        validate_assignment = True
+    model_config = ConfigDict(extra="allow", validate_assignment=True)
 
 
 class RedisConfig(BaseModel):
@@ -48,9 +46,7 @@ class RedisConfig(BaseModel):
     port: int = Field(default=6379, ge=1, le=65535)
     db: int = Field(default=0, ge=0, le=15)
 
-    class Config:
-        extra = "allow"
-        validate_assignment = True
+    model_config = ConfigDict(extra="allow", validate_assignment=True)
 
 
 class LoggingConfig(BaseModel):
@@ -61,9 +57,7 @@ class LoggingConfig(BaseModel):
     )
     file: Optional[str] = None
 
-    class Config:
-        extra = "allow"
-        validate_assignment = True
+    model_config = ConfigDict(extra="allow", validate_assignment=True)
 
 
 class PluginConfig(BaseModel):
@@ -72,9 +66,7 @@ class PluginConfig(BaseModel):
     paths: List[str] = Field(default_factory=list)
     auto_load: bool = Field(default=True)
 
-    class Config:
-        extra = "allow"
-        validate_assignment = True
+    model_config = ConfigDict(extra="allow", validate_assignment=True)
 
 
 # Alias for test compatibility
@@ -96,9 +88,7 @@ class ConfigSchema(BaseModel):
     # Additional dynamic fields can be added
     extra: Dict[str, Any] = Field(default_factory=dict)
 
-    class Config:
-        extra = "allow"  # Allow additional top-level keys
-        validate_assignment = True
+    model_config = ConfigDict(extra="allow", validate_assignment=True)
 
     @field_validator('*')
     @classmethod

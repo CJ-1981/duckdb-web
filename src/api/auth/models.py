@@ -7,7 +7,7 @@ Role-Based Access Control (RBAC) models for authentication and authorization.
 
 from datetime import datetime
 from typing import List, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 
 class Role(BaseModel):
@@ -23,8 +23,8 @@ class Role(BaseModel):
     inherits_from: List[str] = Field(default_factory=list, description="Parent roles to inherit from")
     description: Optional[str] = Field(None, description="Human-readable role description")
 
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "name": "analyst",
                 "permissions": ["data:read", "data:write", "data:export"],
@@ -32,6 +32,7 @@ class Role(BaseModel):
                 "description": "Data analyst with read and write access",
             }
         }
+    )
 
 
 class Permission(BaseModel):
@@ -46,8 +47,8 @@ class Permission(BaseModel):
     action: str = Field(..., description="Action being performed (e.g., read, write, delete)")
     description: Optional[str] = Field(None, description="Human-readable permission description")
 
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "name": "data:read",
                 "resource": "data",
@@ -55,6 +56,7 @@ class Permission(BaseModel):
                 "description": "Read access to datasets",
             }
         }
+    )
 
 
 class UserRole(BaseModel):
@@ -69,8 +71,8 @@ class UserRole(BaseModel):
     assigned_at: datetime = Field(..., description="Timestamp when role was assigned")
     assigned_by: Optional[int] = Field(None, description="User ID of admin who assigned the role")
 
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "user_id": 1,
                 "role_name": "analyst",
@@ -78,6 +80,7 @@ class UserRole(BaseModel):
                 "assigned_by": 2,
             }
         }
+    )
 
 
 class RoleConfig(BaseModel):
@@ -106,8 +109,8 @@ class RBACConfig(BaseModel):
         default_factory=dict, description="Role definitions mapping role name to configuration"
     )
 
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "enabled": True,
                 "default_role": "viewer",
@@ -121,3 +124,4 @@ class RBACConfig(BaseModel):
                 },
             }
         }
+    )
