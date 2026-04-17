@@ -17,7 +17,8 @@ import pytest
 import pytest_asyncio
 from datetime import datetime
 from typing import AsyncGenerator, Optional, Dict, Any, List
-from uuid import uuid4,from sqlalchemy import create_engine, Column, Integer, String, Text, Boolean, DateTime, JSON, ForeignKey, Enum
+from uuid import uuid4
+from sqlalchemy import create_engine, Column, Integer, String, Text, Boolean, DateTime, JSON, ForeignKey, Enum
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase, sessionmaker, relationship
 from pydantic import BaseModel, EmailStr
@@ -160,7 +161,7 @@ class Job(Base):
     """Job model for workflow execution tracking"""
     __tablename__ = "jobs"
 
-    id = Column(String(36), primary_key=True, default=lambda: str(uuid4())  # UUID primary key
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid4()))  # UUID primary key
     workflow_id = Column(String(36), ForeignKey("workflows.id"), nullable=False, index=True)
     status = Column(String(50), nullable=False, default="pending", index=True)
     started_at = Column(DateTime, nullable=True)

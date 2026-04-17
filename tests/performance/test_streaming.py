@@ -76,7 +76,7 @@ class TestMemoryManagement:
 
         memory_samples = []
 
-        for i, 1 in enumerate(memory_limited_processor.stream_query("SELECT * FROM test")):
+        for i, row in enumerate(memory_limited_processor.stream_query("SELECT * FROM test")):
             memory_samples.append(process.memory_info().rss)
 
         # Memory should not continuously grow

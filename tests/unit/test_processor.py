@@ -19,7 +19,7 @@ import duckdb
 import pandas as pd
 
 from src.core.processor import Processor
-from src.core.plugins import PluginRegistry, BasePlugin
+from src.core.plugins import PluginRegistry, Plugin
 from src.core.config.loader import Config
 from src.core.database import DatabaseConnection
 from src.core.connectors import CSVConnector
@@ -501,7 +501,7 @@ class TestProcessorPluginIntegration:
         """Test plugin on_processor_load hook is called"""
         with pytest.raises((ImportError, AttributeError)):
             # Create a mock plugin that extends processor
-            mock_plugin = Mock(spec=BasePlugin)
+            mock_plugin = Mock(spec=Plugin)
             mock_plugin.name = "test_plugin"
             mock_plugin.on_processor_load = Mock()
 

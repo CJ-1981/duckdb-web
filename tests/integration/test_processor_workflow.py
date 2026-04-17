@@ -14,7 +14,7 @@ from unittest.mock import Mock, patch
 import duckdb
 
 from src.core.processor import Processor
-from src.core.plugins import BasePlugin, PluginRegistry
+from src.core.plugins import Plugin, PluginRegistry
 from src.core.config.loader import Config
 
 

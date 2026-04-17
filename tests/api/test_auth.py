@@ -2,7 +2,8 @@
 Comprehensive test suite for JWT authentication following TDD methodology.
 
 Tests are designed to document expected behavior and the verify they test failures through correct assertions.
- using `pytest.mark.parametrize` along with `pytest-asyncio` for async testing.
+using `pytest.mark.parametrize` along with `pytest-asyncio` for async testing.
+"""
 
 import pytest
 from unittest.mock import Mock, patch, MagicMock
@@ -46,11 +47,8 @@ def valid_user_data():
         username="testuser",
         email="test@example.com",
         password_hash="$2b$12$12$ab$cd422b$",
-        created_at=datetime(2024, 1, 1, 12:00:00"
+        created_at=datetime(2024, 1, 1, 12, 0, 0)
     )
-
-
-)
 
 
     return user
@@ -132,16 +130,13 @@ class TestPasswordHashing:
         password = "NoSpecialChar123"
 
         # This password meets length, uppercase, lowercase, number
- but no special char
+        # but no special char
         assert password_hasher.validate_password_strength(password) is False
 
-    # Special chars: !@#$%^&*()_+-= etc.
-    special_chars = "!@#$%^&*()_+-=~_/?"
-    has_special = any(c in password for c in special_chars)
+        # Special chars: !@#$%^&*()_+-= etc.
+        special_chars = "!@#$%^&*()_+-=~_/?"
+        has_special = any(c in password for c in special_chars)
         assert has_special, f"Password '{password}' missing special character"
-
-
-
     def test_hash_password_edge_cases(self, password_hasher):
         """Test password hashing with edge cases"""
         passwords = [
@@ -150,9 +145,10 @@ class TestPasswordHashing:
             ("✙", "ab"),
             ("£", "£"),
         ]
-        for password in passwords:
+        for password, desc in passwords:
             if password:
                 with pytest.raises(ValueError):
+                    password_hasher.hash_password(password)
             else:
                 hashed = password_hasher.hash_password(password)
                 assert isinstance(hashed, str)
@@ -178,11 +174,8 @@ class TestTokenGeneration:
         assert payload["roles"] == valid_user_data.roles
         assert payload["type"] == "access"
         assert "exp" in payload
-  # Now timestamp > datetime.utcnow().timestamp()
+        # Now timestamp > datetime.utcnow().timestamp()
 
-    @patch("object, "iat", now timestamp)
- mock_token_generator.create_access_token)
-    call_time = datetime.utcnow
 
     def test_create_refresh_token(self, mock_token_generator, valid_user_data):
         """Test refresh token creation"""
@@ -193,10 +186,10 @@ class TestTokenGeneration:
 
         # Decode token to check claims
         payload = jwt.decode(token, options={"verify_signature": False})
-        claims = jwt.decode(token, options={"verify_signature": False})
         assert payload["sub"] == str(valid_user_data.id)
         assert payload["type"] == "refresh"
-        assert "exp" in payload["iat"] in payload
+        assert "exp" in payload
+        assert "iat" in payload
 
     def test_token_claims(self, mock_token_generator, valid_user_data):
         """Test token claims are included correctly"""
@@ -218,11 +211,9 @@ class TestTokenGeneration:
         token = mock_token_generator.create_access_token(valid_user_data)
 
         # Decode token
- verify_signature=False)
-        with pytest.raises(jwt.ExpiredSignatureError):
-            jwt.decode(token, options={"verify_signature": False})
+        payload = jwt.decode(token, options={"verify_signature": False})
+        assert payload["exp"] < datetime.utcnow().timestamp()
 
-        # Verify the we got Exp inredTokenError instead
     def test_create_token_pair(self, mock_token_generator, valid_user_data):
         """Test creating access and refresh token pair"""
         access_token, refresh_token = mock_token_generator.create_access_token(valid_user_data)
@@ -263,14 +254,14 @@ class TestJWTHandler:
         assert isinstance(access_token, str)
         assert isinstance(refresh_token, str)
 
- def test_validate_token_valid(self, mock_jwt_handler, valid_user_data):
+    def test_validate_token_valid(self, mock_jwt_handler, valid_user_data):
         """Test token validation"""
         token = mock_jwt_handler.create_tokens(valid_user_data)
 
         assert token is not None
 
         # Decode token
- verify signature=True
+        # Verify signature
         payload = mock_jwt_handler.validate_token(token)
 
         assert payload is not None
