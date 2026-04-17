@@ -23,6 +23,7 @@ from ..plugins import PluginRegistry, Plugin
 from ..config.loader import Config
 from ..database import DatabaseConnection
 from ..connectors import CSVConnector, get_connector, CONNECTOR_REGISTRY
+from ..connectors.excel import ExcelConnector
 from .streaming import StreamProcessor
 from .query import QueryExecutor
 from .export import DataExporter
@@ -287,6 +288,66 @@ class Processor:
         self._call_plugin_hook('on_data_load', {'rows_loaded': total_rows})
 
         logger.info(f"Streamed {total_rows} rows from {csv_path} into table {target_table}")
+
+        return self.preview()
+
+    def load_excel(
+        self,
+        excel_path: str,
+        table_name: Optional[str] = None,
+        sheet_name: Optional[str] = None,
+        header_row: int = 0,
+    ) -> pd.DataFrame:
+        """
+        Load Excel file into processor
+
+        Args:
+            excel_path: Path to Excel file
+            table_name: Target table name (optional, default 'data')
+            sheet_name: Sheet name to load (default: first sheet)
+            header_row: Row number containing headers (0-indexed, default 0)
+
+        Returns:
+            DataFrame with loaded data
+
+        Raises:
+            FileNotFoundError: If file doesn't exist
+            ValueError: If file is empty or invalid
+        """
+        # Validate file exists
+        path = Path(excel_path)
+        if not path.exists():
+            raise FileNotFoundError(f"Excel file not found: {excel_path}")
+
+        # Create Excel connector
+        connector = ExcelConnector(
+            sheet_name=sheet_name,
+            header_row=header_row
+        )
+
+        # Load data using connector
+        target_table = table_name or 'data'
+        self._table_name = target_table
+
+        # Read Excel data
+        rows = list(connector.read(excel_path))
+
+        if not rows:
+            raise ValueError(f"Empty Excel file: {excel_path}")
+
+        # Infer schema and create table
+        self._columns = list(rows[0].keys())
+
+        # Create table
+        self._create_table_from_rows(rows, target_table)
+
+        # Insert data
+        self._insert_rows(rows, target_table)
+
+        # Call plugin hook
+        self._call_plugin_hook('on_data_load', rows)
+
+        logger.info(f"Loaded {len(rows)} rows from {excel_path} into table {target_table}")
 
         return self.preview()
 

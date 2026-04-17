@@ -8,3 +8,5 @@ passlib[bcrypt]
 duckdb
 reportlab
 tabulate
+openpyxl
+pandas
