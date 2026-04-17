@@ -4,12 +4,13 @@ Authentication and authorization service.
 @MX:NOTE: Simplified authentication service focusing on JWT and RBAC
 """
 
-from datetime import datetime, from typing import Dict, List, Optional
+from datetime import datetime
+from typing import Dict, List, Optional
 import jwt
 from pydantic import BaseModel, EmailStr
 from passlib.hash import bcrypt  # Import necessary for password hashing
 
-from src.api.auth.models import User, UserRole
+from src.api.models.user import User, UserRole
 from src.api.auth.rbac import RBACManager
 
 
@@ -135,6 +136,7 @@ class AuthService:
         try:
             payload = jwt.decode(
                 refresh_token, self.secret_key, algorithms=[self.algorithm]
+            )
             if payload.get("type") != "refresh":
                 raise ValueError("Invalid token type")
         except jwt.ExpiredSignatureError:

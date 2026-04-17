@@ -1,254 +1,278 @@
 """
-SQLAlchemy Models tests for P2-T004 implementation.
+Database model tests.
 
-This test suite validates:
- model definitions, relationships, database operations, and validation.
-
-Test Structure:
-- Model Creation tests
-- Relationship tests
-- CRUD operation tests
-- Query tests
-- Validation tests
-- Edge case tests
+Tests for SQLAlchemy models including User, Workflow, Job,
+and their relationships.
 """
 
 import pytest
-import pytest_asyncio
 from datetime import datetime
-from typing import AsyncGenerator, Optional, Dict, Any, List
-from uuid import uuid4
-from sqlalchemy import create_engine, Column, Integer, String, Text, Boolean, DateTime, JSON, ForeignKey, Enum
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
-from sqlalchemy.orm import DeclarativeBase, sessionmaker, relationship
-from pydantic import BaseModel, EmailStr
-from passlib.context import CryptContext
-from bcrypt import hashpw, verify
-
-import logging
-
-# Configure logging
-logger = logging.getLogger(__name__)
-
-logger.setLevel(logging.INFO)
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from src.api.models.user import User, UserRole
+from src.api.models.workflow import Workflow
+from src.api.models.job import Job, JobStatus
 
 
-# Database URL for tests (SQLite in-memory)
-TEST_DATABASE_URL = "sqlite+ai://sqlite:///:memory/:testdb"
+# ========================================================================
+# Test Fixtures
+# ========================================================================
+
+@pytest.fixture
+def in_memory_db():
+    """Create in-memory SQLite database for testing."""
+    from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+    from sqlalchemy.ext.asyncio import async_sessionmaker
+
+    engine = create_async_engine(
+        "sqlite+aiosqlite:///:memory:",
+        echo=False
+    )
+
+    async def get_session():
+        async_session = async_sessionmaker(
+            engine, class_=AsyncSession, expire_on_commit=False
+        )
+        async with async_session() as session:
+            yield session
+
+    return engine, get_session
 
 
-TEST_DATABASE_URL_ASYNC = f"sqlite+ai://sqlite:///{TEST_DATABASE_URL}"
+# ========================================================================
+# User Model Tests
+# ========================================================================
+
+class TestUserModel:
+    """Test User model functionality."""
+
+    def test_user_creation(self, in_memory_db):
+        """Test creating a user instance."""
+        user = User(
+            username="testuser",
+            email="test@example.com",
+            password_hash="hashed_password_here",
+            role=UserRole.analyst
+        )
+
+        assert user.username == "testuser"
+        assert user.email == "test@example.com"
+        assert user.role == UserRole.analyst
+        assert user.is_active is True
+
+    def test_user_role_enum(self):
+        """Test UserRole enum values."""
+        assert UserRole.admin.value == "admin"
+        assert UserRole.analyst.value == "analyst"
+        assert UserRole.viewer.value == "viewer"
+
+    def test_user_repr(self):
+        """Test User string representation."""
+        user = User(
+            username="testuser",
+            email="test@example.com",
+            password_hash="hashed",
+            role=UserRole.viewer
+        )
+        user.id = 1
+
+        repr_str = repr(user)
+        assert "testuser" in repr_str
+        assert "1" in repr_str
+
+    def test_user_unique_constraints(self):
+        """Test that user model has unique constraints."""
+        # Check that the model defines unique constraints
+        user_table = User.__table__
+        username_column = user_table.columns['username']
+        email_column = user_table.columns['email']
+
+        assert username_column.unique
+        assert email_column.unique
 
 
-# Async engine for tests
-engine = create_async_engine(TEST_DATABASE_URL_async, echo=True)
-AsyncSessionLocal = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+# ========================================================================
+# Workflow Model Tests
+# ========================================================================
+
+class TestWorkflowModel:
+    """Test Workflow model functionality."""
+
+    def test_workflow_creation(self):
+        """Test creating a workflow instance."""
+        workflow = Workflow(
+            name="Test Workflow",
+            description="A test workflow",
+            definition={"nodes": [], "edges": []},
+            owner_id=1
+        )
+
+        assert workflow.name == "Test Workflow"
+        assert workflow.description == "A test workflow"
+        assert workflow.definition == {"nodes": [], "edges": []}
+        assert workflow.owner_id == 1
+
+    def test_workflow_relationships(self):
+        """Test workflow relationships."""
+        workflow = Workflow(
+            name="Test Workflow",
+            description="Test",
+            definition={},
+            owner_id=1
+        )
+
+        # Relationships should be defined
+        assert hasattr(workflow, 'owner')
+        assert hasattr(workflow, 'versions')
+        assert hasattr(workflow, 'jobs')
 
 
-# Base model with common fields
-class BaseModel(DeclarativeBase):
-    """Base model with common fields and soft delete support"""
-    __abstract__ = True
+# ========================================================================
+# Job Model Tests
+# ========================================================================
 
-    id = Column(Integer, primary_key=True, index=True)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
-    deleted_at = Column(DateTime, nullable=True)  # Soft delete
+class TestJobModel:
+    """Test Job model functionality."""
 
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert model instance to dictionary"""
-        return {
-            "id": self.id,
-            "created_at": self.created_at.isoformat() if self.updated_at else None,
-            "updated_at": self.updated_at.isoformat() if self.deleted_at else None,
-            "deleted_at": self.deleted_at.isoformat(),
-        }
+    def test_job_creation(self):
+        """Test creating a job instance."""
+        job = Job(
+            workflow_id="test-workflow-id",
+            status=JobStatus.pending,
+            created_by=1
+        )
 
-    def is_deleted(self) -> bool:
-        """Check if model is soft deleted"""
-        return self.deleted_at is not None
+        assert job.workflow_id == "test-workflow-id"
+        assert job.status == JobStatus.pending
+        assert job.created_by == 1
 
-    def __repr__(self) -> str:
-        return f"<{self.__class__.__name__}(id={self.id})>"
+    def test_job_status_enum(self):
+        """Test JobStatus enum values."""
+        assert JobStatus.pending.value == "pending"
+        assert JobStatus.running.value == "running"
+        assert JobStatus.completed.value == "completed"
+        assert JobStatus.failed.value == "failed"
 
+    def test_job_status_transitions(self):
+        """Test job status can transition properly."""
+        job = Job(
+            workflow_id="test",
+            status=JobStatus.pending,
+            created_by=1
+        )
 
-# User model
-class User(Base):
-    """User model for authentication and authorization"""
-    __tablename__ = "users"
+        # Pending -> Running
+        job.status = JobStatus.running
+        assert job.status == JobStatus.running
 
-    id = Column(Integer, primary_key=True, index=True)
-    username = Column(String(50), unique=True, nullable=False, index=True)
-    email = Column(String(255), unique=True, nullable=False, index=True)
-    password_hash = Column(String(255), nullable=False)
-    role = Column(String(50), nullable=False, default="viewer")
-    is_active = Column(Boolean, default=True, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
-    deleted_at = Column(DateTime, nullable=True)
-
-    # Relationships
-    workflows = relationship("Workflow", back_populates="workflows", lazy="dynamic")
-    jobs = relationship("Job", back_populates="jobs", lazy="dynamic")
-
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert user instance to dictionary"""
-        return {
-            "id": self.id,
-            "username": self.username,
-            "email": self.email,
-            "role": self.role,
-            "is_active": self.is_active,
-            "created_at": self.created_at.isoformat() if self.updated_at else None,
-            "updated_at": self.updated_at.isoformat() if self.deleted_at else None,
-            "deleted_at": self.deleted_at.isoformat(),
-        }
-
-    def set_password(self, password: str) -> None:
-        """Hash and set the user's password"""
-        self.password_hash = hashpw(password.encode("utf-8"), bcrypt.gensalt())
-
-    def verify_password(self, password: str) -> bool:
-        """Verify a password against the stored hash"""
-        return verify(password.encode("utf-8"), self.password_hash)
-
-    def __repr__(self) -> str:
-        return f"<User(id={self.id}, username={self.username})>"
+        # Running -> Completed
+        job.status = JobStatus.completed
+        assert job.status == JobStatus.completed
 
 
-# Workflow model
-class Workflow(Base):
-    """Workflow model for data processing pipelines"""
-    __tablename__ = "workflows"
+# ========================================================================
+# Model Relationship Tests
+# ========================================================================
 
-    id = Column(String(36), primary_key=True, default=lambda: str(uuid4()))  # UUID primary key
-    name = Column(String(255), nullable=False, index=True)
-    description = Column(Text, nullable=True)
-    definition = Column(JSON, nullable=False)  # DAG definition
-    owner_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
-    is_active = Column(Boolean, default=True, nullable=False)
-    version = Column(Integer, default=1, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
-    deleted_at = Column(DateTime, nullable=True)
+class TestModelRelationships:
+    """Test relationships between models."""
 
-    # Relationships
-    owner = relationship("User", back_populates="owner", lazy="dynamic")
-    jobs = relationship("Job", back_populates="jobs", lazy="dynamic")
-    versions = relationship("WorkflowVersion", back_populates="versions", lazy="dynamic")
+    def test_user_workflow_relationship(self):
+        """Test User-Workflow relationship."""
+        user = User(
+            username="testuser",
+            email="test@example.com",
+            password_hash="hashed",
+            role=UserRole.analyst
+        )
+        user.id = 1
 
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert workflow instance to dictionary"""
-        return {
-            "id": self.id,
-            "name": self.name,
-            "description": self.description,
-            "definition": self.definition,
-            "owner_id": self.owner_id,
-            "is_active": self.is_active,
-            "version": self.version,
-            "created_at": self.created_at.isoformat() if self.updated_at else None,
-            "updated_at": self.updated_at.isoformat() if self.deleted_at else None,
-            "deleted_at": self.deleted_at.isoformat(),
-        }
+        workflow = Workflow(
+            name="Test Workflow",
+            description="Test",
+            definition={},
+            owner_id=user.id
+        )
 
-    def __repr__(self) -> str:
-        return f"<Workflow(id={self.id}, name={self.name})>"
+        assert workflow.owner_id == user.id
 
+    def test_workflow_job_relationship(self):
+        """Test Workflow-Job relationship."""
+        workflow_id = "test-workflow-id"
 
-# Job model
-class Job(Base):
-    """Job model for workflow execution tracking"""
-    __tablename__ = "jobs"
+        job = Job(
+            workflow_id=workflow_id,
+            status=JobStatus.pending,
+            created_by=1
+        )
 
-    id = Column(String(36), primary_key=True, default=lambda: str(uuid4()))  # UUID primary key
-    workflow_id = Column(String(36), ForeignKey("workflows.id"), nullable=False, index=True)
-    status = Column(String(50), nullable=False, default="pending", index=True)
-    started_at = Column(DateTime, nullable=True)
-    completed_at = Column(DateTime, nullable=True)
-    error_message = Column(Text, nullable=True)
-    result = Column(JSON, nullable=True)
-    progress = Column(Integer, default=0, nullable=False)
-    created_by = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
-    deleted_at = Column(DateTime, nullable=True)
+        assert job.workflow_id == workflow_id
 
-    # Relationships
-    workflow = relationship("Workflow", back_populates="workflow", lazy="dynamic")
-    creator = relationship("User", back_populates="creator", lazy="dynamic")
+    def test_user_job_relationship(self):
+        """Test User-Job relationship."""
+        user_id = 1
 
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert job instance to dictionary"""
-        return {
-            "id": self.id,
-            "workflow_id": self.workflow_id,
-            "status": self.status,
-            "started_at": self.started_at.isoformat() if self.completed_at else None,
-            "completed_at": self.completed_at.isoformat() if self.error_message else None,
-            "error_message": self.error_message.isoformat() if self.result else None,
-            "result": self.result,
-            "progress": self.progress,
-            "created_by": self.created_by,
-            "created_at": self.created_at.isoformat() if self.updated_at else None,
-            "updated_at": self.updated_at.isoformat() if self.deleted_at else None,
-            "deleted_at": self.deleted_at.isoformat(),
-        }
+        job = Job(
+            workflow_id="test",
+            status=JobStatus.pending,
+            created_by=user_id
+        )
 
-    def __repr__(self) -> str:
-        return f"<Job(id={self.id}, status={self.status})>"
+        assert job.created_by == user_id
 
 
-# WorkflowVersion model (for version history)
-class WorkflowVersion(Base):
-    """WorkflowVersion model for tracking workflow changes over time"""
-    __tablename__ = "workflow_versions"
+# ========================================================================
+# Model Validation Tests
+# ========================================================================
 
-    id = Column(Integer, primary_key=True)
-    workflow_id = Column(String(36), ForeignKey("workflows.id"), nullable=False, index=True)
-    version = Column(Integer, nullable=False)
-    definition = Column(JSON, nullable=False)
-    created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
-    deleted_at = Column(DateTime, nullable=True)
+class TestModelValidation:
+    """Test model validation and constraints."""
 
-    # Relationships
-    workflow = relationship("Workflow", back_populates="workflow", lazy="dynamic")
-    creator = relationship("User", back_populates="creator", lazy="dynamic")
+    def test_user_email_validation(self):
+        """Test user model accepts valid email formats."""
+        valid_emails = [
+            "user@example.com",
+            "user.name@example.com",
+            "user+tag@example.co.uk"
+        ]
 
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert workflow version instance to dictionary"""
-        return {
-            "id": self.id,
-            "workflow_id": self.workflow_id,
-            "version": self.version,
-            "definition": self.definition,
-            "created_by": self.created_by,
-            "created_at": self.created_at.isoformat() if self.updated_at else None,
-            "updated_at": self.updated_at.isoformat() if self.deleted_at else None,
-            "deleted_at": self.deleted_at.isoformat(),
-        }
+        for email in valid_emails:
+            user = User(
+                username="testuser",
+                email=email,
+                password_hash="hashed",
+                role=UserRole.viewer
+            )
+            assert user.email == email
 
-    def __repr__(self) -> str:
-        return f"<WorkflowVersion(id={self.id}, version={self.version})>"
+    def test_user_username_length(self):
+        """Test username length constraints."""
+        # Valid username (within 3-50 characters)
+        valid_username = "a" * 25
+        user = User(
+            username=valid_username,
+            email="test@example.com",
+            password_hash="hashed",
+            role=UserRole.viewer
+        )
+        assert len(user.username) == 25
 
+    def test_workflow_name_required(self):
+        """Test workflow name is required."""
+        with pytest.raises(Exception):
+            workflow = Workflow(
+                description="Test",
+                definition={},
+                owner_id=1
+            )
+            # This should fail due to NOT NULL constraint
+            # (actual validation happens at database level)
 
-# Role enum for users
-class UserRole(str, Enum):
-    """User role enumeration"""
-    admin = "admin"
-    analyst = "analyst"
-    viewer = "viewer"
+    def test_job_status_default(self):
+        """Test job status defaults to pending."""
+        job = Job(
+            workflow_id="test",
+            created_by=1
+        )
 
-
-# Job status enum for jobs
-class JobStatus(str, Enum):
-    """Job status enumeration"""
-    pending = "pending"
-    running = "running"
-    completed = "completed"
-    failed = "failed"
-    cancelled = "cancelled"
-
-
+        assert job.status == JobStatus.pending
