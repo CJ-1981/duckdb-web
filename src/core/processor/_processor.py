@@ -774,6 +774,157 @@ class Processor:
 
         logger.info("Processor closed")
 
+    # ========================================================================
+    #  Data Transformation Methods
+    # ========================================================================
+
+    def transform(self, column: Union[str, Dict[str, Callable]], func: Optional[Callable] = None) -> None:
+        """
+        Transform column(s) using Python lambda or function.
+
+        Args:
+            column: Column name to transform, or dict of {column: function}
+            func: Python function to apply (when column is a single string)
+        """
+        if isinstance(column, dict):
+            # Multiple column transformations
+            for col, transformation_func in column.items():
+                if col not in self._columns:
+                    raise ValueError(f"Column '{col}' not found")
+                # Apply transformation
+                self._connection.execute(
+                    f'ALTER TABLE {self._table_name} '
+                    f'ADD COLUMN "{col}_new" VARCHAR'
+                )
+                # Get current values and apply transformation
+                rows = self._connection.execute(f'SELECT _row, "{col}" FROM {self._table_name}').fetchall()
+                transformed_rows = []
+                for row in rows:
+                    row_id, val = row
+                    try:
+                        new_val = transformation_func(val)
+                        transformed_rows.append((row_id, new_val))
+                    except Exception:
+                        transformed_rows.append((row_id, val))
+
+                # Update table with transformed values
+                for row_id, new_val in transformed_rows:
+                    self._connection.execute(
+                        f'UPDATE {self._table_name} '
+                        f'SET "{col}_new" = ? WHERE _row = ?',
+                        [new_val, row_id]
+                    )
+
+                # Replace old column with transformed one
+                self._connection.execute(
+                    f'ALTER TABLE {self._table_name} DROP COLUMN "{col}"'
+                )
+                self._connection.execute(
+                    f'ALTER TABLE {self._table_name} RENAME COLUMN "{col}_new" TO "{col}"'
+                )
+        else:
+            # Single column transformation
+            if column not in self._columns:
+                raise ValueError(f"Column '{column}' not found")
+            if func is None:
+                raise ValueError("Function must be provided for single column transformation")
+
+            # Apply transformation
+            self._connection.execute(
+                f'ALTER TABLE {self._table_name} ADD COLUMN "{column}_new" VARCHAR'
+            )
+            rows = self._connection.execute(f'SELECT _row, "{column}" FROM {self._table_name}').fetchall()
+            transformed_rows = []
+            for row in rows:
+                row_id, val = row
+                try:
+                    new_val = func(val)
+                    transformed_rows.append((row_id, new_val))
+                except Exception:
+                    transformed_rows.append((row_id, val))
+
+            for row_id, new_val in transformed_rows:
+                self._connection.execute(
+                    f'UPDATE {self._table_name} SET "{column}_new" = ? WHERE _row = ?',
+                    [new_val, row_id]
+                )
+
+            self._connection.execute(f'ALTER TABLE {self._table_name} DROP COLUMN "{column}"')
+            self._connection.execute(
+                f'ALTER TABLE {self._table_name} RENAME COLUMN "{column}_new" TO "{column}"'
+            )
+
+        logger.info(f"Transformation applied to {column}")
+
+    # ========================================================================
+    #  Join Methods
+    # ========================================================================
+
+    def join(
+        self,
+        right_table: str,
+        on: str,
+        how: str = 'INNER',
+        suffix: str = '_right'
+    ) -> pd.DataFrame:
+        """
+        Join with another table.
+
+        Args:
+            right_table: Table to join with (must be loaded in same DuckDB connection)
+            on: Join condition (column name)
+            how: Join type (INNER, LEFT, RIGHT, OUTER)
+            suffix: Suffix for overlapping column names
+
+        Returns:
+            DataFrame with joined results
+        """
+        join_sql = {
+            'INNER': 'INNER JOIN',
+            'LEFT': 'LEFT JOIN',
+            'RIGHT': 'RIGHT JOIN',
+            'OUTER': 'FULL OUTER JOIN',
+            'CROSS': 'CROSS JOIN'
+        }
+
+        join_type = join_sql.get(how.upper(), 'INNER JOIN')
+
+        # Build join query
+        query = f"""
+            SELECT *
+            FROM {self._table_name} l
+            {join_type} {right_table} r
+            ON l.{on} = r.{on}
+        """
+
+        result = self.sql(query)
+
+        # Update working table to the joined result
+        self._table_name = f'joined_{self._table_name}_{right_table}'
+        self._connection.execute(f'CREATE OR REPLACE VIEW {self._table_name} AS {query}')
+        self._columns = list(result.columns)
+
+        logger.info(f"Joined with {right_table} on {on} ({how})")
+        return result
+
+    # ========================================================================
+    #  Additional Export Methods
+    # ========================================================================
+
+    def export_duckdb(self, path: str, table_name: Optional[str] = None) -> None:
+        """
+        Export to DuckDB database file.
+
+        Args:
+            path: Output database file path
+            table_name: Table name to use in export (optional)
+        """
+        tbl = table_name or self._table_name
+
+        # Export current table to DuckDB file
+        self._connection.execute(f"COPY {tbl} TO '{path}'")
+        logger.info(f"Exported to DuckDB database: {path}")
+
 
 # Import json for export_json
 import json

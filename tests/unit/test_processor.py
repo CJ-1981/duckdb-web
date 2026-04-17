@@ -352,42 +352,49 @@ class TestProcessorAggregate:
 
     def test_aggregate_sum(self, sample_csv_file):
         """Test SUM aggregation"""
-        with pytest.raises((ImportError, AttributeError)):
-            processor = Processor()
-            processor.load_csv(sample_csv_file)
-            result = processor.aggregate('region', 'amount', 'SUM')
-            assert len(result) == 4  # 4 regions
+        processor = Processor()
+        processor.load_csv(sample_csv_file)
+        result = processor.aggregate('region', 'amount', 'SUM')
+        assert len(result) == 4  # 4 regions
+        assert 'sum_amount' in result.columns
+        # Verify the aggregation worked correctly
+        total_sum = result['sum_amount'].sum()
+        assert total_sum > 0
 
     def test_aggregate_avg(self, sample_csv_file):
         """Test AVG aggregation"""
-        with pytest.raises((ImportError, AttributeError)):
-            processor = Processor()
-            processor.load_csv(sample_csv_file)
-            result = processor.aggregate('region', 'amount', 'AVG')
+        processor = Processor()
+        processor.load_csv(sample_csv_file)
+        result = processor.aggregate('region', 'amount', 'AVG')
+        assert len(result) == 4  # 4 regions
+        assert 'avg_amount' in result.columns
 
     def test_aggregate_count(self, sample_csv_file):
         """Test COUNT aggregation"""
-        with pytest.raises((ImportError, AttributeError)):
-            processor = Processor()
-            processor.load_csv(sample_csv_file)
-            result = processor.aggregate('region', 'id', 'COUNT')
+        processor = Processor()
+        processor.load_csv(sample_csv_file)
+        result = processor.aggregate('region', 'id', 'COUNT')
+        assert len(result) == 4  # 4 regions
+        assert 'count' in result.columns
 
     def test_aggregate_with_multiple_group_by(self, sample_csv_file):
         """Test aggregation with multiple GROUP BY columns"""
-        with pytest.raises((ImportError, AttributeError)):
-            processor = Processor()
-            processor.load_csv(sample_csv_file)
-            processor.add_column('tier', """
-                CASE
-                    WHEN CAST(amount AS DOUBLE) >= 2000 THEN 'GOLD'
-                    ELSE 'SILVER'
-                END
-            """)
-            result = processor.aggregate(
-                ['region', 'tier'],
-                'amount',
-                'SUM'
-            )
+        processor = Processor()
+        processor.load_csv(sample_csv_file)
+        # For multiple group by, pass them as a list
+        result = processor.aggregate(['region', 'name'], 'amount', 'SUM')
+        assert len(result) > 0
+        processor.add_column('tier', """
+            CASE
+                WHEN CAST(amount AS DOUBLE) >= 2000 THEN 'GOLD'
+                ELSE 'SILVER'
+            END
+        """)
+        result = processor.aggregate(
+            ['region', 'tier'],
+            'amount',
+            'SUM'
+        )
 
 
 # ========================================================================
@@ -443,33 +450,30 @@ class TestProcessorExport:
     def test_export_to_json(self, sample_csv_file, tmp_path):
         """Test exporting data to JSON file"""
         output_path = tmp_path / "output.json"
-        with pytest.raises((ImportError, AttributeError)):
-            processor = Processor()
-            processor.load_csv(sample_csv_file)
-            processor.export_json(str(output_path))
-            assert output_path.exists()
-            # Verify JSON structure
-            with open(output_path) as f:
-                data = json.load(f)
-                assert isinstance(data, list)
+        processor = Processor()
+        processor.load_csv(sample_csv_file)
+        processor.export_json(str(output_path))
+        assert output_path.exists()
+        # Verify JSON structure
+        with open(output_path) as f:
+            data = json.load(f)
+            assert isinstance(data, list)
 
     def test_export_to_parquet(self, sample_csv_file, tmp_path):
         """Test exporting data to Parquet file"""
         output_path = tmp_path / "output.parquet"
-        with pytest.raises((ImportError, AttributeError)):
-            processor = Processor()
-            processor.load_csv(sample_csv_file)
-            processor.export_parquet(str(output_path))
-            assert output_path.exists()
+        processor = Processor()
+        processor.load_csv(sample_csv_file)
+        processor.export_parquet(str(output_path))
+        assert output_path.exists()
 
     def test_export_to_duckdb(self, sample_csv_file, tmp_path):
         """Test exporting data to DuckDB database"""
         output_path = tmp_path / "output.duckdb"
-        with pytest.raises((ImportError, AttributeError)):
-            processor = Processor()
-            processor.load_csv(sample_csv_file)
-            processor.export_duckdb(str(output_path), table_name='exported_data')
-            assert output_path.exists()
+        processor = Processor()
+        processor.load_csv(sample_csv_file)
+        processor.export_duckdb(str(output_path), table_name='exported_data')
+        assert output_path.exists()
 
     def test_export_query_result(self, sample_csv_file, tmp_path):
         """Test exporting query result instead of full table"""
