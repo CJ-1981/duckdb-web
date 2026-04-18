@@ -945,7 +945,9 @@ function Dashboard() {
                   items: [
                     { type: 'input', label: 'Database Table', icon: <Database size={16} />, tooltip: 'Source data directly from project-level DuckDB tables.' },
                     { type: 'input', label: 'Data Files', icon: <Table size={16} />, tooltip: 'Upload or select local data files (CSV, Excel, JSON, Parquet) to analyze.' },
-                    { type: 'input', subtype: 'remote_file', label: 'Remote File / S3', icon: <Globe size={16} />, tooltip: 'Load data from an external HTTP URL or S3 Bucket.' }
+                    { type: 'input', subtype: 'remote_file', label: 'Remote File / S3', icon: <Globe size={16} />, tooltip: 'Load data from an external HTTP URL or S3 Bucket.' },
+                    { type: 'input', subtype: 'rest_api', label: 'REST API', icon: <Repeat size={16} />, tooltip: 'Fetch data from REST API endpoints with auth and pagination.' },
+                    { type: 'input', subtype: 'web_scraper', label: 'Web Scraper', icon: <Search size={16} />, tooltip: 'Scrape tabular data from web pages using CSS selectors.' }
                   ]
                 },
                 {
@@ -2097,6 +2099,118 @@ function Dashboard() {
                           className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-sm text-[#171717] focus:ring-[#0052CC] focus:border-[#0052CC]"
                           placeholder="https://... or s3://..."
                         />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* REST API UI */}
+                  {selectedNode.data.subtype === 'rest_api' && (
+                    <div className="space-y-3">
+                      <div>
+                        <label className="block text-xs font-semibold text-[#6B778C] mb-1">API URL</label>
+                        <input
+                          value={String((selectedNode.data.config as any)?.api_url || '')}
+                          onChange={(e) => {
+                            const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), api_url: e.target.value } } };
+                            setSelectedNode(updatedNode);
+                            setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
+                          }}
+                          className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-sm text-[#171717] focus:ring-[#0052CC] focus:border-[#0052CC]"
+                          placeholder="https://api.example.com/data"
+                        />
+                      </div>
+                      <div className="flex gap-2">
+                        <div className="flex-1">
+                          <label className="block text-xs font-semibold text-[#6B778C] mb-1">Method</label>
+                          <select
+                            value={(selectedNode.data.config as any)?.method || 'GET'}
+                            onChange={(e) => {
+                              const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), method: e.target.value } } };
+                              setSelectedNode(updatedNode);
+                              setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
+                            }}
+                            className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-sm text-[#171717] focus:ring-[#0052CC] focus:border-[#0052CC]"
+                          >
+                            <option value="GET">GET</option>
+                            <option value="POST">POST</option>
+                          </select>
+                        </div>
+                        <div className="flex-1">
+                          <label className="block text-xs font-semibold text-[#6B778C] mb-1">Auth</label>
+                          <select
+                            value={(selectedNode.data.config as any)?.auth_type || 'none'}
+                            onChange={(e) => {
+                              const updatedNode = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), auth_type: e.target.value } } };
+                              setSelectedNode(updatedNode);
+                              setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
+                            }}
+                            className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-sm text-[#171717] focus:ring-[#0052CC] focus:border-[#0052CC]"
+                          >
+                            <option value="none">None</option>
+                            <option value="bearer">Bearer Token</option>
+                            <option value="api_key">API Key</option>
+                            <option value="basic">Basic Auth</option>
+                          </select>
+                        </div>
+                      </div>
+                      {(selectedNode.data.config as any)?.auth_type === 'bearer' && (
+                        <div>
+                          <label className="block text-xs font-semibold text-[#6B778C] mb-1">Bearer Token</label>
+                          <input type="password" value={String((selectedNode.data.config as any)?.token || '')} onChange={(e) => { const u = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), token: e.target.value } } }; setSelectedNode(u); setNodes((nds) => nds.map((n) => n.id === u.id ? u : n)); }} className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-sm text-[#171717] focus:ring-[#0052CC] focus:border-[#0052CC]" placeholder="Token..." />
+                        </div>
+                      )}
+                      {(selectedNode.data.config as any)?.auth_type === 'api_key' && (
+                        <div className="flex gap-2">
+                          <div className="flex-1">
+                            <label className="block text-xs font-semibold text-[#6B778C] mb-1">Header Name</label>
+                            <input value={String((selectedNode.data.config as any)?.api_key_header || 'X-API-Key')} onChange={(e) => { const u = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), api_key_header: e.target.value } } }; setSelectedNode(u); setNodes((nds) => nds.map((n) => n.id === u.id ? u : n)); }} className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-sm text-[#171717] focus:ring-[#0052CC] focus:border-[#0052CC]" />
+                          </div>
+                          <div className="flex-1">
+                            <label className="block text-xs font-semibold text-[#6B778C] mb-1">API Key</label>
+                            <input type="password" value={String((selectedNode.data.config as any)?.api_key || '')} onChange={(e) => { const u = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), api_key: e.target.value } } }; setSelectedNode(u); setNodes((nds) => nds.map((n) => n.id === u.id ? u : n)); }} className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-sm text-[#171717] focus:ring-[#0052CC] focus:border-[#0052CC]" />
+                          </div>
+                        </div>
+                      )}
+                      <div>
+                        <label className="block text-xs font-semibold text-[#6B778C] mb-1">JSON Data Path <span className="font-normal text-[#6B778C]">(optional)</span></label>
+                        <input value={String((selectedNode.data.config as any)?.data_path || '')} onChange={(e) => { const u = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), data_path: e.target.value } } }; setSelectedNode(u); setNodes((nds) => nds.map((n) => n.id === u.id ? u : n)); }} className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-sm text-[#171717] focus:ring-[#0052CC] focus:border-[#0052CC]" placeholder="e.g. data.items" />
+                      </div>
+                      <div className="flex gap-2">
+                        <div className="flex-1">
+                          <label className="block text-xs font-semibold text-[#6B778C] mb-1">Pagination</label>
+                          <select value={(selectedNode.data.config as any)?.pagination || 'none'} onChange={(e) => { const u = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), pagination: e.target.value === 'none' ? null : e.target.value } } }; setSelectedNode(u); setNodes((nds) => nds.map((n) => n.id === u.id ? u : n)); }} className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-sm text-[#171717] focus:ring-[#0052CC] focus:border-[#0052CC]">
+                            <option value="none">None</option>
+                            <option value="offset">Offset-based</option>
+                            <option value="cursor">Cursor-based</option>
+                            <option value="link">Link Header</option>
+                          </select>
+                        </div>
+                        <div className="w-24">
+                          <label className="block text-xs font-semibold text-[#6B778C] mb-1">Max Pages</label>
+                          <input type="number" min="1" max="100" value={String((selectedNode.data.config as any)?.max_pages || 10)} onChange={(e) => { const u = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), max_pages: parseInt(e.target.value) || 10 } } }; setSelectedNode(u); setNodes((nds) => nds.map((n) => n.id === u.id ? u : n)); }} className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-sm text-[#171717] focus:ring-[#0052CC] focus:border-[#0052CC]" />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Web Scraper UI */}
+                  {selectedNode.data.subtype === 'web_scraper' && (
+                    <div className="space-y-3">
+                      <div>
+                        <label className="block text-xs font-semibold text-[#6B778C] mb-1">Web Page URL</label>
+                        <input value={String((selectedNode.data.config as any)?.web_url || '')} onChange={(e) => { const u = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), web_url: e.target.value } } }; setSelectedNode(u); setNodes((nds) => nds.map((n) => n.id === u.id ? u : n)); }} className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-sm text-[#171717] focus:ring-[#0052CC] focus:border-[#0052CC]" placeholder="https://en.wikipedia.org/wiki/..." />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-[#6B778C] mb-1">Extraction Mode</label>
+                        <select value={(selectedNode.data.config as any)?.extract_mode || 'table'} onChange={(e) => { const u = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), extract_mode: e.target.value } } }; setSelectedNode(u); setNodes((nds) => nds.map((n) => n.id === u.id ? u : n)); }} className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-sm text-[#171717] focus:ring-[#0052CC] focus:border-[#0052CC]">
+                          <option value="table">HTML Table</option>
+                          <option value="css">CSS Selector</option>
+                          <option value="xpath">XPath</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-[#6B778C] mb-1">Selector</label>
+                        <input value={String((selectedNode.data.config as any)?.selector || 'table')} onChange={(e) => { const u = { ...selectedNode, data: { ...selectedNode.data, config: { ...(selectedNode.data.config as any), selector: e.target.value } } }; setSelectedNode(u); setNodes((nds) => nds.map((n) => n.id === u.id ? u : n)); }} className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-sm text-[#171717] focus:ring-[#0052CC] focus:border-[#0052CC]" placeholder="table, .data-table, #results" />
                       </div>
                     </div>
                   )}

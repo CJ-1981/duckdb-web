@@ -631,6 +631,58 @@ class Processor:
 
         return self.sql(f'SELECT * FROM {self._table_name}')
 
+    def load_web(
+        self,
+        url: str,
+        table_name: Optional[str] = None,
+        selector: str = 'table',
+        extract_mode: str = 'table',
+        headers: Optional[Dict[str, str]] = None,
+    ) -> pd.DataFrame:
+        """
+        Load data from a web page by scraping HTML content.
+
+        Args:
+            url: Web page URL to scrape
+            table_name: Target table name (optional, default 'data')
+            selector: CSS selector to target elements (default 'table')
+            extract_mode: Extraction mode ('table', 'css', 'xpath')
+            headers: Custom HTTP headers
+
+        Returns:
+            DataFrame with loaded data
+        """
+        from ..connectors.web import WebConnector
+
+        target_table = table_name or 'data'
+        self._table_name = target_table
+
+        connector = WebConnector(headers=headers)
+        connector.validate(url)
+        connector.connect()
+
+        try:
+            rows = list(connector.read(
+                url=url,
+                selector=selector,
+                extract_mode=extract_mode,
+            ))
+        finally:
+            connector.disconnect()
+
+        if not rows:
+            raise ValueError(f"No data extracted from {url}")
+
+        self._columns = list(rows[0].keys())
+        self._create_table_from_rows(rows, target_table)
+        self._insert_rows(rows, target_table)
+
+        self._call_plugin_hook('on_data_load', rows)
+
+        logger.info(f"Loaded {len(rows)} rows from web {url} into table {target_table}")
+
+        return self.sql(f'SELECT * FROM {self._table_name}')
+
     def load_df(
         self,
         df: pd.DataFrame,

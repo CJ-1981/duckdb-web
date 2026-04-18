@@ -1358,6 +1358,53 @@ async def execute_workflow_graph(
                         logger.error(f"Failed to load remote file {url}: {e}")
                     continue
 
+                # REST API input
+                if subtype == "rest_api":
+                    try:
+                        from src.core.processor import Processor
+                        processor = Processor()
+                        df = processor.load_api(
+                            api_url=config.get("api_url"),
+                            auth_type=config.get("auth_type"),
+                            token=config.get("token"),
+                            api_key=config.get("api_key"),
+                            api_key_header=config.get("api_key_header", "X-API-Key"),
+                            method=config.get("method", "GET"),
+                            data_path=config.get("data_path"),
+                            pagination=config.get("pagination"),
+                            max_pages=config.get("max_pages"),
+                        )
+                        df = _sanitize_df_for_duckdb(df)
+                        conn.register(f'{table_name}_df', df)
+                        conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT * FROM {table_name}_df")
+                        node_to_table[node_id] = table_name
+                        logger.info(f">>> [INPUT NODE] Loaded REST API: {len(df)} rows from {config.get('api_url')}")
+                    except Exception as e:
+                        logger.error(f">>> [INPUT NODE] Failed to load REST API: {e}")
+                        raise HTTPException(status_code=400, detail=f"REST API error: {str(e)}")
+                    continue
+
+                # Web Scraper input
+                if subtype == "web_scraper":
+                    try:
+                        from src.core.processor import Processor
+                        processor = Processor()
+                        df = processor.load_web(
+                            url=config.get("web_url"),
+                            selector=config.get("selector", "table"),
+                            extract_mode=config.get("extract_mode", "table"),
+                            headers=config.get("custom_headers"),
+                        )
+                        df = _sanitize_df_for_duckdb(df)
+                        conn.register(f'{table_name}_df', df)
+                        conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT * FROM {table_name}_df")
+                        node_to_table[node_id] = table_name
+                        logger.info(f">>> [INPUT NODE] Loaded Web Scraper: {len(df)} rows from {config.get('web_url')}")
+                    except Exception as e:
+                        logger.error(f">>> [INPUT NODE] Failed to scrape web page: {e}")
+                        raise HTTPException(status_code=400, detail=f"Web scraper error: {str(e)}")
+                    continue
+
                 file_path = config.get("file_path")
                 logger.info(f">>> [INPUT NODE] Processing file: {file_path}")
                 if not file_path: continue
@@ -2333,6 +2380,51 @@ async def inspect_node_dataset(request: InspectRequest):
                         except Exception as e:
                             logger.error(f"Failed to load remote file {url}: {e}")
                         continue
+
+                    # REST API input
+                    if subtype == "rest_api":
+                        try:
+                            from src.core.processor import Processor
+                            processor = Processor()
+                            df = processor.load_api(
+                                api_url=config.get("api_url"),
+                                auth_type=config.get("auth_type"),
+                                token=config.get("token"),
+                                api_key=config.get("api_key"),
+                                api_key_header=config.get("api_key_header", "X-API-Key"),
+                                method=config.get("method", "GET"),
+                                data_path=config.get("data_path"),
+                                pagination=config.get("pagination"),
+                                max_pages=config.get("max_pages"),
+                            )
+                            df = _sanitize_df_for_duckdb(df)
+                            conn.register(f'{table_name}_df', df)
+                            conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT * FROM {table_name}_df")
+                            node_to_table[node_id] = table_name
+                            continue
+                        except Exception as e:
+                            logger.error(f">>> [INSPECT] Failed to load REST API: {e}")
+                            raise ValueError(f"REST API error: {e}") from e
+
+                    # Web Scraper input
+                    if subtype == "web_scraper":
+                        try:
+                            from src.core.processor import Processor
+                            processor = Processor()
+                            df = processor.load_web(
+                                url=config.get("web_url"),
+                                selector=config.get("selector", "table"),
+                                extract_mode=config.get("extract_mode", "table"),
+                                headers=config.get("custom_headers"),
+                            )
+                            df = _sanitize_df_for_duckdb(df)
+                            conn.register(f'{table_name}_df', df)
+                            conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT * FROM {table_name}_df")
+                            node_to_table[node_id] = table_name
+                            continue
+                        except Exception as e:
+                            logger.error(f">>> [INSPECT] Failed to scrape web page: {e}")
+                            raise ValueError(f"Web scraper error: {e}") from e
 
                     fp = config.get("file_path")
                     if not fp: continue
