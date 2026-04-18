@@ -258,7 +258,7 @@ class Processor:
 
         logger.info(f"Loaded {len(rows)} rows from {csv_path} into table {target_table}")
 
-        return self.preview()
+        return self.sql(f'SELECT * FROM {self._table_name}')
 
     def _load_csv_streaming(
         self,
@@ -290,7 +290,7 @@ class Processor:
 
         logger.info(f"Streamed {total_rows} rows from {csv_path} into table {target_table}")
 
-        return self.preview()
+        return self.sql(f'SELECT * FROM {self._table_name}')
 
     def load_excel(
         self,
@@ -350,7 +350,7 @@ class Processor:
 
         logger.info(f"Loaded {len(rows)} rows from {excel_path} into table {target_table}")
 
-        return self.preview()
+        return self.sql(f'SELECT * FROM {target_table}')
 
     def load_json(
         self,
@@ -405,7 +405,7 @@ class Processor:
 
         logger.info(f"Loaded {len(rows)} rows from {json_path} into table {target_table}")
 
-        return self.preview()
+        return self.sql(f'SELECT * FROM {self._table_name}')
 
     def load_database(
         self,
@@ -473,7 +473,7 @@ class Processor:
 
         logger.info(f"Loaded {len(rows)} rows from database into table {target_table}")
 
-        return self.preview()
+        return self.sql(f'SELECT * FROM {self._table_name}')
 
     def load_parquet(
         self,
@@ -528,7 +528,7 @@ class Processor:
 
         logger.info(f"Loaded {len(rows)} rows from {parquet_path} into table {target_table}")
 
-        return self.preview()
+        return self.sql(f'SELECT * FROM {self._table_name}')
 
     def load_api(
         self,
@@ -629,7 +629,7 @@ class Processor:
 
         logger.info(f"Loaded {len(rows)} rows from API {api_url} into table {target_table}")
 
-        return self.preview()
+        return self.sql(f'SELECT * FROM {self._table_name}')
 
     def load_df(
         self,
@@ -678,7 +678,7 @@ class Processor:
 
         logger.info(f"Loaded {len(rows)} rows from DataFrame into table {target_table}")
 
-        return self.preview()
+        return self.sql(f'SELECT * FROM {self._table_name}')
 
     # ========================================================================
     #  Table Management Methods

@@ -2695,6 +2695,7 @@ async def inspect_node_dataset(request: InspectRequest):
             return v
 
         preview_limit = request.sample_limit or 50
+        logger.info(f">>> [INSPECT SAMPLES] sample_limit={request.sample_limit}, using preview_limit={preview_limit}")
         # Use fetchall() to avoid .df() conversion issues with empty strings
         res = conn.execute(f"SELECT * FROM {target_table} LIMIT {preview_limit}")
         columns_list = [desc[0] for desc in res.description]
