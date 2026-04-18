@@ -221,28 +221,30 @@ class TestProcessorLoadDatabase:
     def test_load_from_postgresql(self):
         """Test loading data from PostgreSQL database"""
         processor = Processor()
-        # load_database is not implemented yet
-        with pytest.raises(NotImplementedError):
+        # Should raise ImportError if psycopg2 not installed
+        # or ConnectionError for invalid connection
+        with pytest.raises((ImportError, ConnectionError)):
             processor.load_database(
-                connection_string="postgresql://user:pass@host:5432/db",
+                connection_string="postgresql://user:pass@invalid-host:5432/db",
                 query="SELECT * FROM users"
             )
 
     def test_load_from_mysql(self):
         """Test loading data from MySQL database"""
         processor = Processor()
-        # load_database is not implemented yet
-        with pytest.raises(NotImplementedError):
+        # Should raise ImportError if pymysql not installed
+        # or ConnectionError for invalid connection
+        with pytest.raises((ImportError, ConnectionError)):
             processor.load_database(
-                connection_string="mysql://user:pass@host:3306/db",
+                connection_string="mysql://user:pass@invalid-host:3306/db",
                 query="SELECT * FROM products"
             )
 
     def test_load_from_duckdb_query(self, real_duckdb_connection):
         """Test loading data from DuckDB query"""
         processor = Processor()
-        # load_database is not implemented yet
-        with pytest.raises(NotImplementedError):
+        # Should raise ValueError for unsupported database type
+        with pytest.raises(ValueError):
             processor.load_database(
                 connection_string="duckdb:///memory",
                 query="SELECT 1 as value"

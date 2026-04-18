@@ -24,6 +24,7 @@ from ..config.loader import Config
 from ..database import DatabaseConnection
 from ..connectors import CSVConnector, get_connector, CONNECTOR_REGISTRY
 from ..connectors.excel import ExcelConnector
+from ..connectors.json import JSONConnector
 from .streaming import StreamProcessor
 from .query import QueryExecutor
 from .export import DataExporter
@@ -351,6 +352,61 @@ class Processor:
 
         return self.preview()
 
+    def load_json(
+        self,
+        json_path: str,
+        table_name: Optional[str] = None,
+        format: str = 'json',
+    ) -> pd.DataFrame:
+        """
+        Load JSON or JSONL file into processor
+
+        Args:
+            json_path: Path to JSON file
+            table_name: Target table name (optional, default 'data')
+            format: File format ('json' or 'jsonl', default 'json')
+
+        Returns:
+            DataFrame with loaded data
+
+        Raises:
+            FileNotFoundError: If file doesn't exist
+            ValueError: If file is empty or invalid
+        """
+        # Validate file exists
+        path = Path(json_path)
+        if not path.exists():
+            raise FileNotFoundError(f"JSON file not found: {json_path}")
+
+        # Create JSON connector
+        connector = JSONConnector()
+
+        # Load data using connector
+        target_table = table_name or 'data'
+        self._table_name = target_table
+
+        # Read JSON data
+        rows = list(connector.read(json_path, format=format))
+
+        if not rows:
+            raise ValueError(f"Empty JSON file: {json_path}")
+
+        # Infer schema and create table
+        self._columns = list(rows[0].keys())
+
+        # Create table
+        self._create_table_from_rows(rows, target_table)
+
+        # Insert data
+        self._insert_rows(rows, target_table)
+
+        # Call plugin hook
+        self._call_plugin_hook('on_data_load', rows)
+
+        logger.info(f"Loaded {len(rows)} rows from {json_path} into table {target_table}")
+
+        return self.preview()
+
     def load_database(
         self,
         connection_string: str,
@@ -361,16 +417,63 @@ class Processor:
         Load data from database query
 
         Args:
-            connection_string: Database connection string
+            connection_string: Database connection string (postgresql:// or mysql://)
             query: SQL query to execute
             table_name: Target table name (optional)
 
         Returns:
             DataFrame with loaded data
+
+        Raises:
+            ValueError: If database type is not supported
+            ConnectionError: If database connection fails
         """
-        # This would be implemented with database connectors
-        # For now, raise NotImplementedError
-        raise NotImplementedError("Database loading not yet implemented")
+        # Detect database type from connection string
+        if connection_string.startswith('postgresql://'):
+            from ..connectors.postgresql import PostgreSQLConnector
+            connector = PostgreSQLConnector(connection_string)
+        elif connection_string.startswith('mysql://'):
+            from ..connectors.mysql import MySQLConnector
+            connector = MySQLConnector(connection_string)
+        else:
+            raise ValueError(
+                f"Unsupported database type. Supported: postgresql://, mysql://\n"
+                f"Got: {connection_string[:20]}..."
+            )
+
+        # Connect to database
+        try:
+            connector.connect()
+        except Exception as e:
+            raise ConnectionError(f"Failed to connect to database: {e}")
+
+        # Set target table
+        target_table = table_name or 'data'
+        self._table_name = target_table
+
+        # Read data from database
+        try:
+            rows = list(connector.read(query=query))
+        except Exception as e:
+            connector.disconnect()
+            raise ValueError(f"Failed to execute query: {e}")
+
+        # Clean up connection
+        connector.disconnect()
+
+        if not rows:
+            raise ValueError(f"Query returned no results: {query}")
+
+        # Create table and insert data
+        self._create_table_from_rows(rows, target_table)
+        self._insert_rows(rows, target_table)
+
+        # Call plugin hook
+        self._call_plugin_hook('on_data_load', rows)
+
+        logger.info(f"Loaded {len(rows)} rows from database into table {target_table}")
+
+        return self.preview()
 
     def load_api(
         self,
