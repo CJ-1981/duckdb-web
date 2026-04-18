@@ -119,7 +119,14 @@ class ExcelConnector(BaseConnector):
         # If sheet_name is None, use the first sheet
         if sheet is None:
             sheet = sheet_names[0]
-        df = pd.read_excel(file_path, sheet_name=sheet, header=self.header_row)
+        # Read with type preservation
+        df = pd.read_excel(
+            file_path,
+            sheet_name=sheet,
+            header=self.header_row,
+            parse_dates=False,
+            dtype=str
+        )
 
         return {
             'file_path': str(path),
@@ -158,11 +165,15 @@ class ExcelConnector(BaseConnector):
             with pd.ExcelFile(file_path) as excel_file:
                 sheet_name = excel_file.sheet_names[0]
 
-        # Read Excel file
+        # Read Excel file with type preservation to prevent auto-conversion
+        # parse_dates=False prevents pandas from auto-converting cells to dates
+        # dtype=str ensures all values are read as strings first for proper inference
         df = pd.read_excel(
             file_path,
             sheet_name=sheet_name,
-            header=header_row
+            header=header_row,
+            parse_dates=False,
+            dtype=str
         )
 
         # Convert DataFrame to list of dictionaries

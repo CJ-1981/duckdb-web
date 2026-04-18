@@ -322,6 +322,11 @@ function Dashboard() {
   };
 
   const handleLoadWorkflow = async (name: string) => {
+    // Warn about unsaved changes before loading
+    if (nodes && nodes.length > 0 && !confirm(`Load workflow '${name}'? Current unsaved changes will be lost.`)) {
+      return;
+    }
+
     try {
       const data = await loadWorkflowGraph(name);
       const sanitizedNodes = (data.nodes || []).map((n: any) => {
@@ -335,10 +340,10 @@ function Dashboard() {
       setExecutionMessage({ title: "Pipeline loaded!", detail: `Fetched '${name}' and reconstructed 100% of the graph.`, type: 'success' });
       setExecutionSuccess(true);
       setTimeout(() => { setExecutionSuccess(false); setExecutionMessage(null); }, 4000);
-    } catch (e: any) { 
+    } catch (e: any) {
       setExecutionMessage({ title: "Load failed.", detail: e.message || "Could not load workflow.", type: 'error' });
       setExecutionSuccess(true);
-      console.error(e); 
+      console.error(e);
     }
   };
 
@@ -939,7 +944,7 @@ function Dashboard() {
                   title: 'Data Sources',
                   items: [
                     { type: 'input', label: 'Database Table', icon: <Database size={16} />, tooltip: 'Source data directly from project-level DuckDB tables.' },
-                    { type: 'input', label: 'CSV/Excel File', icon: <Table size={16} />, tooltip: 'Upload or select local data files (CSV, XLSX) to analyze.' },
+                    { type: 'input', label: 'Data Files', icon: <Table size={16} />, tooltip: 'Upload or select local data files (CSV, Excel, JSON, Parquet) to analyze.' },
                     { type: 'input', subtype: 'remote_file', label: 'Remote File / S3', icon: <Globe size={16} />, tooltip: 'Load data from an external HTTP URL or S3 Bucket.' }
                   ]
                 },
@@ -2729,6 +2734,7 @@ Please fix the SQL. Return ONLY the raw SQL query.`;
                       <option value="CSV">CSV Document (.csv)</option>
                       <option value="Excel">Excel Document (.xlsx)</option>
                       <option value="JSON">JSON Data (.json)</option>
+                      <option value="Parquet">Parquet File (.parquet)</option>
                     </select>
                   </div>
                   <div>
