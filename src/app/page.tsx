@@ -1324,7 +1324,7 @@ function Dashboard() {
                         value={(selectedNode.data.config as any)?.selectedSheet || ''}
                         onChange={(e) => {
                           const newSheet = e.target.value;
-                          setSelectedNode({
+                          const updatedNode = {
                             ...selectedNode,
                             data: {
                               ...selectedNode.data,
@@ -1333,7 +1333,9 @@ function Dashboard() {
                                 selectedSheet: newSheet
                               }
                             }
-                          });
+                          };
+                          setSelectedNode(updatedNode);
+                          setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
                         }}
                         className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-sm text-[#171717] focus:ring-[#0052CC] focus:border-[#0052CC]"
                       >

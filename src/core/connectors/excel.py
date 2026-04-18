@@ -125,7 +125,7 @@ class ExcelConnector(BaseConnector):
             sheet_name=sheet,
             header=self.header_row,
             parse_dates=False,
-            dtype=str
+            dtype=object
         )
 
         return {
@@ -167,13 +167,14 @@ class ExcelConnector(BaseConnector):
 
         # Read Excel file with type preservation to prevent auto-conversion
         # parse_dates=False prevents pandas from auto-converting cells to dates
-        # dtype=str ensures all values are read as strings first for proper inference
+        # dtype=object ensures all values are read as Python objects (strings)
+        # which is compatible with DuckDB's conn.register()
         df = pd.read_excel(
             file_path,
             sheet_name=sheet_name,
             header=header_row,
             parse_dates=False,
-            dtype=str
+            dtype=object
         )
 
         # Convert DataFrame to list of dictionaries

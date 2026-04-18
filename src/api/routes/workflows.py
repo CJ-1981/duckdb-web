@@ -771,6 +771,18 @@ def validate_parameter_name(param_name: str) -> bool:
     return True
 
 
+def _sanitize_df_for_duckdb(df: pd.DataFrame) -> pd.DataFrame:
+    """Convert DataFrame columns to types compatible with DuckDB conn.register().
+
+    DuckDB's conn.register() doesn't recognize pandas StringDtype.
+    Convert StringDtype columns to object dtype before registration.
+    """
+    for col in df.columns:
+        if isinstance(df[col].dtype, pd.StringDtype):
+            df[col] = df[col].astype(object)
+    return df
+
+
 def _get_df(conn: duckdb.DuckDBPyConnection, sql: str) -> pd.DataFrame:
     """Helper to robustly extract a pandas DataFrame from DuckDB, handling RecordBatchReader if needed."""
     try:
@@ -1347,12 +1359,81 @@ async def execute_workflow_graph(
                     continue
 
                 file_path = config.get("file_path")
-                logger.info(f">>> [INPUT NODE] Processing CSV file: {file_path}")
+                logger.info(f">>> [INPUT NODE] Processing file: {file_path}")
                 if not file_path: continue
                 if not os.path.isabs(file_path):
                     file_path = os.path.abspath(file_path)
                 logger.info(f">>> [INPUT NODE] Absolute file path: {file_path}")
                 logger.info(f">>> [INPUT NODE] File exists: {os.path.exists(file_path)}")
+
+                # Detect file extension
+                file_ext = os.path.splitext(file_path)[1].lower()
+
+                # Handle Excel files (.xlsx, .xls)
+                if file_ext in ['.xlsx', '.xls']:
+                    try:
+                        from src.core.processor import Processor
+                        processor = Processor()
+                        # Get selected sheet from config, default to first sheet
+                        selected_sheet = config.get("selectedSheet")
+                        df = processor.load_excel(file_path, sheet_name=selected_sheet)
+
+                        # Register DataFrame as DuckDB table
+                        df = _sanitize_df_for_duckdb(df)
+                        conn.register(f'{table_name}_df', df)
+                        conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT * FROM {table_name}_df")
+                        node_to_table[node_id] = table_name
+                        logger.info(f">>> [INPUT NODE] Loaded Excel file with {len(df)} rows from sheet '{selected_sheet or 'default'}'")
+                        continue  # Skip the rest of the file loading logic
+                    except Exception as e:
+                        logger.error(f">>> [INPUT NODE] Failed to load Excel file {file_path}: {e}")
+                        raise HTTPException(
+                            status_code=400,
+                            detail=f"Failed to load Excel file: {str(e)}"
+                        )
+
+                # Handle Parquet files
+                if file_ext == '.parquet':
+                    try:
+                        from src.core.processor import Processor
+                        processor = Processor()
+                        df = processor.load_parquet(file_path)
+
+                        # Register DataFrame as DuckDB table
+                        df = _sanitize_df_for_duckdb(df)
+                        conn.register(f'{table_name}_df', df)
+                        conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT * FROM {table_name}_df")
+                        node_to_table[node_id] = table_name
+                        logger.info(f">>> [INPUT NODE] Loaded Parquet file with {len(df)} rows")
+                        continue  # Skip the rest of the file loading logic
+                    except Exception as e:
+                        logger.error(f">>> [INPUT NODE] Failed to load Parquet file {file_path}: {e}")
+                        raise HTTPException(
+                            status_code=400,
+                            detail=f"Failed to load Parquet file: {str(e)}"
+                        )
+
+                # Handle JSON/JSONL files
+                if file_ext in ['.json', '.jsonl']:
+                    try:
+                        from src.core.processor import Processor
+                        processor = Processor()
+                        format = 'jsonl' if file_ext == '.jsonl' else 'json'
+                        df = processor.load_json(file_path, format=format)
+
+                        # Register DataFrame as DuckDB table
+                        df = _sanitize_df_for_duckdb(df)
+                        conn.register(f'{table_name}_df', df)
+                        conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT * FROM {table_name}_df")
+                        node_to_table[node_id] = table_name
+                        logger.info(f">>> [INPUT NODE] Loaded {format.upper()} file with {len(df)} rows")
+                        continue  # Skip the rest of the file loading logic
+                    except Exception as e:
+                        logger.error(f">>> [INPUT NODE] Failed to load JSON file {file_path}: {e}")
+                        raise HTTPException(
+                            status_code=400,
+                            detail=f"Failed to load JSON file: {str(e)}"
+                        )
 
                 load_format = config.get("format", "flat")
 
@@ -2265,6 +2346,7 @@ async def inspect_node_dataset(request: InspectRequest):
                             df = processor.load_parquet(fp)
 
                             # Register DataFrame as DuckDB table
+                            df = _sanitize_df_for_duckdb(df)
                             conn.register(f'{table_name}_df', df)
                             conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT * FROM {table_name}_df")
                             node_to_table[node_id] = table_name
@@ -2289,6 +2371,7 @@ async def inspect_node_dataset(request: InspectRequest):
                             df = processor.load_excel(fp, sheet_name=selected_sheet)
 
                             # Register DataFrame as DuckDB table
+                            df = _sanitize_df_for_duckdb(df)
                             conn.register(f'{table_name}_df', df)
                             conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT * FROM {table_name}_df")
                             node_to_table[node_id] = table_name
@@ -2312,6 +2395,7 @@ async def inspect_node_dataset(request: InspectRequest):
                             df = processor.load_json(fp, format='jsonl' if ext == '.jsonl' else 'json')
 
                             # Register DataFrame as DuckDB table
+                            df = _sanitize_df_for_duckdb(df)
                             conn.register(f'{table_name}_df', df)
                             conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT * FROM {table_name}_df")
                             node_to_table[node_id] = table_name
