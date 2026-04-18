@@ -1343,7 +1343,6 @@ function Dashboard() {
                       </select>
                     </div>
                   )}
-                  </div>
                   <div>
                     <div className="flex items-center justify-between mb-1">
                       <label className="block text-xs font-semibold text-[#6B778C]">Server Upload Path</label>
@@ -1383,7 +1382,7 @@ function Dashboard() {
                         INSPECT
                       </button>
                     </div>
-                    <input type="text" data-testid="file-path-input" readOnly value={String((selectedNode.data.config as Record<string, unknown>)?.file_path || "None uploaded")} className="w-full bg-gray-50 border border-[#DFE1E6] rounded-md px-3 py-2 text-xs text-[#6B778C] font-mono" />
+                    <input type="text" data-testid="file-path-input" readOnly value={String((selectedNode.data.config as any)?.file_path || "None uploaded")} className="w-full bg-gray-50 border border-[#DFE1E6] rounded-md px-3 py-2 text-xs text-[#6B778C] font-mono" />
                   </div>
                   <div>
                     <label className="block text-xs font-semibold text-[#6B778C] mb-1">Parsing Format</label>
