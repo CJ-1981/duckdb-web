@@ -1221,7 +1221,7 @@ function Dashboard() {
                 )}
               </h3>
 
-              {selectedNode && selectedNode.type === 'input' && typeof selectedNode.data?.config === 'object' && selectedNode.data.config !== null && (
+              {selectedNode && selectedNode.type === 'input' && !selectedNode.data.subtype && typeof selectedNode.data?.config === 'object' && selectedNode.data.config !== null && (
                 <div className="space-y-4">
                   <div>
                     <label className="block text-xs font-semibold text-[#6B778C] mb-1">File Upload</label>
