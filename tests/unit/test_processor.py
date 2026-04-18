@@ -252,45 +252,6 @@ class TestProcessorLoadDatabase:
 
 
 # ========================================================================
-#  Data Loading Tests - API
-# ========================================================================
-
-class TestProcessorLoadAPI:
-    """Test API loading functionality"""
-
-    def test_load_from_api_endpoint(self):
-        """Test loading data from REST API endpoint"""
-        processor = Processor()
-        # load_api is not implemented yet
-        with pytest.raises((NotImplementedError, AttributeError)):
-            processor.load_api(
-                api_url="https://api.example.com/data",
-                method="GET"
-            )
-
-    def test_load_from_api_with_authentication(self):
-        """Test loading data from API with auth headers"""
-        processor = Processor()
-        # load_api is not implemented yet
-        with pytest.raises((NotImplementedError, AttributeError)):
-            processor.load_api(
-                api_url="https://api.example.com/secure-data",
-                headers={"Authorization": "Bearer token123"}
-            )
-
-    def test_load_from_api_with_pagination(self):
-        """Test loading data from paginated API"""
-        processor = Processor()
-        # load_api is not implemented yet
-        with pytest.raises((NotImplementedError, AttributeError)):
-            processor.load_api(
-                api_url="https://api.example.com/paginated",
-                paginate=True,
-                page_size=100
-            )
-
-
-# ========================================================================
 #  Data Processing Tests - Filter
 # ========================================================================
 

@@ -21,16 +21,20 @@ echo "📦 Starting Backend (FastAPI)..."
 
 if [ -d ".venv" ]; then
     source .venv/bin/activate
+    # Use venv Python explicitly to avoid system Python conflicts
+    VENV_PYTHON=".venv/bin/python"
+else
+    VENV_PYTHON="python"
 fi
 
-# Run backend in background - use python -m uvicorn to ensure PYTHONPATH handling
+# Run backend in background - use venv python explicitly to ensure correct environment
 # Note: --reload disabled for E2E tests to prevent port binding issues
 if [ "$PORT" = "3001" ]; then
     # E2E test mode - no reload
-    python -m uvicorn src.api.main:create_app --factory --port 8000 &
+    $VENV_PYTHON -m uvicorn src.api.main:create_app --factory --port 8000 &
 else
     # Development mode - with reload
-    python -m uvicorn src.api.main:create_app --factory --reload --port 8000 &
+    $VENV_PYTHON -m uvicorn src.api.main:create_app --factory --reload --port 8000 &
 fi
 
 # 2. Wait a moment for backend to initialize

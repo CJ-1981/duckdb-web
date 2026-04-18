@@ -105,43 +105,89 @@ async def upload_file(file: UploadFile = File(...)):
         pass
 
     # Discover columns and row count after upload
+    # Detect file type by extension
+    _filename = file.filename or ""
+    file_ext = os.path.splitext(_filename)[1].lower()
+    detected_format = "flat"
+
     try:
-        # Auto-detect delimiter from first 8 KB (handles ';', '\t', '|', ',')
-        detected_delim = ','
-        try:
-            with open(file_path, 'r', encoding='utf-8', errors='ignore') as _f:
-                _sample = _f.read(8192)
-            if _sample:
-                import csv as _csv_mod
-                _dialect = _csv_mod.Sniffer().sniff(_sample, delimiters=',\t;|')
-                detected_delim = _dialect.delimiter
-        except Exception:
-            pass
+        if file_ext in ['.xlsx', '.xls']:
+            # Excel file - use Processor.load_excel()
+            from src.core.processor import Processor
+            processor = Processor()
+            df = processor.load_excel(file_path)
+            columns = df.columns.tolist()
+            column_types = [
+                {'column_name': col, 'column_type': str(dtype)}
+                for col, dtype in df.dtypes.items()
+            ]
+            row_count = len(df)
+            logger.info(f">>> [FILE UPLOAD] Excel file: {len(columns)} columns, {row_count} rows")
 
-        conn = duckdb.connect(database=':memory:')
-        safe_delim = detected_delim.replace("'", "''")
-        _csv_frag = (
-            f"read_csv('{file_path.replace(chr(39), chr(39)+chr(39))}', "
-            f"ALL_VARCHAR=TRUE, nullstr='', delim='{safe_delim}', header=True)"
-        )
-        # Using DESCRIBE for columns and types
-        desc_df = conn.execute(f"DESCRIBE SELECT * FROM {_csv_frag}").df()
-        columns = desc_df['column_name'].tolist()
-        column_types = desc_df[['column_name', 'column_type']].to_dict(orient='records')
-        row_count = conn.execute(f"SELECT COUNT(*) FROM {_csv_frag}").fetchone()[0]
+        elif file_ext in ['.json', '.jsonl']:
+            # JSON/JSONL file - use Processor.load_json()
+            from src.core.processor import Processor
+            processor = Processor()
+            df = processor.load_json(file_path, format='jsonl' if file_ext == '.jsonl' else 'json')
+            columns = df.columns.tolist()
+            column_types = [
+                {'column_name': col, 'column_type': str(dtype)}
+                for col, dtype in df.dtypes.items()
+            ]
+            row_count = len(df)
+            logger.info(f">>> [FILE UPLOAD] JSON file: {len(columns)} columns, {row_count} rows")
 
-        logger.info(
-            f">>> [FILE UPLOAD] Discovered {len(columns)} columns "
-            f"(delim='{detected_delim}') for {file_path}"
-        )
+        elif file_ext == '.parquet':
+            # Parquet file - use Processor.load_parquet()
+            from src.core.processor import Processor
+            processor = Processor()
+            df = processor.load_parquet(file_path)
+            columns = df.columns.tolist()
+            column_types = [
+                {'column_name': col, 'column_type': str(dtype)}
+                for col, dtype in df.dtypes.items()
+            ]
+            row_count = len(df)
+            logger.info(f">>> [FILE UPLOAD] Parquet file: {len(columns)} columns, {row_count} rows")
 
-        # Detect if it's KV format
-        with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
-            sample_text = "".join([f.readline() for _ in range(25)])
-            reader = csv.reader(io.StringIO(sample_text))
-            sample_rows = [r for r in reader if r]
-            is_kv = detect_kv(sample_rows)
-            detected_format = "kv" if is_kv else "flat"
+        else:
+            # CSV file - use existing CSV detection logic
+            # Auto-detect delimiter from first 8 KB (handles ';', '\t', '|', ',')
+            detected_delim = ','
+            try:
+                with open(file_path, 'r', encoding='utf-8', errors='ignore') as _f:
+                    _sample = _f.read(8192)
+                if _sample:
+                    import csv as _csv_mod
+                    _dialect = _csv_mod.Sniffer().sniff(_sample, delimiters=',\t;|')
+                    detected_delim = _dialect.delimiter
+            except Exception:
+                pass
+
+            conn = duckdb.connect(database=':memory:')
+            safe_delim = detected_delim.replace("'", "''")
+            _csv_frag = (
+                f"read_csv('{file_path.replace(chr(39), chr(39)+chr(39))}', "
+                f"ALL_VARCHAR=TRUE, nullstr='', delim='{safe_delim}', header=True)"
+            )
+            # Using DESCRIBE for columns and types
+            desc_df = conn.execute(f"DESCRIBE SELECT * FROM {_csv_frag}").df()
+            columns = desc_df['column_name'].tolist()
+            column_types = desc_df[['column_name', 'column_type']].to_dict(orient='records')
+            row_count = conn.execute(f"SELECT COUNT(*) FROM {_csv_frag}").fetchone()[0]
+
+            logger.info(
+                f">>> [FILE UPLOAD] Discovered {len(columns)} columns "
+                f"(delim='{detected_delim}') for {file_path}"
+            )
+
+            # Detect if it's KV format
+            with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                sample_text = "".join([f.readline() for _ in range(25)])
+                reader = csv.reader(io.StringIO(sample_text))
+                sample_rows = [r for r in reader if r]
+                is_kv = detect_kv(sample_rows)
+                detected_format = "kv" if is_kv else "flat"
 
     except Exception as e:
         logger.warning(f">>> [FILE UPLOAD] Column discovery failed: {e}")

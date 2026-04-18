@@ -1221,7 +1221,7 @@ function Dashboard() {
                     <label className="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-[#DFE1E6] border-dashed rounded-md bg-[#FAFBFC] hover:border-[#0052CC] hover:bg-blue-50 transition-colors cursor-pointer relative">
                       <input
                         type="file"
-                        accept=".csv,.xlsx"
+                        accept=".csv,.xlsx,.xls,.json,.jsonl,.parquet"
                         className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                         onChange={async (e) => {
                           const file = e.target.files?.[0];
@@ -1304,7 +1304,7 @@ function Dashboard() {
                           <span className="font-medium text-[#0052CC] hover:text-[#0065FF]">Upload a file</span>
                           <p className="pl-1">or drag and drop</p>
                         </div>
-                        <p className="text-xs text-gray-500">CSV up to 1GB</p>
+                        <p className="text-xs text-gray-500">CSV/Excel/JSON/Parquet up to 1GB</p>
                       </div>
                     </label>
                   </div>

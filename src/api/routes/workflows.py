@@ -2255,36 +2255,70 @@ async def inspect_node_dataset(request: InspectRequest):
                     fp = config.get("file_path")
                     if not fp: continue
                     if not os.path.isabs(fp): fp = os.path.abspath(fp)
-                    
+
                     ext = os.path.splitext(fp)[1].lower()
                     if ext == '.parquet':
-                        conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT * FROM read_parquet('{fp}')")
-                    elif ext in ['.xlsx', '.xls']:
-                        # Try using the excel extension if available, otherwise fallback to spatial
+                        # Use Processor class to read Parquet files
                         try:
-                            conn.execute("INSTALL excel; LOAD excel;")
-                            conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT * FROM st_read('{fp}')")
-                        except Exception:
-                            # Fallback to CSV with schema inference
-                            infer_result = get_or_infer_csv_schema(fp)
-                            schema = infer_result["schema"]
-                            if schema:
-                                temp_view = f"{table_name}_raw"
-                                # Treat empty strings as NULL during CSV load
-                                # Note: read_csv_auto automatically detects encoding
-                                conn.execute(f'CREATE OR REPLACE TEMP TABLE {temp_view} AS SELECT * FROM read_csv(?, ALL_VARCHAR=TRUE, nullstr=\'\', delim=\',\', header=True, quote=\'"\')', [fp])
-                                
-                                # Get actual column names to handle BOM/whitespace issues
-                                res = conn.execute(f"DESCRIBE {temp_view}").df()
-                                actual_cols = res['column_name'].tolist()
+                            from src.core.processor import Processor
+                            processor = Processor()
+                            df = processor.load_parquet(fp)
 
-                                cast_exprs = build_cast_expressions(schema, temp_view, actual_cols=actual_cols)
-                                conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT {', '.join(cast_exprs)} FROM {temp_view}")
-                                conn.execute(f"DROP TABLE IF EXISTS {temp_view}")
-                            else:
-                                # Final fallback to ALL_VARCHAR if schema inference fails
-                                # Treat empty strings as NULL during CSV load
-                                conn.execute(f'CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT * FROM read_csv(?, ALL_VARCHAR=TRUE, nullstr=\'\', delim=\',\', header=True, quote=\'"\')', [fp])
+                            # Register DataFrame as DuckDB table
+                            conn.register(f'{table_name}_df', df)
+                            conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT * FROM {table_name}_df")
+                            node_to_table[node_id] = table_name
+                            continue
+                        except Exception as e:
+                            logger.error(f">>> [INSPECT] Failed to load Parquet file {fp} with Processor: {e}")
+                            # Fallback to DuckDB read_parquet
+                            try:
+                                conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT * FROM read_parquet('{fp}')")
+                                node_to_table[node_id] = table_name
+                                continue
+                            except Exception as e2:
+                                logger.error(f">>> [INSPECT] DuckDB read_parquet also failed: {e2}")
+                                raise ValueError(f"Failed to load Parquet file {fp}: {e2}") from e2
+                    elif ext in ['.xlsx', '.xls']:
+                        # Use Processor class to read Excel files
+                        try:
+                            from src.core.processor import Processor
+                            processor = Processor()
+                            df = processor.load_excel(fp)
+
+                            # Register DataFrame as DuckDB table
+                            conn.register(f'{table_name}_df', df)
+                            conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT * FROM {table_name}_df")
+                            node_to_table[node_id] = table_name
+                            continue
+                        except Exception as e:
+                            logger.error(f">>> [INSPECT] Failed to load Excel file {fp} with Processor: {e}")
+                            # Try DuckDB excel extension as fallback
+                            try:
+                                conn.execute("INSTALL excel; LOAD excel;")
+                                conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT * FROM st_read('{fp}')")
+                                node_to_table[node_id] = table_name
+                                continue
+                            except Exception as e2:
+                                logger.error(f">>> [INSPECT] DuckDB excel extension also failed: {e2}")
+                                raise ValueError(f"Failed to load Excel file {fp}. Please ensure openpyxl is installed: pip install openpyxl") from e2
+                    elif ext in ['.json', '.jsonl']:
+                        # Use Processor class to read JSON files
+                        try:
+                            from src.core.processor import Processor
+                            processor = Processor()
+                            df = processor.load_json(fp, format='jsonl' if ext == '.jsonl' else 'json')
+
+                            # Register DataFrame as DuckDB table
+                            conn.register(f'{table_name}_df', df)
+                            conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT * FROM {table_name}_df")
+                            node_to_table[node_id] = table_name
+                            continue
+                        except Exception as e:
+                            logger.error(f">>> [INSPECT] Failed to load JSON file {fp}: {e}")
+                            raise ValueError(f"Failed to load JSON file {fp}: {e}") from e
+
+                    # CSV file handling
                     # Always use read_csv_auto for loading — DuckDB's delimiter/encoding
                     # auto-detection is more reliable than Python's csv.Sniffer.
                     infer_result = get_or_infer_csv_schema(fp)

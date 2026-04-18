@@ -16,9 +16,21 @@ The DuckDB Workflow Builder is a full-stack web application that enables users t
 
 ### Multi-Source Data Integration
 - **Database Connectors**: Native support for DuckDB, PostgreSQL, MySQL
-- **File Import**: CSV files with automatic encoding detection (UTF-8, UTF-8-sig, CP949, EUC-KR)
+- **File Import**: 
+  - CSV files with automatic encoding detection (UTF-8, UTF-8-sig, CP949, EUC-KR)
+  - Excel files (.xlsx, .xls) with multiple sheet support
+  - JSON/JSONL files with nested structure handling
+  - Parquet files with compression detection (snappy, gzip, brotli, lz4, zstd)
+- **API Loading**: REST API integration with authentication (Bearer token, API key, Basic Auth)
 - **Remote Data**: HTTP/HTTPS file downloads with streaming support
 - **Schema Inference**: Automatic column type detection and validation
+
+### Data Transformations
+- **Aggregation**: Group by with SUM, AVG, MIN, MAX, COUNT functions
+- **Joins**: INNER, LEFT, RIGHT, OUTER, CROSS joins between tables
+- **Window Functions**: ROW_NUMBER, RANK, LAG, LEAD, running totals
+- **Rolling Aggregates**: Moving averages and sums with configurable window sizes
+- **Pivot Tables**: Cross-tabulation for multi-dimensional analysis
 
 ### Real-Time Data Processing
 - **DuckDB Engine**: In-memory analytical database for fast query execution
@@ -61,7 +73,12 @@ The DuckDB Workflow Builder is a full-stack web application that enables users t
 
 ### Testing
 - **Playwright**: End-to-end testing
-- **pytest**: Python unit testing
+- **pytest**: Python unit testing with 130+ tests
+  - Unit tests for Processor, connectors, and API endpoints
+  - Integration tests for data workflows
+  - API connector tests with mocking
+  - File upload tests (CSV, Excel, JSON, Parquet)
+  - Data transformation tests (pivot, group_by, merge, window functions)
 - **Vitest**: TypeScript unit testing
 
 ## Getting Started

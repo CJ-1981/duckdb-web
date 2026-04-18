@@ -6,16 +6,20 @@ Provides connectors for various data sources to import data into DuckDB.
 
 from .base import BaseConnector
 from .csv import CSVConnector
+from .api import APIConnector, create_api_connector
 
 __all__ = [
     'BaseConnector',
     'CSVConnector',
+    'APIConnector',
+    'create_api_connector',
 ]
 
 
 # Connector registry
 CONNECTOR_REGISTRY = {
     'csv': CSVConnector,
+    'api': APIConnector,
 }
 
 
