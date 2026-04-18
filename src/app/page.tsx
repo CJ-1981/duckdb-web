@@ -943,7 +943,6 @@ function Dashboard() {
                 {
                   title: 'Data Sources',
                   items: [
-                    { type: 'input', label: 'Database Table', icon: <Database size={16} />, tooltip: 'Source data directly from project-level DuckDB tables.' },
                     { type: 'input', label: 'Data Files', icon: <Table size={16} />, tooltip: 'Upload or select local data files (CSV, Excel, JSON, Parquet) to analyze.' },
                     { type: 'input', subtype: 'remote_file', label: 'Remote File / S3', icon: <Globe size={16} />, tooltip: 'Load data from an external HTTP URL or S3 Bucket.' },
                     { type: 'input', subtype: 'rest_api', label: 'REST API', icon: <Repeat size={16} />, tooltip: 'Fetch data from REST API endpoints with auth and pagination.' },
