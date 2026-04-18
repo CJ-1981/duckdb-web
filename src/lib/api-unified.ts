@@ -283,11 +283,11 @@ export async function generateReport(nodes: any[], edges: any[], reportConfig: a
 /**
  * Inspect a specific node in the workflow
  */
-export async function inspectNode(nodes: any[], edges: any[], nodeId: string) {
+export async function inspectNode(nodes: any[], edges: any[], nodeId: string, sampleLimit?: number) {
   try {
     const response = await apiRequest('/api/v1/workflows/inspect', {
       method: 'POST',
-      body: JSON.stringify({ nodes, edges, node_id: nodeId }),
+      body: JSON.stringify({ nodes, edges, node_id: nodeId, sample_limit: sampleLimit }),
     });
 
     if (!response.ok) {

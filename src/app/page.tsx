@@ -772,7 +772,7 @@ function Dashboard() {
     const rawEdges = getEdges();
     const nodes = rawNodes.map(n => ({ id: n.id, type: n.type, position: n.position, data: n.data }));
     const edges = rawEdges.map(e => ({ id: e.id, source: e.source, target: e.target }));
-    const result = await inspectNode(nodes, edges, nodeId);
+    const result = await inspectNode(nodes, edges, nodeId, previewLimit);
     return result as FullStats;
   };
 
@@ -1280,7 +1280,8 @@ function Dashboard() {
                                   const inspectResult = await inspectNode(
                                     nodes.map(n => n.id === selectedNode.id ? updatedNode : n),
                                     edges,
-                                    selectedNode.id
+                                    selectedNode.id,
+                                    previewLimit
                                   );
 
                                   if (inspectResult.node_samples && inspectResult.node_samples[selectedNode.id]) {
@@ -1356,7 +1357,7 @@ function Dashboard() {
                               setExecutionSuccess(true);
                               
                               // Trigger inspection
-                              const res = await inspectNode(getNodes(), getEdges(), selectedNode.id);
+                              const res = await inspectNode(getNodes(), getEdges(), selectedNode.id, previewLimit);
                               
                               // Populate samples if returned
                               if (res.node_samples) {

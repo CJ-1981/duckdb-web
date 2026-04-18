@@ -2270,6 +2270,7 @@ class InspectRequest(BaseModel):
     nodes: List[Dict[str, Any]]
     edges: List[Dict[str, Any]]
     node_id: str
+    sample_limit: Optional[int] = None
 
 @router.post("/inspect", status_code=status.HTTP_200_OK)
 async def inspect_node_dataset(request: InspectRequest):
@@ -2693,7 +2694,7 @@ async def inspect_node_dataset(request: InspectRequest):
             if isinstance(v, dict): return {ki: clean_json(vi) for ki, vi in v.items()}
             return v
 
-        preview_limit = 50
+        preview_limit = request.sample_limit or 50
         # Use fetchall() to avoid .df() conversion issues with empty strings
         res = conn.execute(f"SELECT * FROM {target_table} LIMIT {preview_limit}")
         columns_list = [desc[0] for desc in res.description]
