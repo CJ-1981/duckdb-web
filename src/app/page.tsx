@@ -1243,7 +1243,9 @@ function Dashboard() {
                                     file_path: uploadResult.file_path,
                                     availableColumns: uploadResult.available_columns,
                                     format: uploadResult.detected_format,
-                                    detectedFormat: uploadResult.detected_format
+                                    detectedFormat: uploadResult.detected_format,
+                                    sheetNames: uploadResult.sheet_names,
+                                    selectedSheet: uploadResult.sheet_names?.[0] || null
                                   }
                                 }
                               };
@@ -1312,6 +1314,35 @@ function Dashboard() {
                         <p className="text-xs text-gray-500">CSV/Excel/JSON/Parquet up to 1GB</p>
                       </div>
                     </label>
+                  </div>
+
+                  {/* Sheet selector for Excel files */}
+                  {(selectedNode.data.config as any)?.sheetNames && (selectedNode.data.config as any)?.sheetNames.length > 1 && (
+                    <div>
+                      <label className="block text-xs font-semibold text-[#6B778C] mb-1">Select Sheet</label>
+                      <select
+                        value={(selectedNode.data.config as any)?.selectedSheet || ''}
+                        onChange={(e) => {
+                          const newSheet = e.target.value;
+                          setSelectedNode({
+                            ...selectedNode,
+                            data: {
+                              ...selectedNode.data,
+                              config: {
+                                ...(selectedNode.data.config as any),
+                                selectedSheet: newSheet
+                              }
+                            }
+                          });
+                        }}
+                        className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-sm text-[#171717] focus:ring-[#0052CC] focus:border-[#0052CC]"
+                      >
+                        {(selectedNode.data.config as any)?.sheetNames?.map((sheet: string) => (
+                          <option key={sheet} value={sheet}>{sheet}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
                   </div>
                   <div>
                     <div className="flex items-center justify-between mb-1">

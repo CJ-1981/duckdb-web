@@ -2284,7 +2284,9 @@ async def inspect_node_dataset(request: InspectRequest):
                         try:
                             from src.core.processor import Processor
                             processor = Processor()
-                            df = processor.load_excel(fp)
+                            # Get selected sheet from config, default to first sheet
+                            selected_sheet = config.get("selectedSheet")
+                            df = processor.load_excel(fp, sheet_name=selected_sheet)
 
                             # Register DataFrame as DuckDB table
                             conn.register(f'{table_name}_df', df)

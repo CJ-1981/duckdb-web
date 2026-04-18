@@ -109,20 +109,30 @@ async def upload_file(file: UploadFile = File(...)):
     _filename = file.filename or ""
     file_ext = os.path.splitext(_filename)[1].lower()
     detected_format = "flat"
+    sheet_names = None  # For Excel files
 
     try:
+
         if file_ext in ['.xlsx', '.xls']:
-            # Excel file - use Processor.load_excel()
+            # Excel file - get sheet names and load first sheet
             from src.core.processor import Processor
+            from src.core.connectors.excel import ExcelConnector
+
+            # Get available sheet names
+            connector = ExcelConnector()
+            sheet_names = connector.get_sheet_names(file_path)
+            default_sheet = sheet_names[0] if sheet_names else None
+
+            # Load first sheet by default for backward compatibility
             processor = Processor()
-            df = processor.load_excel(file_path)
+            df = processor.load_excel(file_path, sheet_name=default_sheet)
             columns = df.columns.tolist()
             column_types = [
                 {'column_name': col, 'column_type': str(dtype)}
                 for col, dtype in df.dtypes.items()
             ]
             row_count = len(df)
-            logger.info(f">>> [FILE UPLOAD] Excel file: {len(columns)} columns, {row_count} rows")
+            logger.info(f">>> [FILE UPLOAD] Excel file: {len(sheet_names)} sheets, selected '{default_sheet}': {len(columns)} columns, {row_count} rows")
 
         elif file_ext in ['.json', '.jsonl']:
             # JSON/JSONL file - use Processor.load_json()
@@ -198,12 +208,13 @@ async def upload_file(file: UploadFile = File(...)):
         
     return {
         "file_id": file_id,
-        "file_path": file_path, 
+        "file_path": file_path,
         "filename": file.filename,
         "available_columns": columns,
         "column_types": column_types,
         "total_rows": row_count,
-        "detected_format": detected_format
+        "detected_format": detected_format,
+        "sheet_names": sheet_names  # Available for Excel files
     }
 
 
