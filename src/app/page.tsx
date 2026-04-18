@@ -1284,10 +1284,10 @@ function Dashboard() {
                                     previewLimit
                                   );
 
-                                  if (inspectResult.node_samples && inspectResult.node_samples[selectedNode.id]) {
+                                  if (inspectResult.node_samples) {
                                     setNodeSamples(prev => ({
                                       ...prev,
-                                      [selectedNode.id]: inspectResult.node_samples[selectedNode.id]
+                                      [selectedNode.id]: inspectResult.node_samples
                                     }));
                                   }
                                 } catch (error) {
