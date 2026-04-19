@@ -43,11 +43,24 @@ def get_rbac_manager() -> RBACManager:
                         "data:export",
                         "jobs:create",
                         "jobs:read",
+                        "jobs:write",
                         "jobs:cancel",
+                        "workflows:create",
+                        "workflows:read",
+                        "workflows:write",
+                        "workflows:execute",
+                        "workflows:delete",
                     ],
                     "inherits_from": ["viewer"],
                 },
-                "viewer": {"permissions": ["data:read", "jobs:read"], "inherits_from": []},
+                "viewer": {
+                    "permissions": [
+                        "data:read",
+                        "jobs:read",
+                        "workflows:read",
+                    ],
+                    "inherits_from": [],
+                },
             },
         }
         _rbac_manager = RBACManager(config=config)

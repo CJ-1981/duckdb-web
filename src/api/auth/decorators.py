@@ -22,21 +22,34 @@ def require_role(*roles: str):
 
     User must have ANY of the specified roles to access the endpoint.
 
-    @MX:NOTE: For now, this is a pass-through decorator. Role checking should be done in the endpoint function.
-
     Args:
         *roles: Required role names (any one is sufficient)
 
     Usage:
         @require_role("admin")
         async def admin_only_endpoint(...):
-            # Check current_user["role"] in function body
             pass
     """
     def decorator(func: Callable):
         @wraps(func)
         async def wrapper(*args, **kwargs):
-            # Pass-through - authorization should be checked in function body
+            current_user = kwargs.get('current_user')
+            if current_user:
+                user_role = current_user.get('role', '') if isinstance(current_user, dict) else getattr(current_user, 'role', '')
+                if user_role not in roles:
+                    user_id = current_user.get('id') if isinstance(current_user, dict) else getattr(current_user, 'id', None)
+                    username = current_user.get('username') if isinstance(current_user, dict) else getattr(current_user, 'username', None)
+                    log_authorization(
+                        user_id=user_id,
+                        username=username,
+                        permission=f"role:{','.join(roles)}",
+                        granted=False,
+                        reason=f"Role '{user_role}' not in required roles"
+                    )
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail=f"Role '{', '.join(roles)}' required"
+                    )
             return await func(*args, **kwargs)
         return wrapper
     return decorator
@@ -48,21 +61,47 @@ def require_permission(*permissions: str):
 
     User must have ALL of the specified permissions to access the endpoint.
 
-    @MX:NOTE: For now, this is a pass-through decorator. Permission checking should be done in the endpoint function.
-
     Args:
         *permissions: Required permission strings (all are required)
 
     Usage:
         @require_permission("data:read")
         async def read_data_endpoint(current_user: dict = Depends(get_current_user)):
-            # Check permissions in function body
             pass
     """
     def decorator(func: Callable):
         @wraps(func)
         async def wrapper(*args, **kwargs):
-            # Pass-through - authorization should be checked in function body
+            current_user = kwargs.get('current_user')
+            if current_user:
+                from src.api.auth.dependencies import get_rbac_manager
+                rbac = get_rbac_manager()
+                user_role = current_user.get('role', '') if isinstance(current_user, dict) else getattr(current_user, 'role', '')
+                user_id = current_user.get('id') if isinstance(current_user, dict) else getattr(current_user, 'id', None)
+                username = current_user.get('username') if isinstance(current_user, dict) else getattr(current_user, 'username', None)
+
+                for perm in permissions:
+                    if not rbac.has_permission(user_role, perm):
+                        log_authorization(
+                            user_id=user_id,
+                            username=username,
+                            permission=perm,
+                            granted=False,
+                            reason=f"Role '{user_role}' lacks permission '{perm}'"
+                        )
+                        raise HTTPException(
+                            status_code=status.HTTP_403_FORBIDDEN,
+                            detail=f"Permission '{perm}' required"
+                        )
+
+                # Log successful authorization
+                for perm in permissions:
+                    log_authorization(
+                        user_id=user_id,
+                        username=username,
+                        permission=perm,
+                        granted=True
+                    )
             return await func(*args, **kwargs)
         return wrapper
     return decorator

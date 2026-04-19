@@ -299,7 +299,8 @@ class TestRBACManager:
 class TestAuthorizationDecorators:
     """Test authorization decorators."""
 
-    def test_require_role_decorator_success(self, mock_rbac_manager, admin_user):
+    @pytest.mark.asyncio
+    async def test_require_role_decorator_success(self, mock_rbac_manager, admin_user):
         """Test require_role decorator with authorized user."""
         from src.api.auth.decorators import require_role
         from fastapi import HTTPException
@@ -309,14 +310,13 @@ class TestAuthorizationDecorators:
             return {"status": "success", "user": current_user}
 
         # Should not raise exception for admin
-        import asyncio
-
-        result = asyncio.run(protected_endpoint(current_user=admin_user))
+        result = await protected_endpoint(current_user=admin_user)
 
         assert result["status"] == "success"
         assert result["user"] == admin_user
 
-    def test_require_role_decorator_failure(self, mock_rbac_manager, viewer_user):
+    @pytest.mark.asyncio
+    async def test_require_role_decorator_failure(self, mock_rbac_manager, viewer_user):
         """Test require_role decorator with unauthorized user."""
         from src.api.auth.decorators import require_role
         from fastapi import HTTPException
@@ -326,15 +326,14 @@ class TestAuthorizationDecorators:
             return {"status": "success"}
 
         # Should raise HTTPException with 403 status
-        import asyncio
-
         with pytest.raises(HTTPException) as exc_info:
-            asyncio.run(protected_endpoint(current_user=viewer_user))
+            await protected_endpoint(current_user=viewer_user)
 
         assert exc_info.value.status_code == 403
         assert "admin" in exc_info.value.detail.lower()
 
-    def test_require_role_multiple_any(self, mock_rbac_manager, analyst_user):
+    @pytest.mark.asyncio
+    async def test_require_role_multiple_any(self, mock_rbac_manager, analyst_user):
         """Test require_role decorator with multiple roles (any match)."""
         from src.api.auth.decorators import require_role
 
@@ -343,13 +342,12 @@ class TestAuthorizationDecorators:
             return {"status": "success"}
 
         # Should pass for analyst (any of the roles)
-        import asyncio
-
-        result = asyncio.run(protected_endpoint(current_user=analyst_user))
+        result = await protected_endpoint(current_user=analyst_user)
 
         assert result["status"] == "success"
 
-    def test_require_permission_decorator_success(self, mock_rbac_manager, analyst_user):
+    @pytest.mark.asyncio
+    async def test_require_permission_decorator_success(self, mock_rbac_manager, analyst_user):
         """Test require_permission decorator with authorized user."""
         from src.api.auth.decorators import require_permission
 
@@ -358,13 +356,12 @@ class TestAuthorizationDecorators:
             return {"status": "success"}
 
         # Should not raise exception for analyst with data:write permission
-        import asyncio
-
-        result = asyncio.run(protected_endpoint(current_user=analyst_user))
+        result = await protected_endpoint(current_user=analyst_user)
 
         assert result["status"] == "success"
 
-    def test_require_permission_decorator_failure(self, mock_rbac_manager, viewer_user):
+    @pytest.mark.asyncio
+    async def test_require_permission_decorator_failure(self, mock_rbac_manager, viewer_user):
         """Test require_permission decorator with unauthorized user."""
         from src.api.auth.decorators import require_permission
         from fastapi import HTTPException
@@ -374,15 +371,14 @@ class TestAuthorizationDecorators:
             return {"status": "success"}
 
         # Should raise HTTPException with 403 status
-        import asyncio
-
         with pytest.raises(HTTPException) as exc_info:
-            asyncio.run(protected_endpoint(current_user=viewer_user))
+            await protected_endpoint(current_user=viewer_user)
 
         assert exc_info.value.status_code == 403
         assert "data:write" in exc_info.value.detail
 
-    def test_require_permission_multiple_all(self, mock_rbac_manager, analyst_user):
+    @pytest.mark.asyncio
+    async def test_require_permission_multiple_all(self, mock_rbac_manager, analyst_user):
         """Test require_permission decorator with multiple permissions (all required)."""
         from src.api.auth.decorators import require_permission
 
@@ -391,9 +387,7 @@ class TestAuthorizationDecorators:
             return {"status": "success"}
 
         # Should pass for analyst with both permissions
-        import asyncio
-
-        result = asyncio.run(protected_endpoint(current_user=analyst_user))
+        result = await protected_endpoint(current_user=analyst_user)
 
         assert result["status"] == "success"
 
@@ -536,7 +530,7 @@ class TestEndpointAuthorization:
 
         # Viewer should be denied from writing data
         with pytest.raises(HTTPException) as exc_info:
-            await write_dataset(dataset_id="test", data={}, current_user=viewer_user)
+            await write_dataset(dataset={"id": "test"}, current_user=viewer_user)
 
         assert exc_info.value.status_code == 403
 
@@ -546,7 +540,7 @@ class TestEndpointAuthorization:
         from src.api.routes.data import write_dataset
 
         # Analyst should be able to write data
-        result = await write_dataset(dataset_id="test", data={}, current_user=analyst_user)
+        result = await write_dataset(dataset={"id": "test"}, current_user=analyst_user)
 
         assert result is not None
 
@@ -556,14 +550,28 @@ class TestEndpointAuthorization:
         from src.api.routes.users import list_users
         from fastapi import HTTPException
 
+        # Create mock objects with is_admin attribute (list_users checks current_user.is_admin)
+        from unittest.mock import AsyncMock
+
+        mock_user_service = AsyncMock()
+        mock_user_service.list_users.return_value = ([], 0)
+
+        analyst_obj = Mock()
+        analyst_obj.id = analyst_user["id"]
+        analyst_obj.is_admin = False
+
+        admin_obj = Mock()
+        admin_obj.id = admin_user["id"]
+        admin_obj.is_admin = True
+
         # Analyst should be denied
         with pytest.raises(HTTPException) as exc_info:
-            await list_users(current_user=analyst_user)
+            await list_users(current_user=analyst_obj, user_service=mock_user_service)
 
         assert exc_info.value.status_code == 403
 
         # Admin should be allowed
-        result = await list_users(current_user=admin_user)
+        result = await list_users(current_user=admin_obj, user_service=mock_user_service)
 
         assert result is not None
 
@@ -605,9 +613,7 @@ class TestAuthorizationAuditLogging:
             async def protected_endpoint(current_user: dict = None):
                 return {"status": "success"}
 
-            import asyncio
-
-            result = asyncio.run(protected_endpoint(current_user=analyst_user))
+            result = await protected_endpoint(current_user=analyst_user)
 
             # Verify authorization success was logged
             mock_log.assert_called()
@@ -629,10 +635,8 @@ class TestAuthorizationAuditLogging:
             async def protected_endpoint(current_user: dict = None):
                 return {"status": "success"}
 
-            import asyncio
-
             with pytest.raises(HTTPException):
-                asyncio.run(protected_endpoint(current_user=viewer_user))
+                await protected_endpoint(current_user=viewer_user)
 
             # Verify authorization failure was logged
             mock_log.assert_called()

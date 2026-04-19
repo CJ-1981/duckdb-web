@@ -190,6 +190,10 @@ def create_app() -> FastAPI:
 
     return app
 
+
+# Module-level app instance for import by tests and other modules
+app = create_app()
+
 if __name__ == "__main__":
     import uvicorn
     import webbrowser

@@ -594,11 +594,8 @@ class TestWorkflowCreate:
         finally:
             cleanup_auth_mocks(app)
 
-        # Note: Authorization decorators are pass-through for now
-        # This test will succeed (201) but won't return 403 until authorization is enforced
-        # TODO: Enable when authorization is enforced (SPEC-PLATFORM-001 P2-T003)
-        # assert response.status_code == status.HTTP_403_FORBIDDEN
-        assert response.status_code == status.HTTP_201_CREATED  # Pass for now
+        # Authorization is enforced - viewer should be forbidden
+        assert response.status_code == status.HTTP_403_FORBIDDEN
 
 
 # ============================================================================
@@ -1084,11 +1081,8 @@ class TestWorkflowUpdate:
         finally:
             cleanup_auth_mocks(app)
 
-        # Note: Authorization decorators are pass-through for now
-        # This test will succeed but won't return 403 until authorization is enforced
-        # TODO: Enable when authorization is enforced (SPEC-PLATFORM-001 P2-T003)
-        # assert response.status_code == status.HTTP_403_FORBIDDEN
-        assert response.status_code == status.HTTP_200_OK  # Pass for now
+        # Authorization is enforced - viewer should be forbidden
+        assert response.status_code == status.HTTP_403_FORBIDDEN
 
 
 # ============================================================================
@@ -1236,11 +1230,8 @@ class TestWorkflowDelete:
         finally:
             cleanup_auth_mocks(app)
 
-        # Note: Authorization decorators are pass-through for now
-        # This test will succeed but won't return 403 until authorization is enforced
-        # TODO: Enable when authorization is enforced (SPEC-PLATFORM-001 P2-T003)
-        # assert response.status_code == status.HTTP_403_FORBIDDEN
-        assert response.status_code == status.HTTP_204_NO_CONTENT  # Pass for now
+        # Authorization is enforced - viewer should be forbidden
+        assert response.status_code == status.HTTP_403_FORBIDDEN
 
 
 # ============================================================================
