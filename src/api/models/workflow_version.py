@@ -9,7 +9,7 @@ This module defines the WorkflowVersion model with
 """
 
 from typing import TYPE_CHECKING
-from sqlalchemy import String, Integer, Text, JSON, Column
+from sqlalchemy import String, Integer, Text, JSON, Column, ForeignKey
 from sqlalchemy.orm import relationship
 
 from .base import BaseModel
@@ -25,14 +25,14 @@ class WorkflowVersion(BaseModel):
     __tablename__ = "workflow_versions"
 
     # Version identification
-    workflow_id = Column(Integer, nullable=False, index=True)
+    workflow_id = Column(Integer, ForeignKey("workflows.id"), nullable=False, index=True)
     version = Column(Integer, nullable=False)
 
     # Version definition
     definition = Column(JSON, nullable=False)
 
     # Audit trail
-    created_by = Column(Integer, nullable=False, index=True)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
 
     # Relationships
     # @MX:ANCHOR: WorkflowVersion-workflow relationship (fan_in >= 3 callers expected)

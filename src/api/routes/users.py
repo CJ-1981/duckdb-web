@@ -14,7 +14,6 @@ from src.api.models.user import User
 from src.api.schemas.user import UserCreate, UserResponse, UserUpdate, PasswordChange, UserListResponse
 from src.api.services.users import UserService
 from src.api.dependencies import get_user_service, get_current_user
-from src.api.models.base import get_async_session
 
 router = APIRouter(prefix="/api/v1/users", tags=["users"])
 
@@ -37,16 +36,14 @@ async def register_user(
     Raises:
         409: If email or username already exists
     """
-    async with get_async_session() as db:
-        service = UserService(db)
-        try:
-            user = await service.create_user(user_data)
-            return user
-        except ValueError as e:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=str(e)
-            )
+    try:
+        user = await user_service.create_user(user_data)
+        return user
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(e)
+        )
 
 
 @router.get("/me", response_model=UserResponse)

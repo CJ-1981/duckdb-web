@@ -9,7 +9,7 @@ This module defines the Workflow model with
 """
 
 from typing import TYPE_CHECKING
-from sqlalchemy import String, Text, Boolean, Integer, JSON, Column
+from sqlalchemy import String, Text, Boolean, Integer, JSON, Column, ForeignKey
 from sqlalchemy.orm import relationship
 
 from .base import BaseModel
@@ -33,7 +33,7 @@ class Workflow(BaseModel):
     definition = Column(JSON, nullable=False)
 
     # Owner and version
-    owner_id = Column(Integer, nullable=False, index=True)
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     is_active = Column(Boolean, default=True, nullable=False)
     version = Column(Integer, default=1, nullable=False)
 

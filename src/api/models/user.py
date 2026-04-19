@@ -47,6 +47,8 @@ class User(BaseModel):
     workflows = relationship("Workflow", back_populates="owner")
     # @MX:ANCHOR: User-job relationship (fan_in >= 3 callers expected)
     jobs = relationship("Job", back_populates="creator")
+    # @MX:ANCHOR: User-workflow_version relationship (fan_in >= 3 callers expected)
+    workflow_versions = relationship("WorkflowVersion", back_populates="creator")
 
     def __repr__(self) -> str:
         return f"<User(id={self.id}, username={self.username}, role={self.role})>"

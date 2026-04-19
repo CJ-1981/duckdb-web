@@ -10,7 +10,7 @@ This module defines the Job model with
 """
 
 from typing import TYPE_CHECKING
-from sqlalchemy import String, Float, DateTime, JSON, Enum as SQLEnum, Integer, Column
+from sqlalchemy import String, Float, DateTime, JSON, Enum as SQLEnum, Integer, Column, ForeignKey
 from sqlalchemy.orm import relationship
 from enum import Enum as PyEnum
 
@@ -39,7 +39,7 @@ class Job(BaseModel):
     # Job identification
     id = Column(String(36), primary_key=True)  # UUID as string
 
-    workflow_id = Column(Integer, nullable=False, index=True)
+    workflow_id = Column(Integer, ForeignKey("workflows.id"), nullable=False, index=True)
 
     # Execution status
     status = Column(SQLEnum(JobStatus), default=JobStatus.pending, nullable=False)
@@ -52,7 +52,7 @@ class Job(BaseModel):
     result = Column(JSON, nullable=True)
 
     # Creator
-    created_by = Column(Integer, nullable=False, index=True)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
 
     # Relationships
     # @MX:ANCHOR: Job-workflow relationship (fan_in >= 3 callers expected)

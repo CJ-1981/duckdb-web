@@ -15,7 +15,7 @@ class UserBase(BaseModel):
     """Base user fields."""
 
     username: str = Field(..., min_length=3, max_length=50)
-    email: str = Field(..., pattern=r"^[\w\.-]+@[\w\.-]+\.\w+$")
+    email: str = Field(..., pattern=r"^[\w\.\+\-]+@[\w\.\-]+\.\w+$")
 
 
 class UserCreate(UserBase):

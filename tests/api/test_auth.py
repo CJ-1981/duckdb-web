@@ -30,7 +30,8 @@ class TestUserModel:
             username="testuser",
             email="test@example.com",
             password_hash="hashed_password_here",
-            role=UserRole.analyst
+            role=UserRole.analyst,
+            is_active=True
         )
 
         assert user.username == "testuser"

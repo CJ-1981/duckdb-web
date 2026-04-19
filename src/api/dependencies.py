@@ -102,6 +102,20 @@ def reset_dependencies():
 from fastapi import Depends
 from src.api.models.base import get_async_session
 
+
+async def get_db():
+    """
+    Provide async database session via dependency injection.
+
+    Override this in tests with app.dependency_overrides[get_db].
+
+    Yields:
+        AsyncSession: Database session
+    """
+    async for session in get_async_session():
+        yield session
+
+
 def get_user_service(db: AsyncSession = Depends(get_async_session)) -> UserService:
     """
     Provide UserService instance via dependency injection.

@@ -66,7 +66,7 @@ class UserService:
         user = User(
             username=user_data.username,
             email=user_data.email,
-            hashed_password=hashed_password
+            password_hash=hashed_password
         )
 
         self.db.add(user)
@@ -195,11 +195,11 @@ class UserService:
         @MX:ANCHOR: Password change entry point (fan_in >= 3: profile update, reset, forced change)
         """
         # Verify current password
-        if not verify_password(current_password, user.hashed_password):
+        if not verify_password(current_password, user.password_hash):
             raise ValueError("Incorrect password")
 
         # Hash new password
-        user.hashed_password = hash_password(new_password)
+        user.password_hash = hash_password(new_password)
         user.updated_at = datetime.utcnow()
 
         await self.db.commit()
