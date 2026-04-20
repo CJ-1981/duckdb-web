@@ -311,7 +311,7 @@
     "MOAI_CONFIG_SOURCE": "sections",
     "CLAUDE_CODE_NO_FLICKER": "1",
     "CLAUDE_CODE_SUBPROCESS_ENV_SCRUB": "1",
-    "PATH": "/Users/chimin/.local/bin:/Users/chimin/go/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/local/sbin:/usr/bin:/bin:/usr/sbin:/sbin"
+    "PATH": "/Users/chimin/.local/bin:/Users/chimin/go/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/local/sbin:/usr/bin:/bin:/usr/sbin:/sbin"
   },
   "permissions": {
     "defaultMode": "acceptEdits",
@@ -517,5 +517,6 @@
   "teammateMode": "auto",
   "effortLevel": "medium",
   "includeGitInstructions": true,
-  "plansDirectory": ".moai/plans"
+  "plansDirectory": ".moai/plans",
+  "disableBypassPermissionsMode": false
 }

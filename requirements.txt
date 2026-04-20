@@ -10,3 +10,8 @@ reportlab
 tabulate
 openpyxl
 pandas
+pyyaml
+beautifulsoup4
+lxml
+requests
+psutil

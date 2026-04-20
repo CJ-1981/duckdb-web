@@ -10,7 +10,8 @@ description: |
   ZH: SPEC, 需求, 规格书, EARS, 验收标准, 用户故事
   NOT for: code implementation, testing, deployment, code review, documentation sync
 tools: Read, Write, Edit, MultiEdit, Bash, Glob, Grep, TodoWrite, WebFetch, mcp__sequential-thinking__sequentialthinking, mcp__context7__resolve-library-id, mcp__context7__get-library-docs
-model: opus
+model: sonnet
+effort: xhigh
 permissionMode: bypassPermissions
 memory: project
 skills:
@@ -19,7 +20,7 @@ skills:
   - moai-workflow-spec
   - moai-workflow-project
 hooks:
-  Stop:
+  SubagentStop:
     - hooks:
         - type: command
           command: "\"$CLAUDE_PROJECT_DIR/.claude/hooks/moai/handle-agent-hook.sh\" spec-completion"

@@ -10,7 +10,7 @@ description: |
   ZH: 创建技能, 新技能, 技能优化, 知识领域, YAML前置信息
   NOT for: agent creation (use builder-agent), plugin creation (use builder-plugin), code implementation, testing
 tools: Read, Write, Edit, Grep, Glob, WebFetch, WebSearch, Bash, TodoWrite, Agent, Skill, mcp__sequential-thinking__sequentialthinking, mcp__context7__resolve-library-id, mcp__context7__get-library-docs
-model: sonnet
+model: haiku
 permissionMode: bypassPermissions
 memory: user
 skills:
@@ -83,6 +83,7 @@ OUT OF SCOPE:
 - Write YAML frontmatter with all required fields
 - Implement skill body content within 500-line limit
 - Create supporting files if needed (reference.md, modules/)
+- Shell command injection: inline with exclamation-backtick syntax `` `!command` ``; multi-line with triple-backtick fence prefixed with `!`
 
 ### Phase 5: Validation
 
@@ -96,7 +97,9 @@ OUT OF SCOPE:
 
 - All frontmatter metadata values must be quoted strings
 - allowed-tools: Use CSV format (e.g., `Read, Grep, Glob`)
-- description: Use YAML folded scalar (>) for multi-line
+- description: Use YAML folded scalar (>) for multi-line; max 250 characters for / menu display (v2.1.86+)
 - Skill names: max 64 characters, lowercase with hyphens
 - Naming prefixes: `moai-{category}-{name}` (system), `my-{name}` or `custom-{name}` (user)
 - Categories: foundation, workflow, domain, language, platform, library, tool
+- Built-in variables: `$ARGUMENTS` (full argument string), `$ARGUMENTS[N]` / `$N` (positional arguments), `${CLAUDE_SKILL_DIR}` (absolute path to skill directory — use instead of relative paths for self-referencing)
+- Invocation control: `user-invocable: false` hides skill from / menu; `disable-model-invocation: true` restricts invocation to user only

@@ -1,0 +1,17 @@
+.venv/
+node_modules/
+.git/
+__pycache__/
+*.pyc
+.pytest_cache/
+htmlcov/
+coverage_html_report/
+downloads/
+uploads/
+*.egg-info/
+.claude/
+.moai/
+.agency/
+tests/
+*.md
+!README.md
