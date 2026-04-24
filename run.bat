@@ -4,6 +4,51 @@ setlocal enabledelayedexpansion
 :: CD to the repo directory (in case script is called from elsewhere)
 cd /d "%~dp0"
 
+:: Kill any existing processes from previous runs
+echo Checking for existing processes...
+for /f "tokens=2" %%a in ('tasklist /fi "imagename eq python.exe" /fo csv ^| find "python.exe" ^| findstr "uvicorn"') do (
+    echo Killing existing Python process: %%a
+    taskkill /F /PID %%a 2>nul
+)
+
+for /f "tokens=2" %%a in ('tasklist /fi "imagename eq node.exe" /fo csv ^| find "node.exe" ^| findstr "next"') do (
+    echo Killing existing Node process: %%a
+    taskkill /F /PID %%a 2>nul
+)
+
+:: Cleanup function to kill background processes on exit
+set "BACKEND_PID="
+set "CLEANUP_DONE=0"
+
+:cleanup
+if "!CLEANUP_DONE!"=="1" goto :EOF
+set "CLEANUP_DONE=1"
+
+echo.
+echo Cleaning up background processes...
+
+:: Kill uvicorn processes
+for /f "tokens=2" %%a in ('tasklist /fi "imagename eq python.exe" /fo csv ^| find "python.exe"') do (
+    taskkill /F /PID %%a 2>nul
+)
+
+:: Kill any node processes started by this script
+for /f "tokens=2" %%a in ('tasklist /fi "imagename eq node.exe" /fo csv ^| find "node.exe"') do (
+    taskkill /F /PID %%a 2>nul
+)
+
+goto :EOF
+
+:: Set up cleanup on script exit (Ctrl+C, errors, etc.)
+if not defined CLEANUP_SETUP (
+    set "CLEANUP_SETUP=1"
+    set "ERRORHANDLING="
+    :: Trap Ctrl+C
+    for /f "delims=" %%a in ('echo prompt $E ^| cmd') do set "ESC=%%a"
+    echo !ESC![?25l
+    call :setup_ctrlc_handler
+)
+
 echo Starting DuckDB Data Processor Services...
 
 :: 0. Check for OneDrive/Cloud-Synced Paths
@@ -35,6 +80,17 @@ if defined CLOUD_FOUND (
     echo/
 )
 
+:: 0.5. Ensure node_modules exists BEFORE starting services
+echo Checking frontend dependencies...
+if not exist node_modules (
+    echo Installing frontend dependencies...
+    call npm install
+    if errorlevel 1 (
+        echo ERROR: Failed to install frontend dependencies
+        goto :cleanup
+    )
+)
+
 :: 1. Start Backend (FastAPI)
 echo Starting Backend (FastAPI)...
 
@@ -49,12 +105,19 @@ set "ACTIVATE_SCRIPT=!VENV_PATH!\Scripts\activate.bat"
 
 if exist "!ACTIVATE_SCRIPT!" (
     echo Starting backend with virtual environment...
-    start /b cmd /c "cd /d ""%cd%"" && call ""!ACTIVATE_SCRIPT!"" && python -m uvicorn src.api.main:create_app --factory --reload --port 8000"
+    start /b "" cmd /c "cd /d ""%cd%"" && call ""!ACTIVATE_SCRIPT!"" && python -m uvicorn src.api.main:create_app --factory --port 8000 2>&1"
 ) else (
     echo Virtual environment not found at !ACTIVATE_SCRIPT!
     echo Falling back to system Python...
-    start /b cmd /c "cd /d ""%cd%"" && python -m uvicorn src.api.main:create_app --factory --reload --port 8000"
+    start /b "" cmd /c "cd /d ""%cd%"" && python -m uvicorn src.api.main:create_app --factory --port 8000 2>&1"
 )
+
+:: Store backend process ID for cleanup
+for /f "tokens=2" %%a in ('tasklist /fi "imagename eq python.exe" /fo csv ^| find "python.exe" ^| find /v "0"') do (
+    set "BACKEND_PID=%%a"
+    goto :backend_found
+)
+:backend_found
 
 :: 2. Wait a moment for backend to initialize
 echo Waiting for backend to initialize...
@@ -63,11 +126,6 @@ timeout /t 5 /nobreak > nul
 :: 3. Start Frontend (Next.js)
 echo Starting Frontend (Next.js)...
 
-if not exist node_modules (
-    echo Installing frontend dependencies...
-    call npm install
-)
-
 if defined PORT (
     set "valid_port=1"
     for /f "delims=0123456789" %%a in ("!PORT!") do set "valid_port=0"
@@ -75,17 +133,30 @@ if defined PORT (
         if !PORT! lss 1 set "valid_port=0"
         if !PORT! gtr 65535 set "valid_port=0"
     )
-    
+
     if "!valid_port!"=="1" (
+        echo Starting on port !PORT!...
         call npm run dev -- -p !PORT!
     ) else (
         echo Warning: PORT !PORT! is invalid. Using default port 3000.
         call npm run dev -- -p 3000
     )
 ) else (
+    echo Starting on default port 3000...
     call npm run dev -- -p 3000
 )
+
+:: Clean up when npm run dev exits
+call :cleanup
 
 if not defined CI (
     pause
 )
+
+goto :EOF
+
+:: Ctrl+C handler setup
+:setup_ctrlc_handler
+:: Windows doesn't have a simple trap command like Unix
+:: We rely on the :cleanup function being called on exit
+goto :EOF

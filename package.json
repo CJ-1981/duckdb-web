@@ -3,16 +3,21 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "cross-env PORT=3000 next dev",
+    "dev:3001": "cross-env PORT=3001 next dev",
+    "dev:windows": "cross-env PORT=3000 next dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
     "test": "npm run test:e2e",
-    "test:e2e": "playwright test -c tests/e2e/playwright.config.ts",
-    "test:e2e:ui": "playwright test --ui -c tests/e2e/playwright.config.ts",
-    "test:e2e:debug": "playwright test --debug -c tests/e2e/playwright.config.ts",
-    "test:e2e:headed": "playwright test --headed -c tests/e2e/playwright.config.ts",
-    "test:e2e:report": "playwright show-report"
+    "test:e2e": "cross-env TEST_PORT=3001 playwright test -c tests/e2e/playwright.config.ts",
+    "test:e2e:ui": "cross-env TEST_PORT=3001 playwright test --ui -c tests/e2e/playwright.config.ts",
+    "test:e2e:debug": "cross-env TEST_PORT=3001 playwright test --debug -c tests/e2e/playwright.config.ts",
+    "test:e2e:headed": "cross-env TEST_PORT=3001 playwright test --headed -c tests/e2e/playwright.config.ts",
+    "test:e2e:report": "playwright show-report",
+    "test:unit": "vitest run",
+    "test:unit:watch": "vitest",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@xyflow/react": "^12.10.2",
@@ -28,9 +33,11 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "cross-env": "^7.0.3",
     "eslint": "^9",
     "eslint-config-next": "16.2.1",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^2.0.0"
   }
 }
