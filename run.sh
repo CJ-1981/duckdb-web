@@ -49,5 +49,39 @@ if [ ! -d "node_modules" ]; then
     npm install
 fi
 
-# Use PORT environment variable if provided, else default to 3000
-npm run dev -- -p "${PORT:-3000}"
+# Function to check if port is in use
+is_port_in_use() {
+    local port=$1
+    if lsof -Pi :$port -sTCP:LISTEN -t >/dev/null 2>&1 ; then
+        return 0  # Port is in use
+    else
+        return 1  # Port is available
+    fi
+}
+
+# Smart port detection if PORT not already set
+if [ -z "$PORT" ]; then
+    echo "🔍 Detecting available port..."
+    PORTS=(3000 3001 3002 3003)
+
+    for port in "${PORTS[@]}"; do
+        if is_port_in_use $port; then
+            echo "  ❌ Port $port is in use"
+        else
+            echo "  ✅ Port $port is available!"
+            PORT=$port
+            break
+        fi
+    done
+
+    if [ -z "$PORT" ]; then
+        echo "❌ All ports (3000-3003) are in use!"
+        echo "Please free up a port and try again."
+        exit 1
+    fi
+
+    echo "🎯 Using port $PORT"
+fi
+
+# Start Next.js with detected or specified port
+npm run dev -- -p "$PORT"

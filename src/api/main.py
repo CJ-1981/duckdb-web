@@ -30,6 +30,7 @@ from src.api.routes.users import router as users_router
 from src.api.routes.data import router as data_router
 from src.api.routes.workflows import router as workflows_router
 from src.api.routes.jobs import router as jobs_router
+from src.csv.api import router as csv_router
 
 
 # Configure logging
@@ -58,6 +59,8 @@ def create_app() -> FastAPI:
         "http://127.0.0.1:3000",         # Alternative local development
         "http://localhost:3001",        # E2E test server
         "http://127.0.0.1:3001",         # E2E test server alternative
+        "http://localhost:3002",        # Alternative dev server
+        "http://127.0.0.1:3002",         # Alternative dev server alternative
         "http://localhost:19006",       # Vercel dev server
         os.getenv("VERCEL_URL", ""),     # Dynamic Vercel deployment URL
         # Add your Vercel deployment URL here:
@@ -116,6 +119,7 @@ def create_app() -> FastAPI:
     app.include_router(data_router)      # Data processing endpoints
     app.include_router(workflows_router) # Workflow management endpoints
     app.include_router(jobs_router)      # Job execution endpoints
+    app.include_router(csv_router)       # CSV upload and processing endpoints
 
     # Lifecycle events
     @app.on_event("startup")

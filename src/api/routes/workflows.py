@@ -1249,13 +1249,18 @@ async def execute_workflow_graph(
     request: WorkflowExecutionRequest
 ):
     """
-    Execute a raw workflow graph directly using DuckDB.
+    Execute a raw workflow graph directly using DuckDB (synchronous).
+
+    For async execution with job tracking, use /execute_async instead.
     """
     logger.info(f"Executing workflow with {len(request.nodes)} nodes and {len(request.edges)} edges.")
 
     # Invalidate SQL result cache when workflow is executed
     # This ensures stale results are not used if data has changed
     _invalidate_sql_cache_for_table("workflow_execution")
+
+    # Locate nodes by subtype or label
+    output_node = next((n for n in request.nodes if n["type"] == "output"), None)
 
     # Locate nodes by subtype or label
     output_node = next((n for n in request.nodes if n["type"] == "output"), None)
@@ -2127,6 +2132,75 @@ async def execute_workflow_graph(
     except Exception as e:
         logger.error(f"DuckDB Error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+
+
+@router.post("/execute_async", status_code=status.HTTP_202_ACCEPTED)
+async def execute_workflow_async(
+    request: WorkflowExecutionRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Execute a workflow graph asynchronously as a background job.
+
+    Returns immediately with job_id for status tracking.
+    Progress can be tracked via /api/v1/jobs/{job_id} endpoint.
+
+    This is the recommended endpoint for:
+    - Long-running workflows
+    - Large datasets
+    - Production workflows requiring status tracking
+    """
+    from src.api.services.job import JobService
+    from src.workflow.worker import get_redis_connection
+    from rq import Queue
+    import uuid
+
+    # Create job record
+    job_service = JobService(db)
+    job_id = str(uuid.uuid4())
+
+    # Import models
+    from src.api.models.job import Job, JobStatus
+
+    # Create job in database
+    job = Job(
+        id=job_id,
+        workflow_id=None,  # Direct execution, not saved workflow
+        status=JobStatus.pending,
+        created_by=current_user.id,
+        progress=0.0
+    )
+    db.add(job)
+    await db.commit()
+
+    # Create workflow definition from request
+    workflow_definition = {
+        "nodes": request.nodes,
+        "edges": request.edges,
+        "preview_limit": request.preview_limit
+    }
+
+    # Submit job to RQ queue
+    redis_conn = get_redis_connection()
+    queue = Queue('workflow_execution', connection=redis_conn)
+
+    queue.enqueue(
+        'src.workflow.worker.execute_comprehensive_workflow',
+        job_id=job_id,
+        workflow_definition=workflow_definition,
+        job_timeout=3600  # 1 hour timeout
+    )
+
+    logger.info(f"Submitted workflow job {job_id} to RQ queue")
+
+    return {
+        "job_id": job_id,
+        "status": "pending",
+        "message": "Workflow execution started",
+        "tracking_url": f"/api/v1/jobs/{job_id}"
+    }
+
 
 @router.post("/report", status_code=status.HTTP_200_OK)
 async def generate_workflow_report(

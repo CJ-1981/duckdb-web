@@ -3,8 +3,11 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "cross-env PORT=3000 next dev",
+    "dev": "node scripts/dev.js",
+    "dev:3000": "cross-env PORT=3000 next dev",
     "dev:3001": "cross-env PORT=3001 next dev",
+    "dev:3002": "cross-env PORT=3002 next dev",
+    "dev:3003": "cross-env PORT=3003 next dev",
     "dev:windows": "cross-env PORT=3000 next dev",
     "build": "next build",
     "start": "next start",

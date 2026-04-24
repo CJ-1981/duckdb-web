@@ -126,6 +126,43 @@ timeout /t 5 /nobreak > nul
 :: 3. Start Frontend (Next.js)
 echo Starting Frontend (Next.js)...
 
+:: Smart port detection if PORT not already set
+if not defined PORT (
+    echo Detecting available port...
+
+    :: Try ports in sequence: 3000, 3001, 3002, 3003
+    for %%p in (3000 3001 3002 3003) do (
+        echo   Checking port %%p...
+        netstat >nul 2>&1
+        if errorlevel 1 (
+            :: netstat not available, assume port is free
+            echo   ✅ Port %%p is available^(netstat not available^)
+            set "PORT=%%p"
+            goto :port_found
+        ) else (
+            netstat -an ^| findstr ":%%p " >nul 2>&1
+            if errorlevel 1 (
+                :: Port not in use
+                echo   ✅ Port %%p is available!
+                set "PORT=%%p"
+                goto :port_found
+            ) else (
+                :: Port is in use
+                echo   ❌ Port %%p is in use
+            )
+        )
+    )
+
+    :: No port found
+    echo   ❌ All ports 3000-3003 are in use!
+    echo Please free up a port and try again.
+    goto :cleanup
+
+    :port_found
+    echo 🎯 Using port !PORT!
+)
+
+:: Validate and use PORT
 if defined PORT (
     set "valid_port=1"
     for /f "delims=0123456789" %%a in ("!PORT!") do set "valid_port=0"

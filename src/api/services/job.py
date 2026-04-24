@@ -4,11 +4,12 @@ Job Service
 Business logic for job operations.
 """
 
-from typing import List, Optional, Tuple, Dict, Any
-from datetime import datetime
+from typing import List, Optional, Tuple
+from datetime import datetime, timezone
 from uuid import uuid4
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, func, update
+from sqlalchemy.sql import true
 
 from src.api.models.job import Job, JobStatus
 from src.api.models.workflow import Workflow
@@ -42,16 +43,11 @@ class JobService:
 
         Returns:
             Created job object or None if workflow not found
+
+        @MX:ANCHOR: Job submission entry point (fan_in >= 3: API endpoint, test suite, scheduler)
+        @MX:REASON: Centralized job creation ensures consistent validation and queue submission
         """
         # Verify workflow exists and user has access
-        # Note: job_data.workflow_id is a UUID from the API, but Workflow.id is an integer
-        # We need to match by the integer ID stored in the workflow
-        # For now, we'll use the UUID to look up the workflow by its string representation
-        # In a real implementation, you'd have a separate UUID field on Workflow
-
-        # For TDD GREEN phase: Just create the job with the provided workflow_id
-        # The workflow_id in JobSubmit is expected to be the integer workflow ID
-
         workflow_result = await self.db.execute(
             select(Workflow).where(
                 and_(
@@ -69,7 +65,7 @@ class JobService:
         # Create job record
         job = Job(
             id=str(uuid4()),
-            workflow_id=workflow.id,  # Store the integer workflow ID
+            workflow_id=workflow.id,
             status=JobStatus.pending,
             progress=0.0,
             created_by=owner_id
@@ -79,8 +75,35 @@ class JobService:
         await self.db.commit()
         await self.db.refresh(job)
 
-        # TODO: Submit task to Celery for background execution
-        # For now, job remains in pending state
+        # Submit task to RQ for background execution
+        try:
+            from src.workflow.worker import get_redis_connection
+            from rq import Queue
+            import redis
+
+            # Get Redis connection
+            redis_conn = get_redis_connection()
+
+            # Submit to spec_execution queue
+            queue = Queue('spec_execution', connection=redis_conn)
+            queue.enqueue(
+                'src.workflow.worker.execute_workflow_job',
+                job_id=job.id,
+                workflow_definition=workflow.definition,
+                job_timeout=3600,  # 1 hour timeout
+                result_ttl=86400  # Keep results for 24 hours
+            )
+
+            # Update job status to indicate it's been queued
+            job.status = JobStatus.pending
+            await self.db.commit()
+
+        except Exception as e:
+            # Log error but don't fail job creation
+            # Job will remain in pending state but won't execute
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Failed to submit job {job.id} to RQ queue: {e}")
 
         return job
 
@@ -170,14 +193,18 @@ class JobService:
         if job.status not in [JobStatus.pending, JobStatus.running]:
             return False
 
-        # Update job status
-        job.status = JobStatus.cancelled
-        job.completed_at = datetime.utcnow()
-
+        # Update job status using SQL expression
+        await self.db.execute(
+            update(Job)
+            .where(Job.id == job_id)
+            .values(
+                status=JobStatus.cancelled,
+                completed_at=datetime.now(timezone.utc)
+            )
+        )
         await self.db.commit()
-        await self.db.refresh(job)
 
-        # TODO: Cancel Celery task if running
+        # TODO: Cancel RQ task if running
         # For now, just update the status
 
         return True
