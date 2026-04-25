@@ -1,0 +1,169 @@
+{
+  "name": "Advanced E-Commerce Product Scraper",
+  "description": "Multi-variable product API scraping with filtering and error handling",
+  "nodes": [
+    {
+      "id": "input-1",
+      "type": "input",
+      "position": { "x": 100, "y": 150 },
+      "data": {
+        "label": "Product List",
+        "subtype": "csv",
+        "config": {
+          "file_path": "examples/products_input.csv"
+        }
+      }
+    },
+    {
+      "id": "batch-1",
+      "type": "transform",
+      "position": { "x": 400, "y": 150 },
+      "data": {
+        "label": "Fetch Product Details",
+        "subtype": "batch_request",
+        "config": {
+          "url_template": "https://fakestoreapi.com/products/{product_id}",
+          "method": "GET",
+          "concurrency": 10,
+          "timeout": 30,
+          "rate_limit": {
+            "requests_per_second": 20,
+            "burst": 10
+          },
+          "retry_policy": {
+            "max_retries": 5,
+            "base_delay": 2.0,
+            "max_delay": 60.0
+          },
+          "extract_mode": "json",
+          "data_path": "$",
+          "output_filter": {
+            "mode": "include",
+            "conditions": [
+              {
+                "field": "response.status",
+                "operator": "==",
+                "value": 200
+              },
+              {
+                "field": "response.data.price",
+                "operator": ">",
+                "value": 10
+              },
+              {
+                "field": "response.data.rating",
+                "operator": ">",
+                "value": 3
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "transform-1",
+      "type": "transform",
+      "position": { "x": 700, "y": 150 },
+      "data": {
+        "label": "Extract & Transform",
+        "subtype": "select",
+        "config": {
+          "columns": [
+            "product_id",
+            "response.data.title",
+            "response.data.price",
+            "response.data.category",
+            "response.data.rating",
+            "response.data.stock"
+          ]
+        }
+      }
+    },
+    {
+      "id": "transform-2",
+      "type": "transform",
+      "position": { "x": 1000, "y": 150 },
+      "data": {
+        "label": "Add Calculated Fields",
+        "subtype": "computed",
+        "config": {
+          "column": "price_with_tax",
+          "expression": "response.data.price * 1.2"
+        }
+      }
+    },
+    {
+      "id": "filter-1",
+      "type": "transform",
+      "position": { "x": 1300, "y": 150 },
+      "data": {
+        "label": "Filter High-Value Products",
+        "subtype": "filter",
+        "config": {
+          "conditions": [
+            {
+              "column": "response.data.price",
+              "operator": ">",
+              "value": 50
+            },
+            {
+              "column": "response.data.category",
+              "operator": "contains",
+              "value": "electronics"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "aggregate-1",
+      "type": "transform",
+      "position": { "x": 1600, "y": 150 },
+      "data": {
+        "label": "Category Statistics",
+        "subtype": "aggregate",
+        "config": {
+          "groupBy": "response.data.category",
+          "aggregations": [
+            {
+              "column": "response.data.price",
+              "operation": "AVG",
+              "alias": "avg_price"
+            },
+            {
+              "column": "product_id",
+              "operation": "COUNT",
+              "alias": "product_count"
+            },
+            {
+              "column": "response.data.rating",
+              "operation": "AVG",
+              "alias": "avg_rating"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "output-1",
+      "type": "output",
+      "position": { "x": 1900, "y": 150 },
+      "data": {
+        "label": "Save Products",
+        "subtype": "db_write",
+        "config": {
+          "tableName": "product_analytics",
+          "filename": "product_analytics.csv"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {"id": "e1", "source": "input-1", "target": "batch-1", "sourceHandle": "right", "targetHandle": "left"},
+    {"id": "e2", "source": "batch-1", "target": "transform-1", "sourceHandle": "right", "targetHandle": "left"},
+    {"id": "e3", "source": "transform-1", "target": "transform-2", "sourceHandle": "right", "targetHandle": "left"},
+    {"id": "e4", "source": "transform-2", "target": "filter-1", "sourceHandle": "right", "targetHandle": "left"},
+    {"id": "e5", "source": "filter-1", "target": "aggregate-1", "sourceHandle": "right", "targetHandle": "left"},
+    {"id": "e6", "source": "aggregate-1", "target": "output-1", "sourceHandle": "right", "targetHandle": "left"}
+  ]
+}

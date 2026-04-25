@@ -1,0 +1,166 @@
+{
+  "name": "Social Media Analytics Pipeline",
+  "description": "Demonstrates multi-variable URL substitution with query parameters and headers",
+  "nodes": [
+    {
+      "id": "input-1",
+      "type": "input",
+      "position": { "x": 100, "y": 200 },
+      "data": {
+        "label": "Post Query Parameters",
+        "subtype": "csv",
+        "config": {
+          "file_path": "examples/social_posts_input.csv"
+        }
+      }
+    },
+    {
+      "id": "batch-1",
+      "type": "transform",
+      "position": { "x": 400, "y": 200 },
+      "data": {
+        "label": "Fetch Social Posts",
+        "subtype": "batch_request",
+        "config": {
+          "url_template": "https://jsonplaceholder.typicode.com/posts/{post_id}/comments?type={comment_type}&limit={limit}",
+          "method": "GET",
+          "custom_headers": {
+            "X-Request-ID": "{request_id}",
+            "X-Tenant-ID": "{tenant_id}",
+            "User-Agent": "WorkflowBot/1.0"
+          },
+          "concurrency": 15,
+          "timeout": 45,
+          "rate_limit": {
+            "requests_per_second": 30,
+            "burst": 15
+          },
+          "retry_policy": {
+            "max_retries": 4,
+            "base_delay": 1.5,
+            "max_delay": 30.0
+          },
+          "extract_mode": "json",
+          "data_path": "$",
+          "output_filter": {
+            "mode": "include",
+            "conditions": [
+              {
+                "field": "response.status",
+                "operator": "==",
+                "value": 200
+              },
+              {
+                "field": "response.data",
+                "operator": "is_not_null",
+                "value": null
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "transform-1",
+      "type": "transform",
+      "position": { "x": 700, "y": 200 },
+      "data": {
+        "label": "Flatten Comments",
+        "subtype": "unnest",
+        "config": {
+          "column": "response.data",
+          "alias": "comments"
+        }
+      }
+    },
+    {
+      "id": "filter-1",
+      "type": "transform",
+      "position": { "x": 1000, "y": 200 },
+      "data": {
+        "label": "Filter Valid Emails",
+        "subtype": "filter",
+        "config": {
+          "conditions": [
+            {
+              "column": "comments.email",
+              "operator": "contains",
+              "value": "@"
+            },
+            {
+              "column": "comments.body",
+              "operator": "is_not_null",
+              "value": null
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "aggregate-1",
+      "type": "transform",
+      "position": { "x": 1300, "y": 200 },
+      "data": {
+        "label": "Comment Statistics",
+        "subtype": "aggregate",
+        "config": {
+          "groupBy": "post_id",
+          "aggregations": [
+            {
+              "column": "comments.id",
+              "operation": "COUNT",
+              "alias": "comment_count"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "sort-1",
+      "type": "transform",
+      "position": { "x": 1600, "y": 200 },
+      "data": {
+        "label": "Sort by Popularity",
+        "subtype": "sort",
+        "config": {
+          "column": "comment_count",
+          "order": "DESC"
+        }
+      }
+    },
+    {
+      "id": "limit-1",
+      "type": "transform",
+      "position": { "x": 1900, "y": 200 },
+      "data": {
+        "label": "Top 10 Posts",
+        "subtype": "limit",
+        "config": {
+          "limit": 10
+        }
+      }
+    },
+    {
+      "id": "output-1",
+      "type": "output",
+      "position": { "x": 2200, "y": 200 },
+      "data": {
+        "label": "Export Analytics",
+        "subtype": "db_write",
+        "config": {
+          "tableName": "social_media_analytics",
+          "filename": "social_analytics.csv"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {"id": "e1", "source": "input-1", "target": "batch-1", "sourceHandle": "right", "targetHandle": "left"},
+    {"id": "e2", "source": "batch-1", "target": "transform-1", "sourceHandle": "right", "targetHandle": "left"},
+    {"id": "e3", "source": "transform-1", "target": "filter-1", "sourceHandle": "right", "targetHandle": "left"},
+    {"id": "e4", "source": "filter-1", "target": "aggregate-1", "sourceHandle": "right", "targetHandle": "left"},
+    {"id": "e5", "source": "aggregate-1", "target": "sort-1", "sourceHandle": "right", "targetHandle": "left"},
+    {"id": "e6", "source": "sort-1", "target": "limit-1", "sourceHandle": "right", "targetHandle": "left"},
+    {"id": "e7", "source": "limit-1", "target": "output-1", "sourceHandle": "right", "targetHandle": "left"}
+  ]
+}
