@@ -1,0 +1,55 @@
+{
+  "nodes": [
+    {
+      "id": "1",
+      "type": "input",
+      "data": {
+        "subtype": "csv",
+        "config": {
+          "file_path": "examples/test_data.csv"
+        },
+        "label": "User IDs Input"
+      }
+    },
+    {
+      "id": "2",
+      "type": "transform",
+      "data": {
+        "subtype": "batch_request",
+        "label": "Fetch User Profiles",
+        "config": {
+          "url_template": "https://jsonplaceholder.typicode.com/users/{user_id}",
+          "method": "GET",
+          "concurrency": 10,
+          "timeout": 30,
+          "extract_mode": "json",
+          "output_filter": {
+            "mode": "include",
+            "conditions": [
+              {
+                "field": "response.status",
+                "operator": "==",
+                "value": 200
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "3",
+      "type": "output",
+      "data": {
+        "subtype": "db_write",
+        "config": {
+          "tableName": "user_profiles_enriched"
+        },
+        "label": "Save to Database"
+      }
+    }
+  ],
+  "edges": [
+    {"source": "1", "target": "2"},
+    {"source": "2", "target": "3"}
+  ]
+}

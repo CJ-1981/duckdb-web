@@ -2013,6 +2013,131 @@ async def execute_workflow_graph(
                 conn.execute(sql)
                 node_to_table[node_id] = table_name
 
+            elif subtype == "batch_request" or "Batch" in label:
+                """
+                Batch Request Node - Parallel API/HTML scraping with dynamic URL substitution
+
+                @MX:NOTE: Enables large-scale parallel web scraping with multi-variable URL substitution
+
+                Config schema:
+                    url_template: URL with {variable} placeholders (supports multiple variables)
+                    method: HTTP method (GET, POST, etc.)
+                    auth_type: "bearer", "api_key", "basic", None
+                    token/api_key: Authentication credentials
+                    token_endpoint: OAuth token refresh endpoint
+                    concurrency: Max parallel requests (default: 50)
+                    rate_limit: {"requests_per_second": 100, "burst": 10}
+                    retry_policy: {"max_retries": 3, "base_delay": 1.0, "max_delay": 60.0}
+                    timeout: Request timeout in seconds (default: 30)
+                    extract_mode: "json", "html", "text"
+                    data_path: JSONPath for nested data extraction (optional)
+                    output_filter: Filter conditions for results (optional)
+                """
+                try:
+                    from src.workflow.batch_executor import ParallelRequestExecutor, TokenManager
+                    import pandas as pd
+
+                    if not prev_table:
+                        logger.warning(f">>> [NODE {node_id}] batch_request requires input from previous node")
+                        continue
+
+                    # Get source data from previous node
+                    source_df = _get_df(conn, f"SELECT * FROM {prev_table}")
+                    rows = source_df.to_dict('records')
+
+                    if not rows:
+                        logger.warning(f">>> [NODE {node_id}] No data from previous node {prev_table}")
+                        continue
+
+                    # Get config
+                    url_template = config.get("url_template")
+                    if not url_template:
+                        raise ValueError("batch_request requires 'url_template' parameter")
+
+                    method = config.get("method", "GET")
+                    auth_type = config.get("auth_type")
+                    token = config.get("token")
+                    refresh_token = config.get("refresh_token")
+                    token_endpoint = config.get("token_endpoint")
+                    api_key = config.get("api_key")
+                    api_key_header = config.get("api_key_header", "X-API-Key")
+                    concurrency = config.get("concurrency", 50)
+                    rate_limit = config.get("rate_limit", {"requests_per_second": 100, "burst": 10})
+                    retry_policy = config.get("retry_policy", {"max_retries": 3, "base_delay": 1.0, "max_delay": 60.0})
+                    timeout = config.get("timeout", 30)
+                    extract_mode = config.get("extract_mode", "json")
+                    data_path = config.get("data_path")
+
+                    # Build base headers
+                    base_headers = config.get("custom_headers", {})
+                    if auth_type == "bearer" and token:
+                        base_headers["Authorization"] = f"Bearer {token}"
+                    elif auth_type == "api_key" and api_key:
+                        base_headers[api_key_header] = api_key
+
+                    # Initialize token manager if refresh token provided
+                    token_manager = None
+                    if refresh_token and token_endpoint:
+                        token_manager = TokenManager(
+                            initial_token=token,
+                            refresh_token=refresh_token,
+                            token_endpoint=token_endpoint,
+                            auth_type=auth_type or "bearer"
+                        )
+
+                    # Progress callback
+                    def progress_callback(progress: float, message: str):
+                        logger.info(f">>> [BATCH {node_id}] {progress:.1%} - {message}")
+
+                    # Execute batch requests
+                    executor = ParallelRequestExecutor(
+                        concurrency=concurrency,
+                        rate_limit=rate_limit,
+                        retry_policy=retry_policy,
+                        timeout=timeout,
+                        progress_callback=progress_callback,
+                        token_manager=token_manager
+                    )
+
+                    # Run async execution
+                    import asyncio
+                    results = asyncio.run(executor.execute_batch(
+                        rows=rows,
+                        url_template=url_template,
+                        method=method,
+                        headers=base_headers,
+                        extract_mode=extract_mode,
+                        data_path=data_path
+                    ))
+
+                    # Apply output filter if configured
+                    output_filter_config = config.get("output_filter")
+                    if output_filter_config:
+                        from src.workflow.output_filter import OutputFilter
+                        output_filter = OutputFilter(output_filter_config)
+                        before_count = len(results)
+                        results = output_filter.filter(results)
+                        after_count = len(results)
+                        logger.info(f">>> [BATCH {node_id}] Filter: {before_count} → {after_count} rows")
+
+                    # Convert results to DataFrame and sanitize
+                    result_df = pd.DataFrame(results)
+                    result_df = _sanitize_df_for_duckdb(result_df)
+
+                    # Register and create table
+                    conn.register(f'{table_name}_df', result_df)
+                    conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT * FROM {table_name}_df")
+                    node_to_table[node_id] = table_name
+
+                    logger.info(
+                        f">>> [BATCH REQUEST] Processed {len(source_df)} input rows "
+                        f"→ {len(result_df)} output rows"
+                    )
+
+                except Exception as e:
+                    logger.error(f">>> [BATCH REQUEST] Failed: {e}")
+                    raise HTTPException(status_code=400, detail=f"Batch request error: {str(e)}")
+
             elif node["type"] == "output":
                 if subtype == "db_write":
                     if prev_table:
@@ -2685,6 +2810,14 @@ async def inspect_node_dataset(request: InspectRequest):
                         sql = f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT {sel} FROM {prev_table}"
                         if group_by: sql += f" GROUP BY {', '.join([quote_identifier(c) for c in group_by])}"
                         conn.execute(sql); node_to_table[node_id] = table_name
+                    elif subtype == "batch_request" or "Batch" in label:
+                        """
+                        Batch Request Node - Inspect mode (no execution, just validation)
+                        """
+                        if prev_table:
+                            node_to_table[node_id] = prev_table
+                        else:
+                            node_to_table[node_id] = None
                     elif subtype == "pivot":
                         on_col = config.get("on", "")
                         using_expr = config.get("using", "")
