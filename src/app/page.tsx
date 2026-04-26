@@ -1188,9 +1188,8 @@ function Dashboard() {
               if (node?.id !== selectedNode?.id) {
                 setSelectedNode(node);
               }
-              // Always show panel when a node is selected, even if it's the same node
-              // This allows reopening the panel after it was closed
-              if (node) setIsBottomPanelVisible(true);
+              // Always show panel when a node is selected (except for notes)
+              if (node && node.type !== 'note') setIsBottomPanelVisible(true);
             }}
             onAfterConnect={handleConnection}
             layoutCounter={layoutCounter}
@@ -1198,7 +1197,7 @@ function Dashboard() {
             bottomPanelHeight={previewHeight}
             shortcutsEnabled={!isSaveModalOpen && !isLoadModalOpen && !isRenameModalOpen && !isSettingsOpen}
           >
-            {selectedNode && isBottomPanelVisible && (
+            {selectedNode && selectedNode.type !== 'note' && isBottomPanelVisible && (
               <Panel position="bottom-left" style={{ width: '100%', margin: 0 }}>
                 <div
                   data-testid="data-inspection-panel"
@@ -1310,7 +1309,7 @@ function Dashboard() {
             )}
 
             {/* Reopen Bottom Panel Button - Now inside Panel */}
-            {selectedNode && !isBottomPanelVisible && (
+            {selectedNode && selectedNode.type !== 'note' && !isBottomPanelVisible && (
               <Panel position="bottom-center">
                 <div className="mb-8 animate-in fade-in slide-in-from-bottom-2 duration-300">
                   <button
@@ -1350,14 +1349,14 @@ function Dashboard() {
                   />
                   <PenLine size={14} className="text-[#6B778C] ml-1 opacity-40 group-hover:opacity-100 transition-opacity" />
                 </div>
-                {selectedNode.data?.rowCount !== undefined && (
+                {selectedNode.data?.rowCount !== undefined && selectedNode.type !== 'note' && (
                   <span className="ml-2 text-[10px] bg-[#EAE6FF] text-[#403294] px-2 py-0.5 rounded-full font-bold whitespace-nowrap">
                     {String(selectedNode.data.rowCount)} rows
                   </span>
                 )}
               </h3>
 
-              {selectedNode && selectedNode.type === 'input' && !selectedNode.data.subtype && typeof selectedNode.data?.config === 'object' && selectedNode.data.config !== null && (
+              {selectedNode && selectedNode.type === 'input' && selectedNode.type !== 'note' && !selectedNode.data.subtype && typeof selectedNode.data?.config === 'object' && selectedNode.data.config !== null && (
                 <div className="space-y-4">
                   <div>
                     <label className="block text-xs font-semibold text-[#6B778C] mb-1">File Upload</label>

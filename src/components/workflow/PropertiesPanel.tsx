@@ -99,7 +99,7 @@ export function PropertiesPanel({ node, onUpdate, getUpstreamColumns, nodes, edg
             </div>
           )}
 
-          {node.data?.rowCount !== undefined && node.data.rowCount !== null && (
+          {node.data?.rowCount !== undefined && node.data.rowCount !== null && node.type !== 'note' && (
             <div>
               <label className="block text-xs font-semibold text-[#6B778C] mb-2">Row Count</label>
               <div className="px-3 py-2 bg-[#EAE6FF] border border-[#D1CAFF] rounded-md text-sm font-bold text-[#403294]">

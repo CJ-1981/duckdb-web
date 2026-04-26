@@ -93,7 +93,7 @@ const CustomNode = ({ data, type, selected }: any) => {
             {isNote && <span className="text-lg">📝</span>}
             <span className="text-sm font-bold tracking-tight text-center">{data.label}</span>
           </div>
-          {data.rowCount !== undefined && (
+          {data.rowCount !== undefined && !isNote && (
             <div className="flex items-center space-x-1.5 bg-[#EAE6FF] text-[#403294] px-3 py-1 rounded-full font-bold shadow-sm border border-[#D1CAFF]">
               <span className="text-[10px] uppercase opacity-60">Rows</span>
               <span className="text-xs">{data.rowCount.toLocaleString()}</span>
