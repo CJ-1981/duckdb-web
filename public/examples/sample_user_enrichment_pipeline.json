@@ -58,8 +58,7 @@
             "base_delay": 1.0,
             "max_delay": 10.0
           },
-          "extract_mode": "json",
-          "sql": "SELECT * FROM {{input}} LIMIT 100"
+          "extract_mode": "json"
         }
       }
     },

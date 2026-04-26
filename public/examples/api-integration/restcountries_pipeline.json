@@ -29,7 +29,7 @@
         "label": "Build Country API URLs",
         "subtype": "raw_sql",
         "config": {
-          "sql": "SELECT \n  country_code,\n  'https://restcountries.com/v3.1/alpha/' || country_code as api_url,\n  'GET' as method,\n  country_code as country_code\nFROM {{input}}\nORDER BY country_code"
+          "sql": "SELECT \n  country_code,\n  'https://restcountries.com/v3.1/alpha/' || country_code as api_url,\n  'GET' as method\nFROM {{input}}\nORDER BY country_code"
         }
       }
     },

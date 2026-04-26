@@ -118,7 +118,12 @@ from src.core.connectors.csv import CSVConnector
 router = APIRouter(prefix="/api/v1/workflows", tags=["Workflows"])
 
 def _apply_node_aliasing(conn, node, node_id, node_to_table):
-    """Helper to apply universal aliasing logic for a node."""
+    """
+    Helper to apply universal aliasing logic for a node.
+
+    @MX:ANCHOR: Universal logical-name aliasing (fan_in: every input/transform subtype + finalize)
+    @MX:REASON: Drops the existing view (SCD Type 2) before re-creating an aliased TEMP TABLE so UPDATEs work.
+    """
     config = node.get("data", {}).get("config", {})
     logical_name = config.get("tableName") or config.get("alias")
     tname = node_to_table.get(node_id)
@@ -133,7 +138,12 @@ def _apply_node_aliasing(conn, node, node_id, node_to_table):
             logger.error(f">>> [FLOW] Failed to alias node {node_id} to {logical_name}: {e}")
 
 def _finalize_node_state(conn, node, node_id, node_to_table, node_hash):
-    """Finalize node state: apply aliasing and update cache."""
+    """
+    Finalize node state: apply aliasing and update cache.
+
+    @MX:ANCHOR: Single point of truth for post-execution state (fan_in: all node-type branches)
+    @MX:REASON: Centralizes aliasing + _NODE_CACHE write so the schema/timestamp invariants stay in sync.
+    """
     _apply_node_aliasing(conn, node, node_id, node_to_table)
     
     final_table = node_to_table.get(node_id)
@@ -167,7 +177,7 @@ _SQL_RESULT_CACHE: Dict[str, Dict[str, Any]] = {}
 # Maximum cache size to prevent unbounded growth
 _MAX_SQL_RESULT_CACHE_SIZE = 100
 
-from src.core.database.utils import register_xml_udfs
+from src.core.database.utils import register_xml_udfs, load_xml_into_table
 
 
 def get_connection():
@@ -1484,18 +1494,23 @@ async def execute_workflow_graph(
                 if subtype == "db_read":
                     db_table = config.get("tableName")
                     if db_table:
+                        # Check if table exists explicitly to avoid swallowing other errors
                         try:
-                            # Check if table exists
-                            conn.execute(f"SELECT 1 FROM {quote_identifier(db_table)} LIMIT 0")
-                            conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT * FROM {quote_identifier(db_table)}")
-                            node_to_table[node_id] = table_name
-                            logger.info(f">>> [INPUT NODE] Loaded table {db_table} into {table_name}")
-                            # Universal aliasing logic MUST run before continue
-                            # Finalize state before continue
-                            _finalize_node_state(conn, node, node_id, node_to_table, node_hash)
-                            continue
-                        except Exception:
-                            logger.warning(f">>> [INPUT NODE] Table {db_table} not found, checking sample data")
+                            # Search in information_schema for the table
+                            exists_query = "SELECT 1 FROM information_schema.tables WHERE table_name = ?"
+                            table_exists = conn.execute(exists_query, [db_table]).fetchone()
+                            
+                            if table_exists:
+                                conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT * FROM {quote_identifier(db_table)}")
+                                node_to_table[node_id] = table_name
+                                logger.info(f">>> [INPUT NODE] Loaded table {db_table} into {table_name}")
+                                # Finalize state (required before early continue)
+                                _finalize_node_state(conn, node, node_id, node_to_table, node_hash)
+                                continue
+                            else:
+                                logger.warning(f">>> [INPUT NODE] Table {db_table} not found in DB, falling back to sample data")
+                        except Exception as e:
+                            logger.error(f">>> [INPUT NODE] Error probing table {db_table}: {e}")
                             
                     # Fallback to sample_data
                     sample = config.get("sample_data")
@@ -1508,8 +1523,7 @@ async def execute_workflow_graph(
                             conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT * FROM {table_name}_df")
                             node_to_table[node_id] = table_name
                             logger.info(f">>> [INPUT NODE] Loaded sample data for {node_id}")
-                            # Universal aliasing logic MUST run before continue
-                            # Finalize state before continue
+                            # Finalize state (required before early continue)
                             _finalize_node_state(conn, node, node_id, node_to_table, node_hash)
                             continue
                         except Exception as e:
@@ -1602,14 +1616,8 @@ async def execute_workflow_graph(
                 if file_ext == '.xml':
                     try:
                         logger.info(f">>> [INPUT NODE] Processing XML file: {file_path}")
-                        with open(file_path, 'r', encoding='utf-8', errors='replace') as f:
-                            xml_content = f.read()
-                        
-                        import pandas as pd
-                        df = pd.DataFrame([{"xml_data": xml_content}])
-                        df = _sanitize_df_for_duckdb(df)
-                        conn.register(f'{table_name}_df', df)
-                        conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT * FROM {table_name}_df")
+                        # Use centralized XML loading helper
+                        load_xml_into_table(conn, file_path, table_name)
                         node_to_table[node_id] = table_name
                         
                         # Support optional tableName from config for direct SQL reference
@@ -1862,7 +1870,7 @@ async def execute_workflow_graph(
             elif subtype == "computed":
                 if not prev_table: continue
                 expr = config.get("expression")
-                alias = config.get("alias") or config.get("column") or "new_column"
+                alias = config.get("alias") if config.get("alias") is not None else (config.get("column") if config.get("column") is not None else "new_column")
                 if expr and alias:
                     # Validate expression to prevent SQL injection
                     validate_sql_fragment(conn, expr, "expression", prev_table)
@@ -1973,7 +1981,7 @@ async def execute_workflow_graph(
                 if not prev_table: continue
                 conditions = config.get("conditions", [])
                 else_val_raw = str(config.get("elseValue", "NULL")).strip()
-                alias = config.get("alias") or config.get("column") or "case_result"
+                alias = config.get("alias") if config.get("alias") is not None else (config.get("column") if config.get("column") is not None else "case_result")
                 
                 def sql_val(v):
                     if v is None: return "NULL"

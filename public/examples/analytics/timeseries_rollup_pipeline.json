@@ -87,6 +87,8 @@
     { "id": "e1", "source": "input-1", "target": "aggregate-1" },
     { "id": "e2", "source": "input-1", "target": "aggregate-2" },
     { "id": "e3", "source": "input-1", "target": "aggregate-3" },
-    { "id": "e4", "source": "aggregate-3", "target": "output-1" }
+    { "id": "e4", "source": "aggregate-1", "target": "output-1" },
+    { "id": "e5", "source": "aggregate-2", "target": "output-1" },
+    { "id": "e6", "source": "aggregate-3", "target": "output-1" }
   ]
 }
