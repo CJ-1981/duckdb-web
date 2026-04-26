@@ -1135,9 +1135,9 @@ function Dashboard() {
                           onDragStart={(e) => onDragStart(e, item.type, item.label, (item as any).subtype)}
                           onMouseEnter={(e) => showTooltip(e, item.label, item.tooltip)}
                           onMouseLeave={hideTooltip}
-                          className={`flex items-center space-x-3 p-3 bg-white border border-[#DFE1E6] rounded-md cursor-grab transition-all hover:shadow-sm ${item.type === 'input' ? 'hover:border-[#0052CC]' : item.type === 'output' ? 'hover:border-[#36B37E]' : 'hover:border-[#6554C0]'}`}
+                          className={`flex items-center space-x-3 p-3 bg-white border border-[#DFE1E6] rounded-md cursor-grab transition-all hover:shadow-sm ${item.type === 'input' ? 'hover:border-[#0052CC]' : item.type === 'output' ? 'hover:border-[#36B37E]' : item.type === 'note' ? 'hover:border-[#FFAB00]' : 'hover:border-[#6554C0]'}`}
                         >
-                          <div className={`p-1.5 rounded ${item.type === 'input' ? 'bg-blue-50 text-[#0052CC]' : item.type === 'output' ? 'bg-green-50 text-[#36B37E]' : 'bg-purple-50 text-[#6554C0]'}`}>
+                          <div className={`p-1.5 rounded ${item.type === 'input' ? 'bg-blue-50 text-[#0052CC]' : item.type === 'output' ? 'bg-green-50 text-[#36B37E]' : item.type === 'note' ? 'bg-amber-50 text-[#FFAB00]' : 'bg-purple-50 text-[#6554C0]'}`}>
                             {item.icon}
                           </div>
                           <span className="text-sm font-medium text-gray-700">{item.label}</span>
@@ -3007,6 +3007,25 @@ Please fix the SQL. Return ONLY the raw SQL query.`;
                       <SqlPreview sql={buildSql('limit', selectedNode.data.config as any)} />
                     </div>
                   )}
+                </div>
+              )}
+
+              {selectedNode.type === 'note' && (
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-[#6B778C] mb-2">Note Body / Content</label>
+                    <textarea
+                      value={String(selectedNode.data?.description || '')}
+                      onChange={(e) => {
+                        const updatedNode = { ...selectedNode, data: { ...selectedNode.data, description: e.target.value } };
+                        setSelectedNode(updatedNode);
+                        setNodes((nds) => nds.map((n) => n.id === updatedNode.id ? updatedNode : n));
+                      }}
+                      className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-sm min-h-[250px] resize-vertical focus:border-[#FFAB00] focus:ring-1 focus:ring-[#FFAB00] outline-none"
+                      placeholder="Enter the content for this note..."
+                    />
+                    <p className="text-[10px] text-[#6B778C] mt-1 italic">Notes are for documentation and do not affect data processing.</p>
+                  </div>
                 </div>
               )}
 
