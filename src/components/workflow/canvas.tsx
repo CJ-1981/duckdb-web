@@ -94,8 +94,8 @@ const CustomNode = ({ data, type, selected }: any) => {
               <span className="text-xs">{data.rowCount.toLocaleString()}</span>
             </div>
           )}
-          {isNote && data.description && (
-            <div className="text-xs text-gray-600 mt-1 px-2 py-1 bg-white/50 rounded border border-[#F59E0B]/30">
+          {data.description && (
+            <div className={`text-xs mt-1 px-2 py-1 rounded border ${isNote ? 'text-gray-600 bg-white/50 border-[#F59E0B]/30' : 'text-gray-500 bg-gray-50 border-gray-200'}`}>
               {data.description}
             </div>
           )}
@@ -110,6 +110,7 @@ const nodeTypes = {
   input: CustomNode,
   default: CustomNode,
   output: CustomNode,
+  note: CustomNode,
 };
 
 interface WorkspaceCanvasProps {
