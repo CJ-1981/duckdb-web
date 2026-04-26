@@ -5,7 +5,7 @@ import WorkspaceCanvas from '@/components/workflow/canvas';
 import { SqlPreview } from '@/components/workflow/SqlPreview';
 import { buildSql, getConditionSql } from '@/components/workflow/SqlHelpers';
 import { WorkflowToolbar } from '@/components/workflow/WorkflowToolbar';
-import { Database, Filter, ArrowRightLeft, Table, Settings, Play, Search, LayoutDashboard, SlidersHorizontal, FileText, FileDown, Save, FolderOpen, Sigma, Eye, ChevronRight, SortAsc, ListOrdered, Calculator, Code, Fingerprint, PenLine, GitBranch, BarChart3, Plus, Trash2, Wand2, Microscope, PanelLeftClose, PanelLeftOpen, PanelBottomClose, Copy, X, CheckCheck, AlertCircle, RefreshCw, Globe, Repeat, Dices, Braces, DatabaseBackup } from 'lucide-react';
+import { Database, Filter, ArrowRightLeft, Table, Settings, Play, Search, LayoutDashboard, SlidersHorizontal, FileText, FileDown, Save, FolderOpen, Sigma, Eye, ChevronRight, SortAsc, ListOrdered, Calculator, Code, Fingerprint, PenLine, GitBranch, BarChart3, Plus, Trash2, Wand2, Microscope, PanelLeftClose, PanelLeftOpen, PanelBottomClose, Copy, X, CheckCheck, AlertCircle, RefreshCw, Globe, Repeat, Dices, Braces, DatabaseBackup, MessageSquare } from 'lucide-react';
 import { Node, Edge, useReactFlow, ReactFlowProvider, useNodesState, useEdgesState, Panel } from '@xyflow/react';
 import { useWorkflowState } from '@/hooks/useWorkflowState';
 import { executeWorkflow, uploadFile, saveWorkflow, listSavedWorkflows, loadWorkflowGraph, generateReport, inspectNode, renameWorkflow, deleteWorkflow, validateSql, previewSql, getBackendUrl } from '@/lib/api-unified';
@@ -1100,6 +1100,12 @@ function Dashboard() {
                     { type: 'default', subtype: 'sample', label: 'Sample Data', icon: <Dices size={16} />, tooltip: 'Extract a random sample or specific percentage of the dataset.' },
                     { type: 'default', subtype: 'unnest', label: 'Unnest / JSON', icon: <Braces size={16} />, tooltip: 'Unnest arrays or extract fields from JSON columns.' },
                     { type: 'default', subtype: 'raw_sql', label: 'Custom SQL', icon: <Code size={16} />, tooltip: 'Maximum power: write your own DuckDB SQL to transform data.' }
+                  ]
+                },
+                {
+                  title: 'Documentation',
+                  items: [
+                    { type: 'note', label: 'Note', icon: <MessageSquare size={16} />, tooltip: 'Add annotations and documentation to your workflow. Notes do not process data and are for documentation purposes only.' }
                   ]
                 },
                 {
