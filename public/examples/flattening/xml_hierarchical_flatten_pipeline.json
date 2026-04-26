@@ -1,0 +1,140 @@
+{
+  "name": "XML Hierarchical Flattening",
+  "description": "Flatten XML hierarchical structures with repeated elements",
+  "nodes": [
+    {
+      "id": "input-1",
+      "type": "input",
+      "position": {
+        "x": 100,
+        "y": 150
+      },
+      "data": {
+        "label": "XML Document",
+        "subtype": "csv",
+        "config": {
+          "file_path": "examples/catalog.xml",
+          "sample_data": [
+            {
+              "id": 1,
+              "value": "sample_value_1"
+            },
+            {
+              "id": 2,
+              "value": "sample_value_2"
+            },
+            {
+              "id": 3,
+              "value": "sample_value_3"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "transform-1",
+      "type": "default",
+      "position": {
+        "x": 400,
+        "y": 150
+      },
+      "data": {
+        "label": "Parse XML",
+        "subtype": "raw_sql",
+        "config": {
+          "sql": "SELECT \n  xpath_string(xml_data, '/catalog/@id') as catalog_id,\n  xpath_string(xml_data, '/catalog/name') as catalog_name\nFROM {{input}}"
+        }
+      }
+    },
+    {
+      "id": "transform-2",
+      "type": "default",
+      "position": {
+        "x": 700,
+        "y": 150
+      },
+      "data": {
+        "label": "Extract Products Array",
+        "subtype": "raw_sql",
+        "config": {
+          "sql": "SELECT \n  catalog_id,\n  catalog_name,\n  xpath_list(xml_data, '/catalog/products/product/id') as product_ids,\n  xpath_list(xml_data, '/catalog/products/product/name') as product_names,\n  xpath_list(xml_data, '/catalog/products/product/price') as product_prices\nFROM {{input}}"
+        }
+      }
+    },
+    {
+      "id": "transform-3",
+      "type": "default",
+      "position": {
+        "x": 1000,
+        "y": 150
+      },
+      "data": {
+        "label": "Explode Arrays",
+        "subtype": "unnest",
+        "config": {
+          "column": "product_ids",
+          "alias": "product",
+          "with_ordinality": true
+        }
+      }
+    },
+    {
+      "id": "transform-4",
+      "type": "default",
+      "position": {
+        "x": 1300,
+        "y": 150
+      },
+      "data": {
+        "label": "Join with Names and Prices",
+        "subtype": "raw_sql",
+        "config": {
+          "sql": "SELECT \n  catalog_id,\n  catalog_name,\n  product_ids[ordinality] as product_id,\n  product_names[ordinality] as product_name,\n  try_cast(product_prices[ordinality] as DECIMAL(10,2)) as price\nFROM {{input}}"
+        }
+      }
+    },
+    {
+      "id": "output-1",
+      "type": "output",
+      "position": {
+        "x": 1600,
+        "y": 150
+      },
+      "data": {
+        "label": "Save Flattened Catalog",
+        "subtype": "db_write",
+        "config": {
+          "tableName": "flattened_catalog",
+          "filename": "catalog_flat.csv"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "source": "input-1",
+      "target": "transform-1"
+    },
+    {
+      "id": "e2",
+      "source": "transform-1",
+      "target": "transform-2"
+    },
+    {
+      "id": "e3",
+      "source": "transform-2",
+      "target": "transform-3"
+    },
+    {
+      "id": "e4",
+      "source": "transform-3",
+      "target": "transform-4"
+    },
+    {
+      "id": "e5",
+      "source": "transform-4",
+      "target": "output-1"
+    }
+  ]
+}

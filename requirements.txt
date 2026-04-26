@@ -17,3 +17,7 @@ requests
 psutil
 aiofiles
 chardet
+rq
+redis
+alembic
+asyncpg

@@ -1,0 +1,212 @@
+{
+  "name": "Social Media Analytics Pipeline",
+  "description": "Demonstrates multi-variable URL substitution with query parameters and headers",
+  "nodes": [
+    {
+      "id": "input-1",
+      "type": "input",
+      "position": {
+        "x": 100,
+        "y": 200
+      },
+      "data": {
+        "label": "Post Query Parameters",
+        "subtype": "csv",
+        "config": {
+          "file_path": "examples/social_posts_input.csv",
+          "sample_data": [
+            {
+              "post_id": 1,
+              "comment_type": "positive",
+              "limit": 10,
+              "request_id": "req-001",
+              "tenant_id": "tenant-A"
+            },
+            {
+              "post_id": 2,
+              "comment_type": "negative",
+              "limit": 5,
+              "request_id": "req-002",
+              "tenant_id": "tenant-B"
+            },
+            {
+              "post_id": 3,
+              "comment_type": "question",
+              "limit": 15,
+              "request_id": "req-003",
+              "tenant_id": "tenant-A"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "batch-1",
+      "type": "default",
+      "position": {
+        "x": 400,
+        "y": 200
+      },
+      "data": {
+        "label": "Fetch Social Posts",
+        "subtype": "raw_sql",
+        "config": {
+          "custom_headers": {
+            "X-Request-ID": "{request_id}",
+            "X-Tenant-ID": "{tenant_id}",
+            "User-Agent": "WorkflowBot/1.0"
+          },
+          "sql": "SELECT * FROM {{input}} LIMIT 100"
+        }
+      }
+    },
+    {
+      "id": "transform-1",
+      "type": "default",
+      "position": {
+        "x": 700,
+        "y": 200
+      },
+      "data": {
+        "label": "Flatten Comments",
+        "subtype": "raw_sql",
+        "config": {
+          "alias": "comments",
+          "sql": "SELECT * FROM {{input}}"
+        }
+      }
+    },
+    {
+      "id": "filter-1",
+      "type": "default",
+      "position": {
+        "x": 1000,
+        "y": 200
+      },
+      "data": {
+        "label": "Filter Valid Emails",
+        "subtype": "filter",
+        "config": {
+          "conditions": [
+            {
+              "column": "comments.email",
+              "operator": "contains",
+              "value": "@"
+            },
+            {
+              "column": "comments.body",
+              "operator": "is_not_null",
+              "value": null
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "aggregate-1",
+      "type": "default",
+      "position": {
+        "x": 1300,
+        "y": 200
+      },
+      "data": {
+        "label": "Comment Statistics",
+        "subtype": "aggregate",
+        "config": {
+          "groupBy": "post_id",
+          "aggregations": [
+            {
+              "column": "comments.id",
+              "operation": "COUNT",
+              "alias": "comment_count"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "sort-1",
+      "type": "default",
+      "position": {
+        "x": 1600,
+        "y": 200
+      },
+      "data": {
+        "label": "Sort by Popularity",
+        "subtype": "sort",
+        "config": {
+          "column": "comment_count",
+          "order": "DESC"
+        }
+      }
+    },
+    {
+      "id": "limit-1",
+      "type": "default",
+      "position": {
+        "x": 1900,
+        "y": 200
+      },
+      "data": {
+        "label": "Top 10 Posts",
+        "subtype": "limit",
+        "config": {
+          "limit": 10
+        }
+      }
+    },
+    {
+      "id": "output-1",
+      "type": "output",
+      "position": {
+        "x": 2200,
+        "y": 200
+      },
+      "data": {
+        "label": "Export Analytics",
+        "subtype": "db_write",
+        "config": {
+          "tableName": "social_media_analytics",
+          "filename": "social_analytics.csv"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "source": "input-1",
+      "target": "batch-1"
+    },
+    {
+      "id": "e2",
+      "source": "batch-1",
+      "target": "transform-1"
+    },
+    {
+      "id": "e3",
+      "source": "transform-1",
+      "target": "filter-1"
+    },
+    {
+      "id": "e4",
+      "source": "filter-1",
+      "target": "aggregate-1"
+    },
+    {
+      "id": "e5",
+      "source": "aggregate-1",
+      "target": "sort-1"
+    },
+    {
+      "id": "e6",
+      "source": "sort-1",
+      "target": "limit-1"
+    },
+    {
+      "id": "e7",
+      "source": "limit-1",
+      "target": "output-1"
+    }
+  ]
+}

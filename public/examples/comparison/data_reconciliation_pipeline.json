@@ -1,0 +1,178 @@
+{
+  "name": "Data Reconciliation",
+  "description": "Compare two data sources and identify discrepancies",
+  "nodes": [
+    {
+      "id": "input-1",
+      "type": "input",
+      "position": {
+        "x": 100,
+        "y": 100
+      },
+      "data": {
+        "label": "Source A - Database",
+        "subtype": "csv",
+        "config": {
+          "file_path": "examples/data_reconciliation.csv",
+          "sample_data": [
+            {
+              "id": 1,
+              "value": "sample_value_1"
+            },
+            {
+              "id": 2,
+              "value": "sample_value_2"
+            },
+            {
+              "id": 3,
+              "value": "sample_value_3"
+            }
+          ],
+          "file_path": "examples/data_reconciliation.csv"
+        }
+      }
+    },
+    {
+      "id": "input-2",
+      "type": "input",
+      "position": {
+        "x": 100,
+        "y": 250
+      },
+      "data": {
+        "label": "Source B - Data Warehouse",
+        "subtype": "csv",
+        "config": {
+          "tableName": "orders_dw",
+          "query": "SELECT order_id, customer_id, amount, status FROM orders_dw WHERE date >= CURRENT_DATE - INTERVAL '7 days'",
+          "sample_data": [
+            {
+              "id": 1,
+              "value": "sample_value_1"
+            },
+            {
+              "id": 2,
+              "value": "sample_value_2"
+            },
+            {
+              "id": 3,
+              "value": "sample_value_3"
+            }
+          ],
+          "file_path": "examples/orders_dw.csv"
+        }
+      }
+    },
+    {
+      "id": "transform-1",
+      "type": "default",
+      "position": {
+        "x": 500,
+        "y": 175
+      },
+      "data": {
+        "label": "Full Outer Join",
+        "subtype": "raw_sql",
+        "config": {
+          "sql": "SELECT \n  coalesce(a.order_id, b.order_id) as order_id,\n  a.amount as amount_source_a,\n  b.amount as amount_source_b,\n  a.status as status_source_a,\n  b.status as status_source_b,\n  case \n    when a.order_id is null then 'missing_in_a'\n    when b.order_id is null then 'missing_in_b'\n    when a.amount != b.amount then 'amount_mismatch'\n    when a.status != b.status then 'status_mismatch'\n    else 'match'\n  end as comparison_result,\n  abs(a.amount - b.amount) as amount_diff\nFROM {{input1}} a\nFULL OUTER JOIN {{input2}} b ON a.order_id = b.order_id"
+        }
+      }
+    },
+    {
+      "id": "filter-1",
+      "type": "default",
+      "position": {
+        "x": 800,
+        "y": 175
+      },
+      "data": {
+        "label": "Filter Discrepancies",
+        "subtype": "filter",
+        "config": {
+          "conditions": [
+            {
+              "column": "comparison_result",
+              "operator": "!=",
+              "value": "match"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "aggregate-1",
+      "type": "default",
+      "position": {
+        "x": 1100,
+        "y": 175
+      },
+      "data": {
+        "label": "Summary Stats",
+        "subtype": "aggregate",
+        "config": {
+          "groupBy": "comparison_result",
+          "aggregations": [
+            {
+              "column": "order_id",
+              "operation": "COUNT",
+              "alias": "count"
+            },
+            {
+              "column": "amount_diff",
+              "operation": "AVG",
+              "alias": "avg_diff"
+            },
+            {
+              "column": "amount_diff",
+              "operation": "SUM",
+              "alias": "total_diff"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "output-1",
+      "type": "output",
+      "position": {
+        "x": 1400,
+        "y": 175
+      },
+      "data": {
+        "label": "Save Reconciliation Report",
+        "subtype": "db_write",
+        "config": {
+          "tableName": "reconciliation_report",
+          "filename": "reconciliation.csv"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "source": "input-1",
+      "target": "transform-1"
+    },
+    {
+      "id": "e2",
+      "source": "input-2",
+      "target": "transform-1"
+    },
+    {
+      "id": "e3",
+      "source": "transform-1",
+      "target": "filter-1"
+    },
+    {
+      "id": "e4",
+      "source": "filter-1",
+      "target": "aggregate-1"
+    },
+    {
+      "id": "e5",
+      "source": "aggregate-1",
+      "target": "output-1"
+    }
+  ]
+}

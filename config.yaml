@@ -1,0 +1,82 @@
+# SPEC-WORKFLOW-001 Configuration
+# Workflow Automation System Configuration
+
+# Database Configuration
+database:
+  url: postgresql://localhost:5432/duckdb_workflow
+  host: localhost
+  port: 5432
+  name: duckdb_workflow
+  user: postgres
+  password:
+  pool_size: 10
+  max_overflow: 20
+  pool_timeout: 30
+
+# Redis Configuration
+redis:
+  host: localhost
+  port: 6379
+  db: 0
+  password:
+  decode_responses: true
+
+# Workflow Configuration
+workflow:
+  # Queue configuration
+  queues:
+    - name: spec_execution
+      description: "SPEC execution and analysis tasks"
+      timeout: 3600  # 1 hour
+      retries: 3
+    - name: document_generation
+      description: "Documentation generation tasks"
+      timeout: 1800  # 30 minutes
+      retries: 2
+    - name: database_migrations
+      description: "Database migration tasks"
+      timeout: 7200  # 2 hours
+      retries: 1
+    - name: system_monitoring
+      description: "System monitoring and health check tasks"
+      timeout: 300  # 5 minutes
+      retries: 2
+    - name: default
+      description: "General workflow tasks"
+      timeout: 1800  # 30 minutes
+      retries: 3
+
+  # Worker configuration
+  worker:
+    concurrency: 4
+    name: workflow-worker
+    result_ttl: 86400  # 24 hours
+    job_timeout: 3600  # 1 hour
+
+  # Task configuration
+  task:
+    max_retries: 3
+    timeout: 3600  # 1 hour
+    retry_delay: 60  # 1 minute
+
+# Monitoring Configuration
+monitoring:
+  enabled: ${WORKFLOW_METRICS_ENABLED:-true}
+  log_level: ${WORKFLOW_LOG_LEVEL:-INFO}
+  health_check_interval: ${WORKFLOW_HEALTH_CHECK_INTERVAL:-60}
+  metrics_interval: 300  # 5 minutes
+
+# Database Migration Configuration
+migration:
+  # Environment for alembic
+  env:
+    sqlalchemy.url: ${DATABASE_URL:-postgresql://localhost:5432/duckdb_workflow}
+    # Set to true to enable autogenerate during migration
+    # autogenerate = true
+
+# Application Configuration
+app:
+  name: "SPEC-WORKFLOW-001"
+  version: "1.0.0"
+  debug: false
+  # Add any other application-specific configuration here

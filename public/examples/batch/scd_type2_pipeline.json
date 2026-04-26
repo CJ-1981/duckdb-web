@@ -1,0 +1,152 @@
+{
+  "name": "Slowly Changing Dimension Type 2",
+  "description": "Implement SCD Type 2 to track historical changes with effective dates",
+  "nodes": [
+    {
+      "id": "input-1",
+      "type": "input",
+      "position": {
+        "x": 100,
+        "y": 100
+      },
+      "data": {
+        "label": "Current Dimension",
+        "subtype": "db_read",
+        "config": {
+          "tableName": "dim_customers",
+          "sample_data": [
+            {
+              "id": 1,
+              "value": "sample_value_1"
+            },
+            {
+              "id": 2,
+              "value": "sample_value_2"
+            },
+            {
+              "id": 3,
+              "value": "sample_value_3"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "input-2",
+      "type": "input",
+      "position": {
+        "x": 100,
+        "y": 250
+      },
+      "data": {
+        "label": "Incoming Updates",
+        "subtype": "csv",
+        "config": {
+          "file_path": "examples/customer_updates.csv",
+          "sample_data": [
+            {
+              "id": 1,
+              "value": "sample_value_1"
+            },
+            {
+              "id": 2,
+              "value": "sample_value_2"
+            },
+            {
+              "id": 3,
+              "value": "sample_value_3"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "transform-1",
+      "type": "default",
+      "position": {
+        "x": 400,
+        "y": 175
+      },
+      "data": {
+        "label": "Detect Changes",
+        "subtype": "raw_sql",
+        "config": {
+          "sql": "SELECT \n  coalesce(c.customer_id, i.customer_id) as customer_id,\n  c.email as current_email,\n  i.email as new_email,\n  c.segment as current_segment,\n  i.segment as new_segment,\n  case \n    when c.customer_id is null then 'new'\n    when c.email != i.email or c.segment != i.segment then 'changed'\n    else 'unchanged'\n  end as change_type\nFROM current_dim c\nFULL OUTER JOIN incoming_updates i ON c.customer_id = i.customer_id"
+        }
+      }
+    },
+    {
+      "id": "transform-2",
+      "type": "default",
+      "position": {
+        "x": 700,
+        "y": 175
+      },
+      "data": {
+        "label": "Expire Old Records",
+        "subtype": "raw_sql",
+        "config": {
+          "sql": "UPDATE dim_customers \nSET is_current = false, \n    effective_end = now()\nWHERE customer_id IN (SELECT customer_id FROM changes WHERE change_type = 'changed')\n  AND is_current = true"
+        }
+      }
+    },
+    {
+      "id": "transform-3",
+      "type": "default",
+      "position": {
+        "x": 1000,
+        "y": 175
+      },
+      "data": {
+        "label": "Insert New Versions",
+        "subtype": "raw_sql",
+        "config": {
+          "sql": "INSERT INTO dim_customers (customer_id, email, segment, is_current, effective_start, effective_end)\nSELECT \n  customer_id,\n  coalesce(new_email, current_email) as email,\n  coalesce(new_segment, current_segment) as segment,\n  true as is_current,\n  now() as effective_start,\n  NULL as effective_end\nFROM changes\nWHERE change_type IN ('new', 'changed')"
+        }
+      }
+    },
+    {
+      "id": "output-1",
+      "type": "output",
+      "position": {
+        "x": 1300,
+        "y": 175
+      },
+      "data": {
+        "label": "Complete",
+        "subtype": "db_write",
+        "config": {
+          "tableName": "dim_customers",
+          "filename": "scd2_log.csv"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "source": "input-1",
+      "target": "transform-1"
+    },
+    {
+      "id": "e2",
+      "source": "input-2",
+      "target": "transform-1"
+    },
+    {
+      "id": "e3",
+      "source": "transform-1",
+      "target": "transform-2"
+    },
+    {
+      "id": "e4",
+      "source": "transform-2",
+      "target": "transform-3"
+    },
+    {
+      "id": "e5",
+      "source": "transform-3",
+      "target": "output-1"
+    }
+  ]
+}

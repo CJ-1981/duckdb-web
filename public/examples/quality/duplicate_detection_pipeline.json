@@ -1,0 +1,97 @@
+{
+  "name": "Duplicate Detection and Resolution",
+  "description": "Identify and handle duplicate records in datasets",
+  "nodes": [
+    {
+      "id": "input-1",
+      "type": "input",
+      "position": {"x": 100, "y": 100},
+      "data": {
+        "label": "Customer Records with Duplicates",
+        "subtype": "csv",
+        "config": {
+          "file_path": "examples/customer_duplicates.csv",
+          "sample_data": [
+            {"customer_id": "C001", "email": "john@example.com", "name": "John Doe", "created_at": "2024-01-01"},
+            {"customer_id": "C001", "email": "john@example.com", "name": "John Doe", "created_at": "2024-01-02"},
+            {"customer_id": "C002", "email": "jane@example.com", "name": "Jane Smith", "created_at": "2024-01-01"},
+            {"customer_id": "C003", "email": "bob@example.com", "name": "Bob Johnson", "created_at": "2024-01-03"},
+            {"customer_id": "C003", "email": "bob@example.com", "name": "Robert Johnson", "created_at": "2024-01-04"}
+          ]
+        }
+      }
+    },
+    {
+      "id": "transform-1",
+      "type": "default",
+      "position": {"x": 400, "y": 100},
+      "data": {
+        "label": "Identify Duplicates",
+        "subtype": "raw_sql",
+        "config": {
+          "sql": "SELECT \n  customer_id,\n  email,\n  name,\n  created_at,\n  ROW_NUMBER() OVER (PARTITION BY customer_id ORDER BY created_at ASC) as duplicate_rank,\n  COUNT(*) OVER (PARTITION BY customer_id) as duplicate_count\nFROM {{input}}\nORDER BY customer_id, created_at"
+        }
+      }
+    },
+    {
+      "id": "transform-2",
+      "type": "default",
+      "position": {"x": 700, "y": 100},
+      "data": {
+        "label": "Keep Only First Record",
+        "subtype": "filter",
+        "config": {
+          "conditions": [
+            {"column": "duplicate_rank", "operator": "=", "value": "1"}
+          ]
+        }
+      }
+    },
+    {
+      "id": "transform-3",
+      "type": "default",
+      "position": {"x": 700, "y": 250},
+      "data": {
+        "label": "Flag All Duplicates",
+        "subtype": "computed",
+        "config": {
+          "column": "is_duplicate",
+          "expression": "duplicate_count > 1"
+        }
+      }
+    },
+    {
+      "id": "aggregate-1",
+      "type": "default",
+      "position": {"x": 1000, "y": 100},
+      "data": {
+        "label": "Duplicate Summary",
+        "subtype": "aggregate",
+        "config": {
+          "groupBy": "is_duplicate",
+          "aggregations": [
+            {"column": "customer_id", "operation": "COUNT", "alias": "record_count"}
+          ]
+        }
+      }
+    },
+    {
+      "id": "output-1",
+      "type": "output",
+      "position": {"x": 1300, "y": 100},
+      "data": {
+        "label": "Save Deduplicated Records",
+        "subtype": "csv",
+        "config": {
+          "filename": "unique_customers.csv"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {"id": "e1", "source": "input-1", "target": "transform-1"},
+    {"id": "e2", "source": "transform-1", "target": "transform-2"},
+    {"id": "e3", "source": "transform-2", "target": "aggregate-1"},
+    {"id": "e4", "source": "aggregate-1", "target": "output-1"}
+  ]
+}

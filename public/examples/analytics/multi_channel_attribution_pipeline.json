@@ -1,0 +1,97 @@
+{
+  "name": "Multi-Channel Attribution",
+  "description": "Analyze customer touchpoints across multiple marketing channels",
+  "nodes": [
+    {
+      "id": "input-1",
+      "type": "input",
+      "position": {"x": 100, "y": 100},
+      "data": {
+        "label": "Customer Touchpoints",
+        "subtype": "csv",
+        "config": {
+          "file_path": "examples/touchpoints.csv",
+          "sample_data": [
+            {"customer_id": "C001", "channel": "Email", "event": "open", "timestamp": "2024-01-15T10:00:00Z", "conversion_value": 0},
+            {"customer_id": "C001", "channel": "Social", "event": "click", "timestamp": "2024-01-15T11:00:00Z", "conversion_value": 0},
+            {"customer_id": "C001", "channel": "Organic", "event": "purchase", "timestamp": "2024-01-15T12:00:00Z", "conversion_value": 150.00},
+            {"customer_id": "C002", "channel": "Paid", "event": "click", "timestamp": "2024-01-16T09:00:00Z", "conversion_value": 0}
+          ]
+        }
+      }
+    },
+    {
+      "id": "transform-1",
+      "type": "default",
+      "position": {"x": 400, "y": 100},
+      "data": {
+        "label": "Number Touchpoints",
+        "subtype": "raw_sql",
+        "config": {
+          "sql": "SELECT \n  customer_id,\n  channel,\n  event,\n  timestamp,\n  conversion_value,\n  ROW_NUMBER() OVER (PARTITION BY customer_id ORDER BY timestamp) as touchpoint_number,\n  COUNT(*) OVER (PARTITION BY customer_id) as total_touchpoints,\n  MAX(conversion_value) OVER (PARTITION BY customer_id) as total_conversion_value\nFROM {{input}}\nORDER BY customer_id, timestamp"
+        }
+      }
+    },
+    {
+      "id": "transform-2",
+      "type": "default",
+      "position": {"x": 700, "y": 100},
+      "data": {
+        "label": "Last-Touch Attribution",
+        "subtype": "raw_sql",
+        "config": {
+          "sql": "SELECT \n  customer_id,\n  channel,\n  total_conversion_value as attributed_revenue,\n  'Last Touch' as attribution_model\nFROM {{input}}\nWHERE event = 'purchase' AND total_conversion_value > 0"
+        }
+      }
+    },
+    {
+      "id": "transform-3",
+      "type": "default",
+      "position": {"x": 700, "y": 250},
+      "data": {
+        "label": "First-Touch Attribution",
+        "subtype": "raw_sql",
+        "config": {
+          "sql": "SELECT \n  customer_id,\n  channel,\n  MAX(total_conversion_value) as attributed_revenue,\n  'First Touch' as attribution_model\nFROM {{input}}\nWHERE touchpoint_number = 1 AND total_conversion_value > 0\nGROUP BY customer_id, channel"
+        }
+      }
+    },
+    {
+      "id": "aggregate-1",
+      "type": "default",
+      "position": {"x": 1000, "y": 100},
+      "data": {
+        "label": "Channel Performance",
+        "subtype": "aggregate",
+        "config": {
+          "groupBy": "channel,attribution_model",
+          "aggregations": [
+            {"column": "customer_id", "operation": "COUNT", "alias": "conversions"},
+            {"column": "attributed_revenue", "operation": "SUM", "alias": "total_revenue"},
+            {"column": "attributed_revenue", "operation": "AVG", "alias": "avg_revenue_per_conversion"}
+          ]
+        }
+      }
+    },
+    {
+      "id": "output-1",
+      "type": "output",
+      "position": {"x": 1300, "y": 100},
+      "data": {
+        "label": "Save Attribution Analysis",
+        "subtype": "csv",
+        "config": {
+          "filename": "channel_attribution.csv"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {"id": "e1", "source": "input-1", "target": "transform-1"},
+    {"id": "e2", "source": "transform-1", "target": "transform-2"},
+    {"id": "e3", "source": "transform-1", "target": "transform-3"},
+    {"id": "e4", "source": "transform-2", "target": "aggregate-1"},
+    {"id": "e5", "source": "transform-3", "target": "aggregate-1"},
+    {"id": "e6", "source": "aggregate-1", "target": "output-1"}
+  ]
+}

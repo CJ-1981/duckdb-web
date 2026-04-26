@@ -1,0 +1,130 @@
+{
+  "name": "Geocoding Enrichment",
+  "description": "Add location-based data using geocoding API and spatial analysis",
+  "nodes": [
+    {
+      "id": "input-1",
+      "type": "input",
+      "position": {
+        "x": 100,
+        "y": 150
+      },
+      "data": {
+        "label": "Addresses",
+        "subtype": "csv",
+        "config": {
+          "file_path": "examples/addresses.csv",
+          "sample_data": [
+            {
+              "id": 1,
+              "value": "sample_value_1"
+            },
+            {
+              "id": 2,
+              "value": "sample_value_2"
+            },
+            {
+              "id": 3,
+              "value": "sample_value_3"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "batch-1",
+      "type": "default",
+      "position": {
+        "x": 400,
+        "y": 150
+      },
+      "data": {
+        "label": "Geocode Addresses",
+        "subtype": "raw_sql",
+        "config": {
+          "url_template": "https://maps.googleapis.com/maps/api/geocode/json?address={address}&key={api_key}",
+          "method": "GET",
+          "concurrency": 5,
+          "timeout": 30,
+          "rate_limit": {
+            "requests_per_second": 10,
+            "burst": 5
+          },
+          "extract_mode": "json",
+          "data_path": "$.results[0]",
+          "sql": "SELECT * FROM {{input}} LIMIT 100"
+        }
+      }
+    },
+    {
+      "id": "transform-1",
+      "type": "default",
+      "position": {
+        "x": 700,
+        "y": 150
+      },
+      "data": {
+        "label": "Extract Coordinates",
+        "subtype": "raw_sql",
+        "config": {
+          "sql": "SELECT * FROM {{input}}"
+        }
+      }
+    },
+    {
+      "id": "transform-2",
+      "type": "default",
+      "position": {
+        "x": 1000,
+        "y": 150
+      },
+      "data": {
+        "label": "Add Timezone",
+        "subtype": "raw_sql",
+        "config": {
+          "url_template": "https://maps.googleapis.com/maps/api/timezone/json?location={latitude},{longitude}&timestamp={timestamp}",
+          "method": "GET",
+          "sql": "SELECT * FROM {{input}} LIMIT 100"
+        }
+      }
+    },
+    {
+      "id": "output-1",
+      "type": "output",
+      "position": {
+        "x": 1300,
+        "y": 150
+      },
+      "data": {
+        "label": "Save Geocoded Data",
+        "subtype": "db_write",
+        "config": {
+          "tableName": "locations_geocoded",
+          "filename": "geocoded_addresses.json"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "source": "input-1",
+      "target": "batch-1"
+    },
+    {
+      "id": "e2",
+      "source": "batch-1",
+      "target": "transform-1"
+    },
+    {
+      "id": "e3",
+      "source": "transform-1",
+      "target": "transform-2"
+    },
+    {
+      "id": "e4",
+      "source": "transform-2",
+      "target": "output-1"
+    }
+  ]
+}

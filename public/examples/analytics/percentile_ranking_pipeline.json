@@ -1,0 +1,85 @@
+{
+  "name": "Percentile and Ranking Analysis",
+  "description": "Calculate percentiles, quartiles, and rankings for statistical analysis",
+  "nodes": [
+    {
+      "id": "input-1",
+      "type": "input",
+      "position": {"x": 100, "y": 100},
+      "data": {
+        "label": "Employee Salaries",
+        "subtype": "csv",
+        "config": {
+          "file_path": "examples/employee_salaries.csv",
+          "sample_data": [
+            {"employee_id": "E001", "name": "John Doe", "department": "Engineering", "salary": 95000, "years_experience": 5},
+            {"employee_id": "E002", "name": "Jane Smith", "department": "Sales", "salary": 75000, "years_experience": 3},
+            {"employee_id": "E003", "name": "Bob Johnson", "department": "Engineering", "salary": 115000, "years_experience": 8},
+            {"employee_id": "E004", "name": "Alice Williams", "department": "Marketing", "salary": 85000, "years_experience": 6}
+          ]
+        }
+      }
+    },
+    {
+      "id": "transform-1",
+      "type": "default",
+      "position": {"x": 400, "y": 100},
+      "data": {
+        "label": "Calculate Percentiles",
+        "subtype": "raw_sql",
+        "config": {
+          "sql": "SELECT \n  employee_id,\n  name,\n  department,\n  salary,\n  PERCENT_RANK() OVER (ORDER BY salary) as salary_percentile,\n  CUME_DIST() OVER (ORDER BY salary) as cumulative_distribution,\n  NTILE(4) OVER (ORDER BY salary) as salary_quartile,\n  RANK() OVER (ORDER BY salary DESC) as salary_rank_desc,\n  DENSE_RANK() OVER (ORDER BY salary DESC) as salary_dense_rank\nFROM {{input}}\nORDER BY salary DESC"
+        }
+      }
+    },
+    {
+      "id": "transform-2",
+      "type": "default",
+      "position": {"x": 700, "y": 100},
+      "data": {
+        "label": "Department Comparison",
+        "subtype": "raw_sql",
+        "config": {
+          "sql": "SELECT \n  employee_id,\n  name,\n  department,\n  salary,\n  AVG(salary) OVER (PARTITION BY department) as dept_avg_salary,\n  salary - AVG(salary) OVER (PARTITION BY department) as diff_from_dept_avg,\n  CASE \n    WHEN salary > AVG(salary) OVER (PARTITION BY department) THEN 'Above Average'\n    WHEN salary < AVG(salary) OVER (PARTITION BY department) THEN 'Below Average'\n    ELSE 'Average'\n  END as salary_vs_dept\nFROM {{input}}\nORDER BY department, salary DESC"
+        }
+      }
+    },
+    {
+      "id": "aggregate-1",
+      "type": "default",
+      "position": {"x": 1000, "y": 100},
+      "data": {
+        "label": "Department Statistics",
+        "subtype": "aggregate",
+        "config": {
+          "groupBy": "department",
+          "aggregations": [
+            {"column": "employee_id", "operation": "COUNT", "alias": "employee_count"},
+            {"column": "salary", "operation": "MIN", "alias": "min_salary"},
+            {"column": "salary", "operation": "MAX", "alias": "max_salary"},
+            {"column": "salary", "operation": "AVG", "alias": "avg_salary"},
+            {"column": "salary", "operation": "MEDIAN", "alias": "median_salary"}
+          ]
+        }
+      }
+    },
+    {
+      "id": "output-1",
+      "type": "output",
+      "position": {"x": 1300, "y": 100},
+      "data": {
+        "label": "Save Salary Analysis",
+        "subtype": "csv",
+        "config": {
+          "filename": "salary_percentile_analysis.csv"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {"id": "e1", "source": "input-1", "target": "transform-1"},
+    {"id": "e2", "source": "transform-1", "target": "transform-2"},
+    {"id": "e3", "source": "transform-2", "target": "aggregate-1"},
+    {"id": "e4", "source": "aggregate-1", "target": "output-1"}
+  ]
+}

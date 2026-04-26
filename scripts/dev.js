@@ -8,6 +8,7 @@
  * Or: npm run dev (with package.json script)
  */
 
+/* eslint-disable @typescript-eslint/no-require-imports */
 const { spawn } = require('child_process');
 const net = require('net');
 

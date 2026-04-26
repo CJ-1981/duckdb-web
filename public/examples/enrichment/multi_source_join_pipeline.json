@@ -1,0 +1,182 @@
+{
+  "name": "Multi-Source Join Enrichment",
+  "description": "Join data from database, API, and files to create enriched dataset",
+  "nodes": [
+    {
+      "id": "input-1",
+      "type": "input",
+      "position": {
+        "x": 100,
+        "y": 100
+      },
+      "data": {
+        "label": "Customer Orders",
+        "subtype": "csv",
+        "config": {
+          "file_path": "examples/orders_join.csv",
+          "sample_data": [
+            {
+              "order_id": "ORD-001",
+              "customer_id": "CUST-001",
+              "amount": 150.50,
+              "order_date": "2024-01-15"
+            },
+            {
+              "order_id": "ORD-002",
+              "customer_id": "CUST-002",
+              "amount": 275.00,
+              "order_date": "2024-01-15"
+            },
+            {
+              "order_id": "ORD-003",
+              "customer_id": "CUST-003",
+              "amount": 89.99,
+              "order_date": "2024-01-15"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "input-2",
+      "type": "input",
+      "position": {
+        "x": 100,
+        "y": 250
+      },
+      "data": {
+        "label": "Customer Profiles",
+        "subtype": "csv",
+        "config": {
+          "file_path": "examples/customers.csv",
+          "sample_data": [
+            {
+              "customer_id": "CUST-001",
+              "email": "customer1@example.com",
+              "segment": "premium",
+              "tier": "GOLD",
+              "region": "North"
+            },
+            {
+              "customer_id": "CUST-002",
+              "email": "customer2@example.com",
+              "segment": "standard",
+              "tier": "SILVER",
+              "region": "South"
+            },
+            {
+              "customer_id": "CUST-003",
+              "email": "customer3@example.com",
+              "segment": "basic",
+              "tier": "BRONZE",
+              "region": "East"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "input-3",
+      "type": "input",
+      "position": {
+        "x": 100,
+        "y": 400
+      },
+      "data": {
+        "label": "Regional Discounts",
+        "subtype": "csv",
+        "config": {
+          "file_path": "examples/discounts_by_region.csv",
+          "sample_data": [
+            {
+              "id": 1,
+              "value": "sample_value_1"
+            },
+            {
+              "id": 2,
+              "value": "sample_value_2"
+            },
+            {
+              "id": 3,
+              "value": "sample_value_3"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "transform-1",
+      "type": "default",
+      "position": {
+        "x": 500,
+        "y": 200
+      },
+      "data": {
+        "label": "Join All Sources",
+        "subtype": "raw_sql",
+        "config": {
+          "sql": "SELECT \n  o.order_id,\n  o.customer_id,\n  o.amount,\n  c.email,\n  c.segment,\n  c.tier,\n  d.discount_percentage,\n  o.amount * (1 - d.discount_percentage / 100) as final_amount\nFROM {{input1}} o\nLEFT JOIN {{input2}} c ON o.customer_id = c.customer_id\nLEFT JOIN {{input3}} d ON c.region = d.region"
+        }
+      }
+    },
+    {
+      "id": "transform-2",
+      "type": "default",
+      "position": {
+        "x": 800,
+        "y": 200
+      },
+      "data": {
+        "label": "Add Loyalty Points",
+        "subtype": "computed",
+        "config": {
+          "column": "loyalty_points_earned",
+          "expression": "floor(final_amount * 10)"
+        }
+      }
+    },
+    {
+      "id": "output-1",
+      "type": "output",
+      "position": {
+        "x": 1100,
+        "y": 200
+      },
+      "data": {
+        "label": "Save Enriched Orders",
+        "subtype": "db_write",
+        "config": {
+          "tableName": "orders_enriched",
+          "filename": "orders_enriched.parquet"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "source": "input-1",
+      "target": "transform-1"
+    },
+    {
+      "id": "e2",
+      "source": "input-2",
+      "target": "transform-1"
+    },
+    {
+      "id": "e3",
+      "source": "input-3",
+      "target": "transform-1"
+    },
+    {
+      "id": "e4",
+      "source": "transform-1",
+      "target": "transform-2"
+    },
+    {
+      "id": "e5",
+      "source": "transform-2",
+      "target": "output-1"
+    }
+  ]
+}

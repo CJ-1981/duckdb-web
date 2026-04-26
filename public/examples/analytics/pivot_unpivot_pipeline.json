@@ -1,0 +1,78 @@
+{
+  "name": "Pivot and Unpivot Data",
+  "description": "Transform data between wide and long formats using pivot operations",
+  "nodes": [
+    {
+      "id": "input-1",
+      "type": "input",
+      "position": {"x": 100, "y": 100},
+      "data": {
+        "label": "Monthly Sales (Wide Format)",
+        "subtype": "csv",
+        "config": {
+          "file_path": "examples/monthly_sales_wide.csv",
+          "sample_data": [
+            {"product": "Widget A", "region": "North", "month": "Jan", "sales": 1000, "units": 100},
+            {"product": "Widget A", "region": "North", "month": "Feb", "sales": 1200, "units": 120},
+            {"product": "Widget A", "region": "South", "month": "Jan", "sales": 800, "units": 80},
+            {"product": "Widget B", "region": "North", "month": "Jan", "sales": 1500, "units": 150}
+          ]
+        }
+      }
+    },
+    {
+      "id": "transform-1",
+      "type": "default",
+      "position": {"x": 400, "y": 100},
+      "data": {
+        "label": "Pivot - Months as Columns",
+        "subtype": "raw_sql",
+        "config": {
+          "sql": "SELECT \n  product,\n  region,\n  SUM(CASE WHEN month = 'Jan' THEN sales ELSE 0 END) as jan_sales,\n  SUM(CASE WHEN month = 'Feb' THEN sales ELSE 0 END) as feb_sales,\n  SUM(CASE WHEN month = 'Mar' THEN sales ELSE 0 END) as mar_sales,\n  SUM(sales) as total_sales\nFROM {{input}}\nGROUP BY product, region\nORDER BY product, region"
+        }
+      }
+    },
+    {
+      "id": "transform-2",
+      "type": "default",
+      "position": {"x": 700, "y": 100},
+      "data": {
+        "label": "Unpivot - Columns to Rows",
+        "subtype": "raw_sql",
+        "config": {
+          "sql": "SELECT \n  product,\n  region,\n  'jan_sales' as metric_name,\n  jan_sales as value\nFROM {{input}}\nUNION ALL\nSELECT \n  product,\n  region,\n  'feb_sales' as metric_name,\n  feb_sales as value\nFROM {{input}}\nUNION ALL\nSELECT \n  product,\n  region,\n  'mar_sales' as metric_name,\n  mar_sales as value\nFROM {{input}}\nORDER BY product, region"
+        }
+      }
+    },
+    {
+      "id": "transform-3",
+      "type": "default",
+      "position": {"x": 1000, "y": 100},
+      "data": {
+        "label": "Calculate Month-over-Month Growth",
+        "subtype": "raw_sql",
+        "config": {
+          "sql": "SELECT \n  product,\n  region,\n  metric_name,\n  value,\n  LAG(value, 1) OVER (PARTITION BY product, region ORDER BY metric_name) as prev_value,\n  CASE \n    WHEN LAG(value, 1) OVER (PARTITION BY product, region ORDER BY metric_name) > 0 \n    THEN ((value - LAG(value, 1) OVER (PARTITION BY product, region ORDER BY metric_name)) / \n         LAG(value, 1) OVER (PARTITION BY product, region ORDER BY metric_name)) * 100\n    ELSE 0 \n  END as growth_pct\nFROM {{input}}\nORDER BY product, region, metric_name"
+        }
+      }
+    },
+    {
+      "id": "output-1",
+      "type": "output",
+      "position": {"x": 1300, "y": 100},
+      "data": {
+        "label": "Save Pivoted Analysis",
+        "subtype": "csv",
+        "config": {
+          "filename": "sales_pivot_analysis.csv"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {"id": "e1", "source": "input-1", "target": "transform-1"},
+    {"id": "e2", "source": "transform-1", "target": "transform-2"},
+    {"id": "e3", "source": "transform-2", "target": "transform-3"},
+    {"id": "e4", "source": "transform-3", "target": "output-1"}
+  ]
+}

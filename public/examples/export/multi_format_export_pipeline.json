@@ -1,0 +1,130 @@
+{
+  "name": "Multi-Format Export",
+  "description": "Export single dataset to multiple formats (CSV, JSON, Parquet, Excel)",
+  "nodes": [
+    {
+      "id": "input-1",
+      "type": "input",
+      "position": {
+        "x": 100,
+        "y": 150
+      },
+      "data": {
+        "label": "Source Data",
+        "subtype": "db_read",
+        "config": {
+          "tableName": "sales_data",
+          "query": "SELECT * FROM sales_data WHERE sale_date >= CURRENT_DATE - INTERVAL '30 days'",
+          "sample_data": [
+            {
+              "id": 1,
+              "value": "sample_value_1"
+            },
+            {
+              "id": 2,
+              "value": "sample_value_2"
+            },
+            {
+              "id": 3,
+              "value": "sample_value_3"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "output-1",
+      "type": "output",
+      "position": {
+        "x": 400,
+        "y": 50
+      },
+      "data": {
+        "label": "Export CSV",
+        "subtype": "db_write",
+        "config": {
+          "tableName": "sales_data",
+          "filename": "sales_export.csv",
+          "format": "csv",
+          "include_header": true
+        }
+      }
+    },
+    {
+      "id": "output-2",
+      "type": "output",
+      "position": {
+        "x": 400,
+        "y": 150
+      },
+      "data": {
+        "label": "Export JSON",
+        "subtype": "db_write",
+        "config": {
+          "tableName": "sales_data",
+          "filename": "sales_export.json",
+          "format": "json",
+          "array": true
+        }
+      }
+    },
+    {
+      "id": "output-3",
+      "type": "output",
+      "position": {
+        "x": 400,
+        "y": 250
+      },
+      "data": {
+        "label": "Export Parquet",
+        "subtype": "db_write",
+        "config": {
+          "tableName": "sales_data",
+          "filename": "sales_export.parquet",
+          "format": "parquet",
+          "compression": "snappy"
+        }
+      }
+    },
+    {
+      "id": "output-4",
+      "type": "output",
+      "position": {
+        "x": 400,
+        "y": 350
+      },
+      "data": {
+        "label": "Export Excel",
+        "subtype": "db_write",
+        "config": {
+          "tableName": "sales_data",
+          "filename": "sales_export.xlsx",
+          "format": "excel",
+          "sheet_name": "Sales Data"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "source": "input-1",
+      "target": "output-1"
+    },
+    {
+      "id": "e2",
+      "source": "input-1",
+      "target": "output-2"
+    },
+    {
+      "id": "e3",
+      "source": "input-1",
+      "target": "output-3"
+    },
+    {
+      "id": "e4",
+      "source": "input-1",
+      "target": "output-4"
+    }
+  ]
+}

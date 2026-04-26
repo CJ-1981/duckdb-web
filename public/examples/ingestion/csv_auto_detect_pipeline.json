@@ -1,0 +1,137 @@
+{
+  "name": "CSV Auto-Detection Import",
+  "description": "Intelligent CSV import with automatic schema detection, encoding detection, and type inference",
+  "nodes": [
+    {
+      "id": "input-1",
+      "type": "input",
+      "position": {
+        "x": 100,
+        "y": 150
+      },
+      "data": {
+        "label": "Upload CSV",
+        "subtype": "csv",
+        "config": {
+          "file_path": "examples/sales_data.csv",
+          "detect_encoding": true,
+          "auto_type_detection": true,
+          "sample_data": [
+            {
+              "order_id": "ORD-001",
+              "amount": "150.50",
+              "date": "2024-01-15",
+              "status": "completed"
+            },
+            {
+              "order_id": "ORD-002",
+              "amount": "200.75",
+              "date": "2024-01-15",
+              "status": "completed"
+            },
+            {
+              "order_id": "ORD-003",
+              "amount": "75.25",
+              "date": "2024-01-15",
+              "status": "pending"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "transform-1",
+      "type": "default",
+      "position": {
+        "x": 400,
+        "y": 150
+      },
+      "data": {
+        "label": "Detect Schema",
+        "subtype": "raw_sql",
+        "config": {
+          "sql": "SELECT * FROM {{input}} LIMIT 10"
+        }
+      }
+    },
+    {
+      "id": "transform-2",
+      "type": "default",
+      "position": {
+        "x": 700,
+        "y": 150
+      },
+      "data": {
+        "label": "Infer Types",
+        "subtype": "raw_sql",
+        "config": {
+          "sql": "SELECT order_id, try_cast(amount as DECIMAL(10,2)) as amount, try_cast(date as DATE) as date, status FROM {{input}}"
+        }
+      }
+    },
+    {
+      "id": "filter-1",
+      "type": "default",
+      "position": {
+        "x": 1000,
+        "y": 150
+      },
+      "data": {
+        "label": "Remove Invalid Rows",
+        "subtype": "filter",
+        "config": {
+          "conditions": [
+            {
+              "column": "amount",
+              "operator": "is_not_null",
+              "value": null
+            },
+            {
+              "column": "date",
+              "operator": "is_not_null",
+              "value": null
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "output-1",
+      "type": "output",
+      "position": {
+        "x": 1300,
+        "y": 150
+      },
+      "data": {
+        "label": "Save to Database",
+        "subtype": "db_write",
+        "config": {
+          "tableName": "sales_import",
+          "filename": "sales_clean.csv"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "source": "input-1",
+      "target": "transform-1"
+    },
+    {
+      "id": "e2",
+      "source": "transform-1",
+      "target": "transform-2"
+    },
+    {
+      "id": "e3",
+      "source": "transform-2",
+      "target": "filter-1"
+    },
+    {
+      "id": "e4",
+      "source": "filter-1",
+      "target": "output-1"
+    }
+  ]
+}

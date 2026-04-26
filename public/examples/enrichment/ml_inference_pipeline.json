@@ -1,0 +1,124 @@
+{
+  "name": "ML Model Inference",
+  "description": "Apply machine learning model predictions to batch data",
+  "nodes": [
+    {
+      "id": "input-1",
+      "type": "input",
+      "position": {
+        "x": 100,
+        "y": 150
+      },
+      "data": {
+        "label": "Feature Data",
+        "subtype": "csv",
+        "config": {
+          "file_path": "examples/customer_features.csv",
+          "sample_data": [
+            {
+              "id": 1,
+              "value": "sample_value_1"
+            },
+            {
+              "id": 2,
+              "value": "sample_value_2"
+            },
+            {
+              "id": 3,
+              "value": "sample_value_3"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "transform-1",
+      "type": "default",
+      "position": {
+        "x": 400,
+        "y": 150
+      },
+      "data": {
+        "label": "Preprocess Features",
+        "subtype": "raw_sql",
+        "config": {
+          "sql": "SELECT \n  customer_id,\n  (total_purchases - avg(total_purchases) OVER ()) / stddev(total_purchases) OVER () as purchases_zscore,\n  (days_since_last_purchase - avg(days_since_last_purchase) OVER ()) / stddev(days_since_last_purchase) OVER () as recency_zscore,\n  category_preferences\nFROM {{input}}"
+        }
+      }
+    },
+    {
+      "id": "batch-1",
+      "type": "default",
+      "position": {
+        "x": 700,
+        "y": 150
+      },
+      "data": {
+        "label": "ML Model Prediction",
+        "subtype": "raw_sql",
+        "config": {
+          "url_template": "https://ml-api.example.com/predict",
+          "method": "POST",
+          "body_template": "{\"features\": [{purchases_zscore}, {recency_zscore}], \"model_version\": \"v2.3\"}",
+          "concurrency": 20,
+          "extract_mode": "json",
+          "data_path": "$.prediction",
+          "sql": "SELECT * FROM {{input}} LIMIT 100"
+        }
+      }
+    },
+    {
+      "id": "transform-2",
+      "type": "default",
+      "position": {
+        "x": 1000,
+        "y": 150
+      },
+      "data": {
+        "label": "Apply Prediction",
+        "subtype": "raw_sql",
+        "config": {
+          "sql": "SELECT * FROM {{input}}"
+        }
+      }
+    },
+    {
+      "id": "output-1",
+      "type": "output",
+      "position": {
+        "x": 1300,
+        "y": 150
+      },
+      "data": {
+        "label": "Save Predictions",
+        "subtype": "db_write",
+        "config": {
+          "tableName": "churn_predictions",
+          "filename": "predictions.csv"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "source": "input-1",
+      "target": "transform-1"
+    },
+    {
+      "id": "e2",
+      "source": "transform-1",
+      "target": "batch-1"
+    },
+    {
+      "id": "e3",
+      "source": "batch-1",
+      "target": "transform-2"
+    },
+    {
+      "id": "e4",
+      "source": "transform-2",
+      "target": "output-1"
+    }
+  ]
+}

@@ -1,0 +1,96 @@
+{
+  "name": "Customer Churn Analysis",
+  "description": "Identify customers at risk of churning based on activity patterns",
+  "nodes": [
+    {
+      "id": "input-1",
+      "type": "input",
+      "position": {"x": 100, "y": 100},
+      "data": {
+        "label": "Customer Activity",
+        "subtype": "csv",
+        "config": {
+          "file_path": "examples/customer_activity.csv",
+          "sample_data": [
+            {"customer_id": "C001", "last_activity": "2024-01-15", "total_orders": 15, "avg_order_value": 120.00, "days_since_last_order": 10},
+            {"customer_id": "C002", "last_activity": "2023-12-01", "total_orders": 3, "avg_order_value": 75.00, "days_since_last_order": 55},
+            {"customer_id": "C003", "last_activity": "2024-01-18", "total_orders": 25, "avg_order_value": 200.00, "days_since_last_order": 7}
+          ]
+        }
+      }
+    },
+    {
+      "id": "transform-1",
+      "type": "default",
+      "position": {"x": 400, "y": 100},
+      "data": {
+        "label": "Calculate Churn Risk Score",
+        "subtype": "raw_sql",
+        "config": {
+          "sql": "SELECT \n  customer_id,\n  days_since_last_order,\n  total_orders,\n  avg_order_value,\n  CASE \n    WHEN days_since_last_order > 90 THEN 100\n    WHEN days_since_last_order > 60 THEN 75\n    WHEN days_since_last_order > 30 THEN 50\n    WHEN days_since_last_order > 14 THEN 25\n    ELSE 0\n  END as inactivity_score,\n  CASE \n    WHEN total_orders = 1 THEN 50\n    WHEN total_orders <= 3 THEN 30\n    WHEN total_orders <= 5 THEN 10\n    ELSE 0\n  END as low_engagement_score\nFROM {{input}}"
+        }
+      }
+    },
+    {
+      "id": "transform-2",
+      "type": "default",
+      "position": {"x": 700, "y": 100},
+      "data": {
+        "label": "Calculate Total Risk",
+        "subtype": "computed",
+        "config": {
+          "column": "churn_risk_score",
+          "expression": "inactivity_score + low_engagement_score"
+        }
+      }
+    },
+    {
+      "id": "transform-3",
+      "type": "default",
+      "position": {"x": 1000, "y": 100},
+      "data": {
+        "label": "Assign Risk Category",
+        "subtype": "computed",
+        "config": {
+          "column": "risk_category",
+          "expression": "CASE \n  WHEN churn_risk_score >= 100 THEN 'Critical'\n  WHEN churn_risk_score >= 75 THEN 'High'\n  WHEN churn_risk_score >= 50 THEN 'Medium'\n  WHEN churn_risk_score >= 25 THEN 'Low'\n  ELSE 'Safe'\nEND"
+        }
+      }
+    },
+    {
+      "id": "aggregate-1",
+      "type": "default",
+      "position": {"x": 1300, "y": 100},
+      "data": {
+        "label": "Risk Distribution",
+        "subtype": "aggregate",
+        "config": {
+          "groupBy": "risk_category",
+          "aggregations": [
+            {"column": "customer_id", "operation": "COUNT", "alias": "customer_count"},
+            {"column": "avg_order_value", "operation": "AVG", "alias": "avg_value_at_risk"}
+          ]
+        }
+      }
+    },
+    {
+      "id": "output-1",
+      "type": "output",
+      "position": {"x": 1600, "y": 100},
+      "data": {
+        "label": "Save Churn Analysis",
+        "subtype": "csv",
+        "config": {
+          "filename": "churn_risk_analysis.csv"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {"id": "e1", "source": "input-1", "target": "transform-1"},
+    {"id": "e2", "source": "transform-1", "target": "transform-2"},
+    {"id": "e3", "source": "transform-2", "target": "transform-3"},
+    {"id": "e4", "source": "transform-3", "target": "aggregate-1"},
+    {"id": "e5", "source": "aggregate-1", "target": "output-1"}
+  ]
+}

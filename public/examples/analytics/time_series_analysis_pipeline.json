@@ -1,0 +1,78 @@
+{
+  "name": "Time Series Analysis",
+  "description": "Analyze trends, patterns, and seasonality in time-based data",
+  "nodes": [
+    {
+      "id": "input-1",
+      "type": "input",
+      "position": {"x": 100, "y": 100},
+      "data": {
+        "label": "Daily Sales Data",
+        "subtype": "csv",
+        "config": {
+          "file_path": "examples/daily_sales_timeseries.csv",
+          "sample_data": [
+            {"date": "2024-01-01", "sales": 1500, "visitors": 500, "orders": 45},
+            {"date": "2024-01-02", "sales": 1800, "visitors": 600, "orders": 55},
+            {"date": "2024-01-03", "sales": 1650, "visitors": 550, "orders": 48},
+            {"date": "2024-01-04", "sales": 2000, "visitors": 700, "orders": 62}
+          ]
+        }
+      }
+    },
+    {
+      "id": "transform-1",
+      "type": "default",
+      "position": {"x": 400, "y": 100},
+      "data": {
+        "label": "Extract Time Components",
+        "subtype": "raw_sql",
+        "config": {
+          "sql": "SELECT \n  date,\n  sales,\n  visitors,\n  orders,\n  EXTRACT(YEAR FROM date) as year,\n  EXTRACT(MONTH FROM date) as month,\n  EXTRACT(DAY FROM date) as day,\n  EXTRACT(DOW FROM date) as day_of_week,\n  EXTRACT(WEEK FROM date) as week_of_year\nFROM {{input}}\nORDER BY date"
+        }
+      }
+    },
+    {
+      "id": "transform-2",
+      "type": "default",
+      "position": {"x": 700, "y": 100},
+      "data": {
+        "label": "Calculate Moving Averages",
+        "subtype": "raw_sql",
+        "config": {
+          "sql": "SELECT \n  date,\n  sales,\n  visitors,\n  orders,\n  AVG(sales) OVER (ORDER BY date ROWS BETWEEN 6 PRECEDING AND CURRENT ROW) as ma_7_day,\n  AVG(sales) OVER (ORDER BY date ROWS BETWEEN 29 PRECEDING AND CURRENT ROW) as ma_30_day,\n  sales / AVG(sales) OVER (ORDER BY date ROWS BETWEEN 6 PRECEDING AND CURRENT ROW) as ratio_to_7day_avg\nFROM {{input}}\nORDER BY date"
+        }
+      }
+    },
+    {
+      "id": "transform-3",
+      "type": "default",
+      "position": {"x": 1000, "y": 100},
+      "data": {
+        "label": "Week Over Week Comparison",
+        "subtype": "raw_sql",
+        "config": {
+          "sql": "SELECT \n  date,\n  sales,\n  LAG(sales, 7) OVER (ORDER BY date) as sales_7_days_ago,\n  sales - LAG(sales, 7) OVER (ORDER BY date) as wow_change,\n  CASE \n    WHEN LAG(sales, 7) OVER (ORDER BY date) > 0 \n    THEN ((sales - LAG(sales, 7) OVER (ORDER BY date)) / LAG(sales, 7) OVER (ORDER BY date)) * 100\n    ELSE NULL\n  END as wow_growth_pct\nFROM {{input}}\nORDER BY date"
+        }
+      }
+    },
+    {
+      "id": "output-1",
+      "type": "output",
+      "position": {"x": 1300, "y": 100},
+      "data": {
+        "label": "Save Time Series Analysis",
+        "subtype": "csv",
+        "config": {
+          "filename": "time_series_analysis.csv"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {"id": "e1", "source": "input-1", "target": "transform-1"},
+    {"id": "e2", "source": "transform-1", "target": "transform-2"},
+    {"id": "e3", "source": "transform-2", "target": "transform-3"},
+    {"id": "e4", "source": "transform-3", "target": "output-1"}
+  ]
+}

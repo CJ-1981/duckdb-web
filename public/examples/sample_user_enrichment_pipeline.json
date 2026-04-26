@@ -1,0 +1,146 @@
+{
+  "name": "User Profile Enrichment Pipeline",
+  "description": "Fetch user profiles from JSONPlaceholder API with batch processing, filtering, and transformations",
+  "nodes": [
+    {
+      "id": "input-1",
+      "type": "input",
+      "position": {
+        "x": 100,
+        "y": 100
+      },
+      "data": {
+        "label": "User IDs Input",
+        "subtype": "csv",
+        "config": {
+          "file_path": "examples/users_input.csv",
+          "sample_data": [
+            {
+              "user_id": 1
+            },
+            {
+              "user_id": 2
+            },
+            {
+              "user_id": 3
+            },
+            {
+              "user_id": 4
+            },
+            {
+              "user_id": 5
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "batch-1",
+      "type": "default",
+      "position": {
+        "x": 400,
+        "y": 100
+      },
+      "data": {
+        "label": "Fetch User Profiles",
+        "subtype": "raw_sql",
+        "config": {
+          "url_template": "https://jsonplaceholder.typicode.com/users/{user_id}",
+          "method": "GET",
+          "concurrency": 5,
+          "timeout": 30,
+          "rate_limit": {
+            "requests_per_second": 10,
+            "burst": 5
+          },
+          "retry_policy": {
+            "max_retries": 3,
+            "base_delay": 1.0,
+            "max_delay": 10.0
+          },
+          "extract_mode": "json",
+          "sql": "SELECT * FROM {{input}} LIMIT 100"
+        }
+      }
+    },
+    {
+      "id": "transform-1",
+      "type": "default",
+      "position": {
+        "x": 700,
+        "y": 100
+      },
+      "data": {
+        "label": "Extract User Fields",
+        "subtype": "raw_sql",
+        "config": {
+          "sql": "SELECT * FROM {{input}}"
+        }
+      }
+    },
+    {
+      "id": "filter-1",
+      "type": "default",
+      "position": {
+        "x": 1000,
+        "y": 100
+      },
+      "data": {
+        "label": "Filter Active Users",
+        "subtype": "filter",
+        "config": {
+          "conditions": [
+            {
+              "column": "email",
+              "operator": "is_not_null",
+              "value": null
+            },
+            {
+              "column": "company",
+              "operator": "is_not_null",
+              "value": null
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "output-1",
+      "type": "output",
+      "position": {
+        "x": 1300,
+        "y": 100
+      },
+      "data": {
+        "label": "Export Results",
+        "subtype": "db_write",
+        "config": {
+          "tableName": "enriched_user_profiles",
+          "filename": "user_profiles.csv"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge-1",
+      "source": "input-1",
+      "target": "batch-1"
+    },
+    {
+      "id": "edge-2",
+      "source": "batch-1",
+      "target": "transform-1"
+    },
+    {
+      "id": "edge-3",
+      "source": "transform-1",
+      "target": "filter-1"
+    },
+    {
+      "id": "edge-4",
+      "source": "filter-1",
+      "target": "output-1"
+    }
+  ]
+}

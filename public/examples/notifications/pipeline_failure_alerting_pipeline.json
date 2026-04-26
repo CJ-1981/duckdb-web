@@ -1,0 +1,161 @@
+{
+  "name": "Pipeline Failure Alerting",
+  "description": "Monitor pipeline execution and send alerts on failure with retry logic",
+  "nodes": [
+    {
+      "id": "input-1",
+      "type": "input",
+      "position": {
+        "x": 100,
+        "y": 150
+      },
+      "data": {
+        "label": "Pipeline Execution Log",
+        "subtype": "csv",
+        "config": {
+          "file_path": "examples/pipeline_executions.csv",
+          "sample_data": [
+            {
+              "id": 1,
+              "value": "sample_value_1"
+            },
+            {
+              "id": 2,
+              "value": "sample_value_2"
+            },
+            {
+              "id": 3,
+              "value": "sample_value_3"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "filter-1",
+      "type": "default",
+      "position": {
+        "x": 400,
+        "y": 150
+      },
+      "data": {
+        "label": "Filter Failures",
+        "subtype": "filter",
+        "config": {
+          "conditions": [
+            {
+              "column": "status",
+              "operator": "==",
+              "value": "failed"
+            },
+            {
+              "column": "retry_count",
+              "operator": "<",
+              "value": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "transform-1",
+      "type": "default",
+      "position": {
+        "x": 700,
+        "y": 150
+      },
+      "data": {
+        "label": "Format Alert Message",
+        "subtype": "raw_sql",
+        "config": {
+          "sql": "SELECT \n  pipeline_name,\n  error_message,\n  started_at,\n  'Pipeline ' || pipeline_name || ' failed at ' || started_at || ': ' || error_message as alert_body,\n  case \n    when error_message like '%timeout%' then 'timeout'\n    when error_message like '%connection%' then 'connection_error'\n    else 'unknown'\n  end as error_type\nFROM {{input}}"
+        }
+      }
+    },
+    {
+      "id": "batch-1",
+      "type": "default",
+      "position": {
+        "x": 1000,
+        "y": 150
+      },
+      "data": {
+        "label": "Send Slack Alert",
+        "subtype": "raw_sql",
+        "config": {
+          "url_template": "https://hooks.slack.com/services/{webhook_path}",
+          "method": "POST",
+          "body_template": "{\"text\": \"\ud83d\udea8 Pipeline Alert\", \"attachments\": [{\"color\": \"#FF0000\", \"title\": \"{pipeline_name}\", \"text\": \"{alert_body}\"}]}",
+          "concurrency": 5,
+          "retry_policy": {
+            "max_retries": 3,
+            "base_delay": 2.0,
+            "max_delay": 10.0
+          },
+          "sql": "SELECT * FROM {{input}} LIMIT 100"
+        }
+      }
+    },
+    {
+      "id": "transform-2",
+      "type": "default",
+      "position": {
+        "x": 1300,
+        "y": 150
+      },
+      "data": {
+        "label": "Send Email Backup",
+        "subtype": "raw_sql",
+        "config": {
+          "url_template": "https://email-api.example.com/send",
+          "method": "POST",
+          "body_template": "{\"to\": \"ops@example.com\", \"subject\": \"Pipeline Failure: {pipeline_name}\", \"body\": \"{alert_body}\"}",
+          "sql": "SELECT * FROM {{input}} LIMIT 100"
+        }
+      }
+    },
+    {
+      "id": "output-1",
+      "type": "output",
+      "position": {
+        "x": 1600,
+        "y": 150
+      },
+      "data": {
+        "label": "Log Alert Sent",
+        "subtype": "db_write",
+        "config": {
+          "tableName": "alert_log",
+          "filename": "alerts_sent.csv"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "source": "input-1",
+      "target": "filter-1"
+    },
+    {
+      "id": "e2",
+      "source": "filter-1",
+      "target": "transform-1"
+    },
+    {
+      "id": "e3",
+      "source": "transform-1",
+      "target": "batch-1"
+    },
+    {
+      "id": "e4",
+      "source": "batch-1",
+      "target": "transform-2"
+    },
+    {
+      "id": "e5",
+      "source": "transform-2",
+      "target": "output-1"
+    }
+  ]
+}

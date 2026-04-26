@@ -1,0 +1,132 @@
+{
+  "name": "Large Dataset Parallel Processing",
+  "description": "Process large dataset in parallel chunks with automatic batching",
+  "nodes": [
+    {
+      "id": "input-1",
+      "type": "input",
+      "position": {
+        "x": 100,
+        "y": 150
+      },
+      "data": {
+        "label": "Large Dataset",
+        "subtype": "csv",
+        "config": {
+          "file_path": "examples/large_dataset.csv",
+          "chunk_size": 100000,
+          "sample_data": [
+            {
+              "id": 1,
+              "value": "sample_value_1"
+            },
+            {
+              "id": 2,
+              "value": "sample_value_2"
+            },
+            {
+              "id": 3,
+              "value": "sample_value_3"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "transform-1",
+      "type": "default",
+      "position": {
+        "x": 400,
+        "y": 150
+      },
+      "data": {
+        "label": "Assign Batches",
+        "subtype": "raw_sql",
+        "config": {
+          "sql": "SELECT *, \n  (row_number() OVER () - 1) / 100000 as batch_number\nFROM {{input}}"
+        }
+      }
+    },
+    {
+      "id": "batch-1",
+      "type": "default",
+      "position": {
+        "x": 700,
+        "y": 150
+      },
+      "data": {
+        "label": "Parallel Transform",
+        "subtype": "raw_sql",
+        "config": {
+          "url_template": "https://process-api.example.com/transform",
+          "method": "POST",
+          "body_template": "{\"batch\": {batch_number}, \"data\": [{row_data}]}",
+          "concurrency": 10,
+          "rate_limit": {
+            "requests_per_second": 50,
+            "burst": 20
+          },
+          "retry_policy": {
+            "max_retries": 3,
+            "base_delay": 2.0,
+            "max_delay": 30.0
+          },
+          "sql": "SELECT * FROM {{input}} LIMIT 100"
+        }
+      }
+    },
+    {
+      "id": "transform-2",
+      "type": "default",
+      "position": {
+        "x": 1000,
+        "y": 150
+      },
+      "data": {
+        "label": "Combine Results",
+        "subtype": "raw_sql",
+        "config": {
+          "sql": "SELECT * FROM processed_batches ORDER BY batch_number"
+        }
+      }
+    },
+    {
+      "id": "output-1",
+      "type": "output",
+      "position": {
+        "x": 1300,
+        "y": 150
+      },
+      "data": {
+        "label": "Save Processed Data",
+        "subtype": "db_write",
+        "config": {
+          "tableName": "processed_large_dataset",
+          "filename": "processed_output.parquet"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "source": "input-1",
+      "target": "transform-1"
+    },
+    {
+      "id": "e2",
+      "source": "transform-1",
+      "target": "batch-1"
+    },
+    {
+      "id": "e3",
+      "source": "batch-1",
+      "target": "transform-2"
+    },
+    {
+      "id": "e4",
+      "source": "transform-2",
+      "target": "output-1"
+    }
+  ]
+}

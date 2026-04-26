@@ -1,0 +1,165 @@
+{
+  "name": "Dynamic Parallel Task Execution",
+  "description": "Generate tasks dynamically based on data and execute in parallel",
+  "nodes": [
+    {
+      "id": "input-1",
+      "type": "input",
+      "position": {
+        "x": 100,
+        "y": 150
+      },
+      "data": {
+        "label": "Task List",
+        "subtype": "csv",
+        "config": {
+          "file_path": "examples/task_config.csv",
+          "sample_data": [
+            {
+              "id": 1,
+              "value": "sample_value_1"
+            },
+            {
+              "id": 2,
+              "value": "sample_value_2"
+            },
+            {
+              "id": 3,
+              "value": "sample_value_3"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "transform-1",
+      "type": "default",
+      "position": {
+        "x": 400,
+        "y": 150
+      },
+      "data": {
+        "label": "Generate Execution Plan",
+        "subtype": "raw_sql",
+        "config": {
+          "sql": "SELECT \n  task_id,\n  task_name,\n  source_table,\n  target_table,\n  transform_query,\n  'parallel' as execution_mode\nFROM {{input}}\nWHERE status = 'pending'\nORDER BY priority DESC"
+        }
+      }
+    },
+    {
+      "id": "batch-1",
+      "type": "default",
+      "position": {
+        "x": 700,
+        "y": 150
+      },
+      "data": {
+        "label": "Execute Tasks in Parallel",
+        "subtype": "raw_sql",
+        "config": {
+          "url_template": "https://task-executor.example.com/run",
+          "method": "POST",
+          "body_template": "{\"task_id\": {task_id}, \"query\": {transform_query}, \"source\": {source_table}, \"target\": {target_table}}",
+          "concurrency": 10,
+          "timeout": 300,
+          "rate_limit": {
+            "requests_per_second": 20,
+            "burst": 10
+          },
+          "retry_policy": {
+            "max_retries": 2,
+            "base_delay": 3.0,
+            "max_delay": 30.0
+          },
+          "sql": "SELECT * FROM {{input}} LIMIT 100"
+        }
+      }
+    },
+    {
+      "id": "aggregate-1",
+      "type": "default",
+      "position": {
+        "x": 1000,
+        "y": 150
+      },
+      "data": {
+        "label": "Track Progress",
+        "subtype": "aggregate",
+        "config": {
+          "groupBy": "status",
+          "aggregations": [
+            {
+              "column": "task_id",
+              "operation": "COUNT",
+              "alias": "task_count"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "filter-1",
+      "type": "default",
+      "position": {
+        "x": 1300,
+        "y": 150
+      },
+      "data": {
+        "label": "Check Completion",
+        "subtype": "filter",
+        "config": {
+          "conditions": [
+            {
+              "column": "status",
+              "operator": "==",
+              "value": "completed"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "output-1",
+      "type": "output",
+      "position": {
+        "x": 1600,
+        "y": 150
+      },
+      "data": {
+        "label": "Save Execution Report",
+        "subtype": "db_write",
+        "config": {
+          "tableName": "task_execution_report",
+          "filename": "execution_report.csv"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "source": "input-1",
+      "target": "transform-1"
+    },
+    {
+      "id": "e2",
+      "source": "transform-1",
+      "target": "batch-1"
+    },
+    {
+      "id": "e3",
+      "source": "batch-1",
+      "target": "aggregate-1"
+    },
+    {
+      "id": "e4",
+      "source": "aggregate-1",
+      "target": "filter-1"
+    },
+    {
+      "id": "e5",
+      "source": "filter-1",
+      "target": "output-1"
+    }
+  ]
+}

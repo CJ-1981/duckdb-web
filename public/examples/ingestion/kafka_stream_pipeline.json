@@ -1,0 +1,120 @@
+{
+  "name": "Kafka Stream Consumer",
+  "description": "Consume Kafka stream with windowing and real-time aggregation",
+  "nodes": [
+    {
+      "id": "input-1",
+      "type": "input",
+      "position": {
+        "x": 100,
+        "y": 150
+      },
+      "data": {
+        "label": "Kafka Topic",
+        "subtype": "csv",
+        "config": {
+          "bootstrap_servers": "localhost:9092",
+          "topic": "events",
+          "consumer_group": "analytics_group",
+          "auto_offset_reset": "latest",
+          "sample_data": [
+            {
+              "event_id": 1,
+              "timestamp": "2024-01-15T10:00:00Z",
+              "type": "click",
+              "value": 1
+            },
+            {
+              "event_id": 2,
+              "timestamp": "2024-01-15T10:05:00Z",
+              "type": "view",
+              "value": 0
+            }
+          ],
+          "file_path": "examples/kafka_stream_consumer.csv"
+        }
+      }
+    },
+    {
+      "id": "transform-1",
+      "type": "default",
+      "position": {
+        "x": 400,
+        "y": 150
+      },
+      "data": {
+        "label": "Parse JSON Messages",
+        "subtype": "unnest",
+        "config": {
+          "column": "value",
+          "alias": "parsed_data"
+        }
+      }
+    },
+    {
+      "id": "aggregate-1",
+      "type": "default",
+      "position": {
+        "x": 700,
+        "y": 150
+      },
+      "data": {
+        "label": "1-Minute Window Aggregation",
+        "subtype": "aggregate",
+        "config": {
+          "groupBy": "window_start, event_type",
+          "aggregations": [
+            {
+              "column": "event_id",
+              "operation": "COUNT",
+              "alias": "event_count"
+            },
+            {
+              "column": "value",
+              "operation": "AVG",
+              "alias": "avg_value"
+            }
+          ],
+          "window": {
+            "type": "tumbling",
+            "duration": "1 minute",
+            "timestamp_column": "timestamp"
+          }
+        }
+      }
+    },
+    {
+      "id": "output-1",
+      "type": "output",
+      "position": {
+        "x": 1000,
+        "y": 150
+      },
+      "data": {
+        "label": "Sink to Database",
+        "subtype": "db_write",
+        "config": {
+          "tableName": "event_metrics",
+          "filename": "event_metrics.csv"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "source": "input-1",
+      "target": "transform-1"
+    },
+    {
+      "id": "e2",
+      "source": "transform-1",
+      "target": "aggregate-1"
+    },
+    {
+      "id": "e3",
+      "source": "aggregate-1",
+      "target": "output-1"
+    }
+  ]
+}

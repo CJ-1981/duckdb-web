@@ -1,0 +1,113 @@
+{
+  "name": "PostgreSQL Bulk Export",
+  "description": "Export PostgreSQL table to DuckDB with batch processing and progress tracking",
+  "nodes": [
+    {
+      "id": "input-1",
+      "type": "input",
+      "position": {
+        "x": 100,
+        "y": 150
+      },
+      "data": {
+        "label": "PostgreSQL Connection",
+        "subtype": "csv",
+        "config": {
+          "connection_string": "postgresql://user:pass@localhost:5432/mydb",
+          "table_name": "orders",
+          "batch_size": 10000,
+          "sample_data": [
+            {
+              "id": 1,
+              "value": "sample_value_1"
+            },
+            {
+              "id": 2,
+              "value": "sample_value_2"
+            },
+            {
+              "id": 3,
+              "value": "sample_value_3"
+            }
+          ],
+          "file_path": "examples/postgresql_bulk_export.csv"
+        }
+      }
+    },
+    {
+      "id": "transform-1",
+      "type": "default",
+      "position": {
+        "x": 400,
+        "y": 150
+      },
+      "data": {
+        "label": "Filter Active Records",
+        "subtype": "filter",
+        "config": {
+          "conditions": [
+            {
+              "column": "status",
+              "operator": "==",
+              "value": "active"
+            },
+            {
+              "column": "created_at",
+              "operator": ">",
+              "value": "2023-01-01"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "transform-2",
+      "type": "default",
+      "position": {
+        "x": 700,
+        "y": 150
+      },
+      "data": {
+        "label": "Add Export Metadata",
+        "subtype": "computed",
+        "config": {
+          "column": "export_timestamp",
+          "expression": "now()"
+        }
+      }
+    },
+    {
+      "id": "output-1",
+      "type": "output",
+      "position": {
+        "x": 1000,
+        "y": 150
+      },
+      "data": {
+        "label": "Save to DuckDB",
+        "subtype": "db_write",
+        "config": {
+          "tableName": "orders_export",
+          "filename": "orders_export.parquet"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "source": "input-1",
+      "target": "transform-1"
+    },
+    {
+      "id": "e2",
+      "source": "transform-1",
+      "target": "transform-2"
+    },
+    {
+      "id": "e3",
+      "source": "transform-2",
+      "target": "output-1"
+    }
+  ]
+}

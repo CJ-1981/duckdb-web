@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<catalog id="CAT-001">
+  <name>Spring Collection 2024</name>
+  <products>
+    <product>
+      <id>1</id>
+      <name>Wireless Headphones</name>
+      <price>129.99</price>
+      <category>Electronics</category>
+    </product>
+    <product>
+      <id>2</id>
+      <name>Running Shoes</name>
+      <price>89.99</price>
+      <category>Sports</category>
+    </product>
+    <product>
+      <id>3</id>
+      <name>Coffee Maker</name>
+      <price>79.99</price>
+      <category>Appliances</category>
+    </product>
+  </products>
+</catalog>

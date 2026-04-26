@@ -1,0 +1,135 @@
+{
+  "name": "Database Bulk Load",
+  "description": "Bulk load data into target database with batching and error handling",
+  "nodes": [
+    {
+      "id": "input-1",
+      "type": "input",
+      "position": {
+        "x": 100,
+        "y": 150
+      },
+      "data": {
+        "label": "Source File",
+        "subtype": "csv",
+        "config": {
+          "file_path": "examples/bulk_data.csv",
+          "sample_data": [
+            {
+              "id": 1,
+              "value": "sample_value_1"
+            },
+            {
+              "id": 2,
+              "value": "sample_value_2"
+            },
+            {
+              "id": 3,
+              "value": "sample_value_3"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "transform-1",
+      "type": "default",
+      "position": {
+        "x": 400,
+        "y": 150
+      },
+      "data": {
+        "label": "Create Batches",
+        "subtype": "raw_sql",
+        "config": {
+          "sql": "SELECT *, \n  (row_number() OVER () - 1) / 1000 as batch_id\nFROM {{input}}"
+        }
+      }
+    },
+    {
+      "id": "batch-1",
+      "type": "default",
+      "position": {
+        "x": 700,
+        "y": 150
+      },
+      "data": {
+        "label": "Bulk Insert Batches",
+        "subtype": "raw_sql",
+        "config": {
+          "url_template": "https://target-db.example.com/batch_insert",
+          "method": "POST",
+          "body_template": "{\"batch_id\": {batch_id}, \"records\": [{records}]}",
+          "concurrency": 3,
+          "timeout": 120,
+          "retry_policy": {
+            "max_retries": 5,
+            "base_delay": 5.0,
+            "max_delay": 60.0
+          },
+          "sql": "SELECT * FROM {{input}} LIMIT 100"
+        }
+      }
+    },
+    {
+      "id": "aggregate-1",
+      "type": "default",
+      "position": {
+        "x": 1000,
+        "y": 150
+      },
+      "data": {
+        "label": "Count Loaded Records",
+        "subtype": "aggregate",
+        "config": {
+          "groupBy": "batch_id",
+          "aggregations": [
+            {
+              "column": "id",
+              "operation": "COUNT",
+              "alias": "records_in_batch"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "output-1",
+      "type": "output",
+      "position": {
+        "x": 1300,
+        "y": 150
+      },
+      "data": {
+        "label": "Save Load Log",
+        "subtype": "db_write",
+        "config": {
+          "tableName": "bulk_load_log",
+          "filename": "load_summary.csv"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "source": "input-1",
+      "target": "transform-1"
+    },
+    {
+      "id": "e2",
+      "source": "transform-1",
+      "target": "batch-1"
+    },
+    {
+      "id": "e3",
+      "source": "batch-1",
+      "target": "aggregate-1"
+    },
+    {
+      "id": "e4",
+      "source": "aggregate-1",
+      "target": "output-1"
+    }
+  ]
+}

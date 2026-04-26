@@ -1,0 +1,130 @@
+{
+  "name": "Funnel Analysis",
+  "description": "Track conversion through multi-step funnel and calculate drop-off rates",
+  "nodes": [
+    {
+      "id": "input-1",
+      "type": "input",
+      "position": {
+        "x": 100,
+        "y": 150
+      },
+      "data": {
+        "label": "User Events",
+        "subtype": "csv",
+        "config": {
+          "file_path": "examples/funnel_events.csv",
+          "sample_data": [
+            {
+              "user_id": "user1",
+              "session_id": "session1",
+              "event_name": "page_view",
+              "timestamp": "2024-01-15T10:00:00Z"
+            },
+            {
+              "user_id": "user1",
+              "session_id": "session1",
+              "event_name": "add_to_cart",
+              "timestamp": "2024-01-15T10:05:00Z"
+            },
+            {
+              "user_id": "user1",
+              "session_id": "session1",
+              "event_name": "purchase",
+              "timestamp": "2024-01-15T10:15:00Z"
+            },
+            {
+              "user_id": "user2",
+              "session_id": "session2",
+              "event_name": "page_view",
+              "timestamp": "2024-01-15T11:00:00Z"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "transform-1",
+      "type": "default",
+      "position": {
+        "x": 400,
+        "y": 150
+      },
+      "data": {
+        "label": "Mark Funnel Steps",
+        "subtype": "raw_sql",
+        "config": {
+          "sql": "SELECT \n  user_id,\n  session_id,\n  max(case when event_name = 'page_view' then 1 else 0 end) as step1_view,\n  max(case when event_name = 'add_to_cart' then 1 else 0 end) as step2_cart,\n  max(case when event_name = 'checkout' then 1 else 0 end) as step3_checkout,\n  max(case when event_name = 'purchase' then 1 else 0 end) as step4_purchase\nFROM {{input}}\nGROUP BY user_id, session_id"
+        }
+      }
+    },
+    {
+      "id": "aggregate-1",
+      "type": "default",
+      "position": {
+        "x": 700,
+        "y": 150
+      },
+      "data": {
+        "label": "Calculate Conversion",
+        "subtype": "raw_sql",
+        "config": {
+          "sql": "SELECT COUNT(DISTINCT session_id) as total_sessions, SUM(step1_view) as step1_count, SUM(step2_cart) as step2_count, SUM(step3_checkout) as step3_count, SUM(step4_purchase) as step4_count FROM {{input}}"
+        }
+      }
+    },
+    {
+      "id": "transform-2",
+      "type": "default",
+      "position": {
+        "x": 1000,
+        "y": 150
+      },
+      "data": {
+        "label": "Overall Funnel Metrics",
+        "subtype": "raw_sql",
+        "config": {
+          "sql": "SELECT \n  step_order,\n  event,\n  unique_users,\n  SUM(unique_users) OVER () as total_starting_users,\n  unique_users * 100.0 / MAX(unique_users) OVER () as pct_of_starting_users,\n  unique_users * 100.0 / NULLIF(LAG(unique_users, 1) OVER (ORDER BY step_order), 0) as pct_of_previous_step\nFROM {{input}}\nORDER BY step_order"
+        }
+      }
+    },
+    {
+      "id": "output-1",
+      "type": "output",
+      "position": {
+        "x": 1300,
+        "y": 150
+      },
+      "data": {
+        "label": "Save Funnel Report",
+        "subtype": "db_write",
+        "config": {
+          "tableName": "funnel_analysis",
+          "filename": "funnel_report.csv"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "source": "input-1",
+      "target": "transform-1"
+    },
+    {
+      "id": "e2",
+      "source": "transform-1",
+      "target": "aggregate-1"
+    },
+    {
+      "id": "e3",
+      "source": "aggregate-1",
+      "target": "transform-2"
+    },
+    {
+      "id": "e4",
+      "source": "transform-2",
+      "target": "output-1"
+    }
+  ]
+}

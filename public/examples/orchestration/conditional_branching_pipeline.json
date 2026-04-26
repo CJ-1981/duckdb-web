@@ -1,0 +1,175 @@
+{
+  "name": "Conditional Branching",
+  "description": "Route data processing based on quality checks and business rules",
+  "nodes": [
+    {
+      "id": "input-1",
+      "type": "input",
+      "position": {
+        "x": 100,
+        "y": 150
+      },
+      "data": {
+        "label": "Incoming Data",
+        "subtype": "csv",
+        "config": {
+          "file_path": "examples/daily_data.csv",
+          "sample_data": [
+            {
+              "id": 1,
+              "value": "sample_value_1"
+            },
+            {
+              "id": 2,
+              "value": "sample_value_2"
+            },
+            {
+              "id": 3,
+              "value": "sample_value_3"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "transform-1",
+      "type": "default",
+      "position": {
+        "x": 400,
+        "y": 150
+      },
+      "data": {
+        "label": "Quality Check",
+        "subtype": "raw_sql",
+        "config": {
+          "sql": "SELECT *,\n  case \n    when missing_count > total_count * 0.1 then 'poor_quality'\n    when missing_count > 0 then 'medium_quality'\n    else 'high_quality'\n  end as quality_tier\nFROM (SELECT \n  *,\n  sum(case when value is null then 1 else 0 end) OVER () as missing_count,\n  count(*) OVER () as total_count\nFROM {{input}})"
+        }
+      }
+    },
+    {
+      "id": "filter-1",
+      "type": "default",
+      "position": {
+        "x": 700,
+        "y": 50
+      },
+      "data": {
+        "label": "High Quality Path",
+        "subtype": "filter",
+        "config": {
+          "conditions": [
+            {
+              "column": "quality_tier",
+              "operator": "==",
+              "value": "high_quality"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "filter-2",
+      "type": "default",
+      "position": {
+        "x": 700,
+        "y": 250
+      },
+      "data": {
+        "label": "Medium Quality Path",
+        "subtype": "filter",
+        "config": {
+          "conditions": [
+            {
+              "column": "quality_tier",
+              "operator": "==",
+              "value": "medium_quality"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "transform-2",
+      "type": "default",
+      "position": {
+        "x": 1000,
+        "y": 100
+      },
+      "data": {
+        "label": "Direct Processing",
+        "subtype": "raw_sql",
+        "config": {
+          "sql": "SELECT *, 'standard' as processing_path FROM {{input}}"
+        }
+      }
+    },
+    {
+      "id": "transform-3",
+      "type": "default",
+      "position": {
+        "x": 1000,
+        "y": 300
+      },
+      "data": {
+        "label": "Clean & Impute",
+        "subtype": "raw_sql",
+        "config": {
+          "sql": "SELECT \n  id,\n  coalesce(value, avg(value) OVER ()) as value,\n  'with_imputation' as processing_path\nFROM {{input}}"
+        }
+      }
+    },
+    {
+      "id": "output-1",
+      "type": "output",
+      "position": {
+        "x": 1300,
+        "y": 200
+      },
+      "data": {
+        "label": "Union & Save",
+        "subtype": "db_write",
+        "config": {
+          "tableName": "processed_data",
+          "filename": "output.csv"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "source": "input-1",
+      "target": "transform-1"
+    },
+    {
+      "id": "e2",
+      "source": "transform-1",
+      "target": "filter-1"
+    },
+    {
+      "id": "e3",
+      "source": "transform-1",
+      "target": "filter-2"
+    },
+    {
+      "id": "e4",
+      "source": "filter-1",
+      "target": "transform-2"
+    },
+    {
+      "id": "e5",
+      "source": "filter-2",
+      "target": "transform-3"
+    },
+    {
+      "id": "e6",
+      "source": "transform-2",
+      "target": "output-1"
+    },
+    {
+      "id": "e7",
+      "source": "transform-3",
+      "target": "output-1"
+    }
+  ]
+}

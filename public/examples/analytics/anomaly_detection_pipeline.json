@@ -1,0 +1,95 @@
+{
+  "name": "Anomaly Detection",
+  "description": "Identify outliers and anomalies in numerical data using statistical methods",
+  "nodes": [
+    {
+      "id": "input-1",
+      "type": "input",
+      "position": {"x": 100, "y": 100},
+      "data": {
+        "label": "Transaction Data",
+        "subtype": "csv",
+        "config": {
+          "file_path": "examples/transactions_anomaly.csv",
+          "sample_data": [
+            {"transaction_id": "T001", "amount": 50.00, "merchant": "Amazon", "timestamp": "2024-01-15T10:00:00Z"},
+            {"transaction_id": "T002", "amount": 55.00, "merchant": "Amazon", "timestamp": "2024-01-15T11:00:00Z"},
+            {"transaction_id": "T003", "amount": 5000.00, "merchant": "Amazon", "timestamp": "2024-01-15T12:00:00Z"},
+            {"transaction_id": "T004", "amount": 48.00, "merchant": "Amazon", "timestamp": "2024-01-15T13:00:00Z"}
+          ]
+        }
+      }
+    },
+    {
+      "id": "transform-1",
+      "type": "default",
+      "position": {"x": 400, "y": 100},
+      "data": {
+        "label": "Calculate Statistics",
+        "subtype": "raw_sql",
+        "config": {
+          "sql": "SELECT \n  transaction_id,\n  amount,\n  merchant,\n  AVG(amount) OVER () as mean_amount,\n  STDDEV(amount) OVER () as stddev_amount,\n  MIN(amount) OVER () as min_amount,\n  MAX(amount) OVER () as max_amount\nFROM {{input}}"
+        }
+      }
+    },
+    {
+      "id": "transform-2",
+      "type": "default",
+      "position": {"x": 700, "y": 100},
+      "data": {
+        "label": "Calculate Z-Scores",
+        "subtype": "computed",
+        "config": {
+          "column": "z_score",
+          "expression": "CASE \n  WHEN stddev_amount > 0 \n  THEN (amount - mean_amount) / stddev_amount\n  ELSE 0\nEND"
+        }
+      }
+    },
+    {
+      "id": "transform-3",
+      "type": "default",
+      "position": {"x": 1000, "y": 100},
+      "data": {
+        "label": "Flag Anomalies",
+        "subtype": "computed",
+        "config": {
+          "column": "is_anomaly",
+          "expression": "CASE \n  WHEN ABS(z_score) > 3 THEN 'High Anomaly'\n  WHEN ABS(z_score) > 2 THEN 'Medium Anomaly'\n  WHEN ABS(z_score) > 1 THEN 'Low Anomaly'\n  ELSE 'Normal'\nEND"
+        }
+      }
+    },
+    {
+      "id": "filter-1",
+      "type": "default",
+      "position": {"x": 1300, "y": 100},
+      "data": {
+        "label": "Filter Anomalies Only",
+        "subtype": "filter",
+        "config": {
+          "conditions": [
+            {"column": "is_anomaly", "operator": "!=", "value": "Normal"}
+          ]
+        }
+      }
+    },
+    {
+      "id": "output-1",
+      "type": "output",
+      "position": {"x": 1600, "y": 100},
+      "data": {
+        "label": "Save Anomaly Report",
+        "subtype": "csv",
+        "config": {
+          "filename": "anomaly_report.csv"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {"id": "e1", "source": "input-1", "target": "transform-1"},
+    {"id": "e2", "source": "transform-1", "target": "transform-2"},
+    {"id": "e3", "source": "transform-2", "target": "transform-3"},
+    {"id": "e4", "source": "transform-3", "target": "filter-1"},
+    {"id": "e5", "source": "filter-1", "target": "output-1"}
+  ]
+}

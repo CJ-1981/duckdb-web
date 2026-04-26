@@ -1,0 +1,136 @@
+{
+  "name": "Data Validation Rules",
+  "description": "Validate data against business rules and generate quality report",
+  "nodes": [
+    {
+      "id": "input-1",
+      "type": "input",
+      "position": {
+        "x": 100,
+        "y": 150
+      },
+      "data": {
+        "label": "Incoming Data",
+        "subtype": "csv",
+        "config": {
+          "file_path": "examples/new_customers.csv",
+          "sample_data": [
+            {
+              "id": 1,
+              "value": "sample_value_1"
+            },
+            {
+              "id": 2,
+              "value": "sample_value_2"
+            },
+            {
+              "id": 3,
+              "value": "sample_value_3"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "transform-1",
+      "type": "default",
+      "position": {
+        "x": 400,
+        "y": 150
+      },
+      "data": {
+        "label": "Check Required Fields",
+        "subtype": "filter",
+        "config": {
+          "conditions": [
+            {
+              "column": "email",
+              "operator": "contains",
+              "value": "@"
+            },
+            {
+              "column": "phone",
+              "operator": "is_not_null",
+              "value": null
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "transform-2",
+      "type": "default",
+      "position": {
+        "x": 700,
+        "y": 150
+      },
+      "data": {
+        "label": "Validate Ranges",
+        "subtype": "raw_sql",
+        "config": {
+          "sql": "SELECT *,\n  case \n    when age < 18 then 'underage'\n    when age > 120 then 'invalid_age'\n    else 'valid'\n  end as age_validation\nFROM {{input}}"
+        }
+      }
+    },
+    {
+      "id": "aggregate-1",
+      "type": "default",
+      "position": {
+        "x": 1000,
+        "y": 150
+      },
+      "data": {
+        "label": "Quality Summary",
+        "subtype": "aggregate",
+        "config": {
+          "groupBy": "age_validation",
+          "aggregations": [
+            {
+              "column": "customer_id",
+              "operation": "COUNT",
+              "alias": "record_count"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "output-1",
+      "type": "output",
+      "position": {
+        "x": 1300,
+        "y": 150
+      },
+      "data": {
+        "label": "Save Quality Report",
+        "subtype": "db_write",
+        "config": {
+          "tableName": "data_quality_report",
+          "filename": "quality_report.csv"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "source": "input-1",
+      "target": "transform-1"
+    },
+    {
+      "id": "e2",
+      "source": "transform-1",
+      "target": "transform-2"
+    },
+    {
+      "id": "e3",
+      "source": "transform-2",
+      "target": "aggregate-1"
+    },
+    {
+      "id": "e4",
+      "source": "aggregate-1",
+      "target": "output-1"
+    }
+  ]
+}

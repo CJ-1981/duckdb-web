@@ -1,0 +1,161 @@
+{
+  "name": "Change Data Capture (CDC) Diff",
+  "description": "Detect and capture only changed records between two snapshots",
+  "nodes": [
+    {
+      "id": "input-1",
+      "type": "input",
+      "position": {
+        "x": 100,
+        "y": 100
+      },
+      "data": {
+        "label": "Previous Snapshot",
+        "subtype": "db_read",
+        "config": {
+          "tableName": "customers_snapshot_t_minus_1",
+          "query": "SELECT * FROM customers_snapshot WHERE snapshot_date = CURRENT_DATE - INTERVAL '1 day'",
+          "sample_data": [
+            {
+              "id": 1,
+              "value": "sample_value_1"
+            },
+            {
+              "id": 2,
+              "value": "sample_value_2"
+            },
+            {
+              "id": 3,
+              "value": "sample_value_3"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "input-2",
+      "type": "input",
+      "position": {
+        "x": 100,
+        "y": 250
+      },
+      "data": {
+        "label": "Current Snapshot",
+        "subtype": "db_read",
+        "config": {
+          "tableName": "customers_snapshot",
+          "query": "SELECT * FROM customers_snapshot WHERE snapshot_date = CURRENT_DATE",
+          "sample_data": [
+            {
+              "id": 1,
+              "value": "sample_value_1"
+            },
+            {
+              "id": 2,
+              "value": "sample_value_2"
+            },
+            {
+              "id": 3,
+              "value": "sample_value_3"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "transform-1",
+      "type": "default",
+      "position": {
+        "x": 500,
+        "y": 175
+      },
+      "data": {
+        "label": "Detect Changes",
+        "subtype": "raw_sql",
+        "config": {
+          "sql": "WITH combined as (\n  SELECT *, 'old' as version FROM previous_snapshot\n  UNION ALL\n  SELECT *, 'new' as version FROM current_snapshot\n)\nSELECT \n  customer_id,\n  max(case when version = 'old' then email end) as old_email,\n  max(case when version = 'new' then email end) as new_email,\n  max(case when version = 'old' then phone end) as old_phone,\n  max(case when version = 'new' then phone end) as new_phone,\n  case \n    when max(case when version = 'old' then customer_id end) is null then 'insert'\n    when max(case when version = 'new' then customer_id end) is null then 'delete'\n    when max(case when version = 'old' then email end) != max(case when version = 'new' then email end) then 'update'\n    when max(case when version = 'old' then phone end) != max(case when version = 'new' then phone end) then 'update'\n    else 'unchanged'\n  end as change_type\nFROM combined\nGROUP BY customer_id"
+        }
+      }
+    },
+    {
+      "id": "filter-1",
+      "type": "default",
+      "position": {
+        "x": 800,
+        "y": 175
+      },
+      "data": {
+        "label": "Filter Changed Records",
+        "subtype": "filter",
+        "config": {
+          "conditions": [
+            {
+              "column": "change_type",
+              "operator": "!=",
+              "value": "unchanged"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "transform-2",
+      "type": "default",
+      "position": {
+        "x": 1100,
+        "y": 175
+      },
+      "data": {
+        "label": "Add Change Metadata",
+        "subtype": "computed",
+        "config": {
+          "column": "captured_at",
+          "expression": "now()"
+        }
+      }
+    },
+    {
+      "id": "output-1",
+      "type": "output",
+      "position": {
+        "x": 1400,
+        "y": 175
+      },
+      "data": {
+        "label": "Save CDC Changes",
+        "subtype": "db_write",
+        "config": {
+          "tableName": "customers_cdc",
+          "filename": "cdc_changes.csv"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "source": "input-1",
+      "target": "transform-1"
+    },
+    {
+      "id": "e2",
+      "source": "input-2",
+      "target": "transform-1"
+    },
+    {
+      "id": "e3",
+      "source": "transform-1",
+      "target": "filter-1"
+    },
+    {
+      "id": "e4",
+      "source": "filter-1",
+      "target": "transform-2"
+    },
+    {
+      "id": "e5",
+      "source": "transform-2",
+      "target": "output-1"
+    }
+  ]
+}

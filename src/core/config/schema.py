@@ -35,7 +35,7 @@ class DatabaseConfig(BaseModel):
     port: int = Field(default=5432, ge=1, le=65535)
     name: str = Field(default="default_db")
     user: str = Field(default="")
-    password: str = Field(default="")
+    password: Optional[str] = Field(default=None)
 
     model_config = ConfigDict(extra="allow", validate_assignment=True)
 

@@ -1,0 +1,98 @@
+{
+  "name": "PIVOT Table Generator",
+  "description": "Transform long-format data into wide pivot tables for reporting",
+  "nodes": [
+    {
+      "id": "input-1",
+      "type": "input",
+      "position": {
+        "x": 100,
+        "y": 150
+      },
+      "data": {
+        "label": "Sales Transactions",
+        "subtype": "csv",
+        "config": {
+          "file_path": "examples/transactions_long.csv",
+          "sample_data": [
+            {
+              "id": 1,
+              "value": "sample_value_1"
+            },
+            {
+              "id": 2,
+              "value": "sample_value_2"
+            },
+            {
+              "id": 3,
+              "value": "sample_value_3"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "transform-1",
+      "type": "default",
+      "position": {
+        "x": 400,
+        "y": 150
+      },
+      "data": {
+        "label": "PIVOT by Category",
+        "subtype": "raw_sql",
+        "config": {
+          "sql": "SELECT \n  date,\n  SUM(CASE WHEN category = 'Electronics' THEN amount ELSE 0 END) as electronics_total,\n  SUM(CASE WHEN category = 'Clothing' THEN amount ELSE 0 END) as clothing_total,\n  SUM(CASE WHEN category = 'Food' THEN amount ELSE 0 END) as food_total,\n  SUM(CASE WHEN category = 'Other' THEN amount ELSE 0 END) as other_total,\n  SUM(amount) as grand_total,\n  COUNT(*) as transaction_count\nFROM {{input}}\nGROUP BY date\nORDER BY date"
+        }
+      }
+    },
+    {
+      "id": "transform-2",
+      "type": "default",
+      "position": {
+        "x": 700,
+        "y": 150
+      },
+      "data": {
+        "label": "Final Summary",
+        "subtype": "raw_sql",
+        "config": {
+          "sql": "SELECT \n  date,\n  electronics_total,\n  clothing_total,\n  food_total,\n  other_total,\n  (electronics_total + clothing_total + food_total + other_total) as grand_total,\n  transaction_count\nFROM {{input}}\nORDER BY date"
+        }
+      }
+    },
+    {
+      "id": "output-1",
+      "type": "output",
+      "position": {
+        "x": 1000,
+        "y": 150
+      },
+      "data": {
+        "label": "Export Report",
+        "subtype": "db_write",
+        "config": {
+          "tableName": "sales_pivot_report",
+          "filename": "sales_pivot.csv"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "source": "input-1",
+      "target": "transform-1"
+    },
+    {
+      "id": "e2",
+      "source": "transform-1",
+      "target": "transform-2"
+    },
+    {
+      "id": "e3",
+      "source": "transform-2",
+      "target": "output-1"
+    }
+  ]
+}

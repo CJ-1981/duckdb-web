@@ -1,0 +1,97 @@
+{
+  "name": "RFM Customer Segmentation",
+  "description": "Recency, Frequency, Monetary analysis for customer segmentation",
+  "nodes": [
+    {
+      "id": "input-1",
+      "type": "input",
+      "position": {"x": 100, "y": 100},
+      "data": {
+        "label": "Customer Transactions",
+        "subtype": "csv",
+        "config": {
+          "file_path": "examples/customer_rfm.csv",
+          "sample_data": [
+            {"customer_id": "C001", "order_date": "2024-01-15", "order_amount": 150.00},
+            {"customer_id": "C001", "order_date": "2024-01-20", "order_amount": 200.00},
+            {"customer_id": "C002", "order_date": "2024-01-10", "order_amount": 75.50},
+            {"customer_id": "C003", "order_date": "2024-01-18", "order_amount": 300.00}
+          ]
+        }
+      }
+    },
+    {
+      "id": "transform-1",
+      "type": "default",
+      "position": {"x": 400, "y": 100},
+      "data": {
+        "label": "Calculate RFM Metrics",
+        "subtype": "raw_sql",
+        "config": {
+          "sql": "SELECT \n  customer_id,\n  DATEDIFF('day', MAX(order_date), CURRENT_DATE) as recency_days,\n  COUNT(*) as frequency_count,\n  SUM(order_amount) as monetary_value\nFROM {{input}}\nGROUP BY customer_id"
+        }
+      }
+    },
+    {
+      "id": "transform-2",
+      "type": "default",
+      "position": {"x": 700, "y": 100},
+      "data": {
+        "label": "Score RFM (1-5 Scale)",
+        "subtype": "raw_sql",
+        "config": {
+          "sql": "WITH rfm_quartiles AS (\n  SELECT \n    customer_id,\n    recency_days,\n    frequency_count,\n    monetary_value,\n    NTILE(5) OVER (ORDER BY recency_days DESC) as recency_score,\n    NTILE(5) OVER (ORDER BY frequency_count) as frequency_score,\n    NTILE(5) OVER (ORDER BY monetary_value) as monetary_score\n  FROM {{input}}\n)\nSELECT \n  customer_id,\n  recency_days,\n  frequency_count,\n  monetary_value,\n  recency_score,\n  frequency_score,\n  monetary_score,\n  recency_score + frequency_score + monetary_score as rfm_score\nFROM rfm_quartiles\nORDER BY rfm_score DESC"
+        }
+      }
+    },
+    {
+      "id": "transform-3",
+      "type": "default",
+      "position": {"x": 1000, "y": 100},
+      "data": {
+        "label": "Assign Segments",
+        "subtype": "computed",
+        "config": {
+          "column": "customer_segment",
+          "expression": "CASE \n  WHEN rfm_score >= 13 THEN 'Champions'\n  WHEN rfm_score >= 10 THEN 'Loyal Customers'\n  WHEN rfm_score >= 7 THEN 'Potential Loyalists'\n  WHEN rfm_score >= 5 THEN 'Need Attention'\n  ELSE 'At Risk'\nEND"
+        }
+      }
+    },
+    {
+      "id": "aggregate-1",
+      "type": "default",
+      "position": {"x": 1300, "y": 100},
+      "data": {
+        "label": "Segment Summary",
+        "subtype": "aggregate",
+        "config": {
+          "groupBy": "customer_segment",
+          "aggregations": [
+            {"column": "customer_id", "operation": "COUNT", "alias": "customer_count"},
+            {"column": "monetary_value", "operation": "AVG", "alias": "avg_monetary"},
+            {"column": "monetary_value", "operation": "SUM", "alias": "total_monetary"}
+          ]
+        }
+      }
+    },
+    {
+      "id": "output-1",
+      "type": "output",
+      "position": {"x": 1600, "y": 100},
+      "data": {
+        "label": "Save RFM Segments",
+        "subtype": "csv",
+        "config": {
+          "filename": "rfm_segmentation.csv"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {"id": "e1", "source": "input-1", "target": "transform-1"},
+    {"id": "e2", "source": "transform-1", "target": "transform-2"},
+    {"id": "e3", "source": "transform-2", "target": "transform-3"},
+    {"id": "e4", "source": "transform-3", "target": "aggregate-1"},
+    {"id": "e5", "source": "aggregate-1", "target": "output-1"}
+  ]
+}

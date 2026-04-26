@@ -1,0 +1,145 @@
+{
+  "name": "Data Profiling & Statistics",
+  "description": "Generate comprehensive profile statistics and detect anomalies",
+  "nodes": [
+    {
+      "id": "input-1",
+      "type": "input",
+      "position": {
+        "x": 100,
+        "y": 150
+      },
+      "data": {
+        "label": "Dataset",
+        "subtype": "csv",
+        "config": {
+          "file_path": "examples/transactions.csv",
+          "sample_data": [
+            {
+              "id": 1,
+              "value": "sample_value_1"
+            },
+            {
+              "id": 2,
+              "value": "sample_value_2"
+            },
+            {
+              "id": 3,
+              "value": "sample_value_3"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "aggregate-1",
+      "type": "default",
+      "position": {
+        "x": 400,
+        "y": 150
+      },
+      "data": {
+        "label": "Column Statistics",
+        "subtype": "aggregate",
+        "config": {
+          "groupBy": "customer_id",
+          "aggregations": [
+            {
+              "column": "transaction_id",
+              "operation": "COUNT",
+              "alias": "total_count"
+            },
+            {
+              "column": "amount",
+              "operation": "AVG",
+              "alias": "avg_amount"
+            },
+            {
+              "column": "amount",
+              "operation": "MIN",
+              "alias": "min_amount"
+            },
+            {
+              "column": "amount",
+              "operation": "MAX",
+              "alias": "max_amount"
+            },
+            {
+              "column": "amount",
+              "operation": "STDDEV",
+              "alias": "stddev_amount"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "transform-1",
+      "type": "default",
+      "position": {
+        "x": 700,
+        "y": 150
+      },
+      "data": {
+        "label": "Detect Outliers",
+        "subtype": "raw_sql",
+        "config": {
+          "sql": "SELECT *,\n  case \n    when abs(amount - avg_amount) > (3 * stddev_amount) then 'outlier'\n    else 'normal'\n  end as outlier_flag\nFROM {{input}}"
+        }
+      }
+    },
+    {
+      "id": "transform-2",
+      "type": "default",
+      "position": {
+        "x": 1000,
+        "y": 150
+      },
+      "data": {
+        "label": "Null Analysis",
+        "subtype": "raw_sql",
+        "config": {
+          "sql": "SELECT \n  'customer_id' as column_name,\n  count(*) as total_rows,\n  sum(case when customer_id is null then 1 else 0 end) as null_count,\n  100.0 * sum(case when customer_id is null then 1 else 0 end) / count(*) as null_percentage\nFROM {{input}}\nUNION ALL\nSELECT \n  'amount' as column_name,\n  count(*) as total_rows,\n  sum(case when amount is null then 1 else 0 end) as null_count,\n  100.0 * sum(case when amount is null then 1 else 0 end) / count(*) as null_percentage\nFROM {{input}}"
+        }
+      }
+    },
+    {
+      "id": "output-1",
+      "type": "output",
+      "position": {
+        "x": 1300,
+        "y": 150
+      },
+      "data": {
+        "label": "Save Profile Report",
+        "subtype": "db_write",
+        "config": {
+          "tableName": "data_profile",
+          "filename": "profile_stats.json"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "source": "input-1",
+      "target": "aggregate-1"
+    },
+    {
+      "id": "e2",
+      "source": "aggregate-1",
+      "target": "transform-1"
+    },
+    {
+      "id": "e3",
+      "source": "input-1",
+      "target": "transform-2"
+    },
+    {
+      "id": "e4",
+      "source": "transform-1",
+      "target": "output-1"
+    }
+  ]
+}

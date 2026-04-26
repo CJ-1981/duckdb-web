@@ -1,0 +1,977 @@
+openapi: 3.0.0
+info:
+  title: DuckDB Web Workflow Builder API
+  description: REST API for managing workflows, jobs, and job executions in the DuckDB Web Workflow Builder system
+  version: 1.0.0
+  contact:
+    name: DuckDB Web Development Team
+    email: dev@duckdb-web.com
+
+servers:
+  - url: https://api.duckdb-web.com/v1
+    description: Production server
+  - url: https://staging-api.duckdb-web.com/v1
+    description: Staging server
+
+security:
+  - BearerAuth: []
+
+paths:
+  # Workflow Management Endpoints
+  /workflows:
+    get:
+      tags:
+        - Workflows
+      summary: List all workflows
+      description: Retrieve a paginated list of all workflows with optional filtering
+      operationId: listWorkflows
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+          description: Page number
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+          description: Number of items per page
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [active, inactive, draft]
+          description: Filter by workflow status
+        - name: search
+          in: query
+          schema:
+            type: string
+          description: Search in workflow name and description
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  workflows:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Workflow'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+    post:
+      tags:
+        - Workflows
+      summary: Create a new workflow
+      description: Create a new workflow definition with initial version
+      operationId: createWorkflow
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateWorkflowRequest'
+      responses:
+        '201':
+          description: Workflow created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Workflow'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /workflows/{workflowId}:
+    get:
+      tags:
+        - Workflows
+      summary: Get workflow details
+      description: Retrieve detailed information about a specific workflow
+      operationId: getWorkflow
+      parameters:
+        - name: workflowId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Workflow ID
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Workflow'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+    put:
+      tags:
+        - Workflows
+      summary: Update workflow metadata
+      description: Update workflow name, description, and status
+      operationId: updateWorkflow
+      parameters:
+        - name: workflowId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Workflow ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateWorkflowRequest'
+      responses:
+        '200':
+          description: Workflow updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Workflow'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+    delete:
+      tags:
+        - Workflows
+      summary: Delete workflow
+      description: Delete a workflow and all associated versions and jobs
+      operationId: deleteWorkflow
+      parameters:
+        - name: workflowId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Workflow ID
+      responses:
+        '204':
+          description: Workflow deleted successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  # Workflow Version Management
+  /workflows/{workflowId}/versions:
+    post:
+      tags:
+        - Workflow Versions
+      summary: Create new workflow version
+      description: Create a new version of the workflow with updated definition
+      operationId: createWorkflowVersion
+      parameters:
+        - name: workflowId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Workflow ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateWorkflowVersionRequest'
+      responses:
+        '201':
+          description: Workflow version created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkflowVersion'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /workflows/{workflowId}/versions/{version}:
+    get:
+      tags:
+        - Workflow Versions
+      summary: Get workflow version
+      description: Retrieve a specific version of a workflow
+      operationId: getWorkflowVersion
+      parameters:
+        - name: workflowId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Workflow ID
+        - name: version
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Version identifier (e.g., "1.0", "2.1")
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkflowVersion'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  # Job Management
+  /jobs:
+    get:
+      tags:
+        - Jobs
+      summary: List jobs
+      description: Retrieve a paginated list of jobs with optional filtering
+      operationId: listJobs
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+          description: Page number
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+          description: Number of items per page
+        - name: workflowId
+          in: query
+          schema:
+            type: string
+            format: uuid
+          description: Filter by workflow ID
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [pending, running, completed, failed, cancelled]
+          description: Filter by job status
+        - name: scheduledFrom
+          in: query
+          schema:
+            type: string
+            format: date-time
+          description: Filter jobs scheduled from this datetime
+        - name: scheduledTo
+          in: query
+          schema:
+            type: string
+            format: date-time
+          description: Filter jobs scheduled to this datetime
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  jobs:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Job'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+    post:
+      tags:
+        - Jobs
+      summary: Create job
+      description: Create a new job for the specified workflow
+      operationId: createJob
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateJobRequest'
+      responses:
+        '201':
+          description: Job created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Job'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /jobs/{jobId}:
+    get:
+      tags:
+        - Jobs
+      summary: Get job details
+      description: Retrieve detailed information about a specific job
+      operationId: getJob
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Job ID
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Job'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+    post:
+      tags:
+        - Jobs
+      summary: Execute job
+      description: Trigger immediate execution of a job
+      operationId: executeJob
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Job ID
+      responses:
+        '202':
+          description: Job execution initiated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Job execution started"
+                  job_id:
+                    type: string
+                    format: uuid
+                    example: "550e8400-e29b-41d4-a716-446655440000"
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+    put:
+      tags:
+        - Jobs
+      summary: Update job
+      description: Update job schedule or other metadata
+      operationId: updateJob
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Job ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateJobRequest'
+      responses:
+        '200':
+          description: Job updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Job'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+    delete:
+      tags:
+        - Jobs
+      summary: Cancel job
+      description: Cancel a pending or running job
+      operationId: cancelJob
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Job ID
+      responses:
+        '200':
+          description: Job cancelled successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Job cancelled successfully"
+                  job_id:
+                    type: string
+                    format: uuid
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  # Job Execution Management
+  /jobs/{jobId}/executions:
+    get:
+      tags:
+        - Job Executions
+      summary: List job executions
+      description: Retrieve execution history for a job
+      operationId: listJobExecutions
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Job ID
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+          description: Number of items to return
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  executions:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/JobExecution'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  # Monitoring Dashboard
+  /metrics:
+    get:
+      tags:
+        - Monitoring
+      summary: Get system metrics
+      description: Retrieve system health and performance metrics
+      operationId: getMetrics
+      parameters:
+        - name: include
+          in: query
+          schema:
+            type: array
+            items:
+              type: string
+              enum: [workflows, jobs, executions, system]
+            default: ["workflows", "jobs", "executions", "system"]
+          description: Which metrics to include
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SystemMetrics'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    # Core Entities
+    Workflow:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        name:
+          type: string
+          example: "Monthly Sales Report"
+        description:
+          type: string
+          example: "Generate comprehensive sales report for monthly review"
+        status:
+          type: string
+          enum: [active, inactive, draft]
+          example: "active"
+        created_at:
+          type: string
+          format: date-time
+          example: "2023-01-01T00:00:00Z"
+        updated_at:
+          type: string
+          format: date-time
+          example: "2023-01-01T00:00:00Z"
+        current_version:
+          type: string
+          example: "1.0"
+        version_count:
+          type: integer
+          example: 3
+        job_count:
+          type: integer
+          example: 5
+
+    WorkflowVersion:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        workflow_id:
+          type: string
+          format: uuid
+          example: "550e8400-e29b-41d4-a716-446655440001"
+        version:
+          type: string
+          example: "1.0"
+        definition:
+          type: object
+          description: Workflow definition in JSON format
+        is_active:
+          type: boolean
+          example: true
+        created_at:
+          type: string
+          format: date-time
+          example: "2023-01-01T00:00:00Z"
+        created_by:
+          type: string
+          example: "user@example.com"
+
+    Job:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        workflow_id:
+          type: string
+          format: uuid
+          example: "550e8400-e29b-41d4-a716-446655440001"
+        workflow_name:
+          type: string
+          example: "Monthly Sales Report"
+        name:
+          type: string
+          example: "Monthly Report - January 2023"
+        schedule:
+          type: string
+          example: "0 0 1 * *"
+          description: Cron expression for scheduled execution
+        next_run:
+          type: string
+          format: date-time
+          example: "2023-02-01T00:00:00Z"
+        status:
+          type: string
+          enum: [pending, running, completed, failed, cancelled]
+          example: "pending"
+        created_at:
+          type: string
+          format: date-time
+          example: "2023-01-01T00:00:00Z"
+        updated_at:
+          type: string
+          format: date-time
+          example: "2023-01-01T00:00:00Z"
+        execution_count:
+          type: integer
+          example: 12
+        last_execution:
+          type: object
+          properties:
+            id:
+              type: string
+              format: uuid
+            status:
+              type: string
+            started_at:
+              type: string
+              format: date-time
+            completed_at:
+              type: string
+              format: date-time
+
+    JobExecution:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        job_id:
+          type: string
+          format: uuid
+          example: "550e8400-e29b-41d4-a716-446655440001"
+        job_name:
+          type: string
+          example: "Monthly Report - January 2023"
+        status:
+          type: string
+          enum: [pending, running, completed, failed, cancelled]
+          example: "completed"
+        started_at:
+          type: string
+          format: date-time
+          example: "2023-01-01T00:00:00Z"
+        completed_at:
+          type: string
+          format: date-time
+          example: "2023-01-01T00:15:00Z"
+        duration:
+          type: integer
+          format: int64
+          example: 900000
+        error_message:
+          type: string
+          example: "Failed to connect to database"
+        retry_count:
+          type: integer
+          example: 0
+        retry_limit:
+          type: integer
+          example: 3
+        logs:
+          type: array
+          items:
+            type: object
+            properties:
+              timestamp:
+                type: string
+                format: date-time
+              level:
+                type: string
+                enum: [debug, info, warn, error]
+              message:
+                type: string
+              metadata:
+                type: object
+
+    # Request/Response Objects
+    CreateWorkflowRequest:
+      type: object
+      required:
+        - name
+        - definition
+      properties:
+        name:
+          type: string
+          example: "Monthly Sales Report"
+        description:
+          type: string
+          example: "Generate comprehensive sales report for monthly review"
+        definition:
+          type: object
+          description: Workflow definition in JSON format
+
+    UpdateWorkflowRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          example: "Monthly Sales Report"
+        description:
+          type: string
+          example: "Generate comprehensive sales report for monthly review"
+        status:
+          type: string
+          enum: [active, inactive, draft]
+
+    CreateWorkflowVersionRequest:
+      type: object
+      required:
+        - definition
+      properties:
+        definition:
+          type: object
+          description: Workflow definition in JSON format
+        is_active:
+          type: boolean
+          description: Whether this version should be set as active
+
+    CreateJobRequest:
+      type: object
+      required:
+        - workflowId
+        - name
+        - schedule
+      properties:
+        workflowId:
+          type: string
+          format: uuid
+          example: "550e8400-e29b-41d4-a716-446655440001"
+        name:
+          type: string
+          example: "Monthly Report - January 2023"
+        schedule:
+          type: string
+          example: "0 0 1 * *"
+          description: Cron expression for scheduled execution
+        data:
+          type: object
+          description: Input data for the job execution
+
+    UpdateJobRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          example: "Monthly Report - January 2023"
+        schedule:
+          type: string
+          example: "0 0 1 * *"
+        data:
+          type: object
+          description: Input data for the job execution
+
+    SystemMetrics:
+      type: object
+      properties:
+        workflows:
+          type: object
+          properties:
+            total:
+              type: integer
+              example: 15
+            active:
+              type: integer
+              example: 12
+            inactive:
+              type: integer
+              example: 2
+            draft:
+              type: integer
+              example: 1
+        jobs:
+          type: object
+          properties:
+            total:
+              type: integer
+              example: 25
+            pending:
+              type: integer
+              example: 3
+            running:
+              type: integer
+              example: 1
+            completed:
+              type: integer
+              example: 20
+            failed:
+              type: integer
+              example: 1
+        executions:
+          type: object
+          properties:
+            total:
+              type: integer
+              example: 120
+            today:
+              type: integer
+              example: 5
+            success_rate:
+              type: number
+              format: float
+              example: 0.95
+        system:
+          type: object
+          properties:
+            uptime:
+              type: integer
+              format: int64
+              example: 86400000
+            memory_usage:
+              type: number
+              format: float
+              example: 0.65
+            cpu_usage:
+              type: number
+              format: float
+              example: 0.25
+            database_connections:
+              type: integer
+              example: 15
+
+    Pagination:
+      type: object
+      properties:
+        page:
+          type: integer
+          example: 1
+        limit:
+          type: integer
+          example: 20
+        total:
+          type: integer
+          example: 45
+        pages:
+          type: integer
+          example: 3
+
+    Error:
+      type: object
+      properties:
+        message:
+          type: string
+          example: "Validation failed"
+        errors:
+          type: array
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+                example: "schedule"
+              message:
+                type: string
+                example: "Invalid cron expression"
+              code:
+                type: string
+                example: "INVALID_CRON"
+
+  responses:
+    BadRequest:
+      description: Bad request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    Unauthorized:
+      description: Unauthorized
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              message:
+                type: string
+                example: "Authentication required"
+
+    NotFound:
+      description: Not found
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              message:
+                type: string
+                example: "Resource not found"
+
+    ServerError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              message:
+                type: string
+                example: "Internal server error"

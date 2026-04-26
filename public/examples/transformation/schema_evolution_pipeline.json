@@ -1,0 +1,119 @@
+{
+  "name": "Schema Evolution Migration",
+  "description": "Handle schema changes with backward compatibility and data migration",
+  "nodes": [
+    {
+      "id": "input-1",
+      "type": "input",
+      "position": {
+        "x": 100,
+        "y": 150
+      },
+      "data": {
+        "label": "Legacy Data",
+        "subtype": "csv",
+        "config": {
+          "file_path": "examples/users_legacy.csv",
+          "sample_data": [
+            {
+              "id": 1,
+              "value": "sample_value_1"
+            },
+            {
+              "id": 2,
+              "value": "sample_value_2"
+            },
+            {
+              "id": 3,
+              "value": "sample_value_3"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "transform-1",
+      "type": "default",
+      "position": {
+        "x": 400,
+        "y": 150
+      },
+      "data": {
+        "label": "Map Legacy Fields",
+        "subtype": "select",
+        "config": {
+          "columns": "user_id as id, concat(first_name, ' ', last_name) as full_name, email_address as email, phone_number as phone"
+        }
+      }
+    },
+    {
+      "id": "transform-2",
+      "type": "default",
+      "position": {
+        "x": 700,
+        "y": 150
+      },
+      "data": {
+        "label": "Add New Fields",
+        "subtype": "computed",
+        "config": {
+          "column": "preferred_language",
+          "expression": "'en-US'"
+        }
+      }
+    },
+    {
+      "id": "transform-3",
+      "type": "default",
+      "position": {
+        "x": 1000,
+        "y": 150
+      },
+      "data": {
+        "label": "Cast to New Types",
+        "subtype": "raw_sql",
+        "config": {
+          "sql": "SELECT \n  id::INTEGER as id,\n  full_name::VARCHAR,\n  email::VARCHAR,\n  phone::VARCHAR,\n  preferred_language::VARCHAR,\n  now()::TIMESTAMP as migrated_at\nFROM {{input}}"
+        }
+      }
+    },
+    {
+      "id": "output-1",
+      "type": "output",
+      "position": {
+        "x": 1300,
+        "y": 150
+      },
+      "data": {
+        "label": "Save Migrated Data",
+        "subtype": "db_write",
+        "config": {
+          "tableName": "users_v2",
+          "filename": "users_migrated.csv"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "source": "input-1",
+      "target": "transform-1"
+    },
+    {
+      "id": "e2",
+      "source": "transform-1",
+      "target": "transform-2"
+    },
+    {
+      "id": "e3",
+      "source": "transform-2",
+      "target": "transform-3"
+    },
+    {
+      "id": "e4",
+      "source": "transform-3",
+      "target": "output-1"
+    }
+  ]
+}

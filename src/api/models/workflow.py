@@ -45,11 +45,28 @@ class Workflow(BaseModel):
     # @MX:ANCHOR: Workflow-version relationship (fan_in >= 3 callers expected)
     versions = relationship("WorkflowVersion", back_populates="workflow")
 
+    def __init__(self, **kwargs):
+        """Initialize Workflow with Python-level defaults."""
+        super().__init__(**kwargs)
+        # Apply Python-level defaults
+        if self.is_active is None:
+            self.is_active = True
+        if self.version is None:
+            self.version = 1
+
     def __repr__(self) -> str:
         return f"<Workflow(id={self.id}, name={self.name}, version={self.version})>"
 
     def to_dict(self) -> dict:
-        """Convert workflow to dictionary with definition"""
+        """Convert workflow to dictionary including all fields."""
         result = super().to_dict()
-        result["definition"] = self.definition
+        # Add Workflow-specific fields
+        result.update({
+            "name": self.name,
+            "description": self.description,
+            "definition": self.definition,
+            "owner_id": self.owner_id,
+            "is_active": self.is_active,
+            "version": self.version,
+        })
         return result

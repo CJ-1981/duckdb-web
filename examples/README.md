@@ -2,6 +2,46 @@
 
 This directory contains sample workflow pipelines that demonstrate the batch request functionality and other workflow features.
 
+## Data Files
+
+This directory also contains all the data files (CSV, XML, JSON) referenced by the sample pipelines.
+
+### CSV Files (28 files)
+- `ab_test_events.csv` - A/B test event data for analytics pipelines
+- `addresses.csv` - Customer address information
+- `api_endpoints.csv` - API endpoint configurations
+- `bulk_data.csv` - Bulk load test data
+- `catalog.csv` - Product catalog data
+- `customer_features.csv` - Customer feature data for ML pipelines
+- `customer_updates.csv` - Customer update records
+- `daily_data.csv` - Daily metrics data
+- `discounts_by_region.csv` - Regional discount percentages
+- `events.csv` - Event stream data
+- `funnel_events.csv` - Funnel analysis event data
+- `graphql_queries.csv` - GraphQL query templates
+- `large_dataset.csv` - Large dataset for performance testing
+- `messy_data.csv` - Data with quality issues for cleaning pipelines
+- `new_customers.csv` - New customer records for validation
+- `oauth_config.csv` - OAuth provider configurations
+- `orders.csv` - Order transaction data
+- `pipeline_executions.csv` - Pipeline execution logs for alerting
+- `products_input.csv` - Product catalog input
+- `sales_data.csv` - Sales transaction data
+- `social_posts_input.csv` - Social media post parameters
+- `task_config.csv` - Task configuration data
+- `test_data.csv` - Generic test data
+- `transactions.csv` - Transaction records
+- `transactions_long.csv` - Long transaction history
+- `urls.csv` - URL list for API requests
+- `users_input.csv` - User ID list for enrichment
+- `users_legacy.csv` - Legacy user data for migration
+
+### XML Files (1 file)
+- `catalog.xml` - Product catalog in XML format for XML flattening pipelines
+
+### JSON Files (1 file)
+- `nested_data.json` - Nested JSON structure for JSON flattening pipelines
+
 ## Available Pipelines
 
 ### 1. User Profile Enrichment Pipeline (`sample_user_enrichment_pipeline.json`)

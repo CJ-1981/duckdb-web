@@ -1,0 +1,97 @@
+{
+  "name": "Type Conversion and Validation",
+  "description": "Handle type mismatches and validate data types during ETL processes",
+  "nodes": [
+    {
+      "id": "input-1",
+      "type": "input",
+      "position": {"x": 100, "y": 100},
+      "data": {
+        "label": "Mixed Type Data",
+        "subtype": "csv",
+        "config": {
+          "file_path": "examples/mixed_types.csv",
+          "sample_data": [
+            {"id": "1", "amount": "150.50", "date": "2024-01-15", "quantity": "10", "active": "true"},
+            {"id": "2", "amount": "200.00", "date": "15/01/2024", "quantity": "15", "active": "TRUE"},
+            {"id": "3", "amount": "$99.99", "date": "2024-01-16", "quantity": "20", "active": "yes"},
+            {"id": "4", "amount": "invalid", "date": "2024-01-17", "quantity": "25", "active": "false"}
+          ]
+        }
+      }
+    },
+    {
+      "id": "transform-1",
+      "type": "default",
+      "position": {"x": 400, "y": 100},
+      "data": {
+        "label": "Safe Type Conversion",
+        "subtype": "raw_sql",
+        "config": {
+          "sql": "SELECT \n  id,\n  TRY_CAST(REPLACE(REPLACE(amount, '$', ''), ',', '') AS DECIMAL(10,2)) as amount,\n  TRY_CAST(date AS DATE) as order_date,\n  TRY_CAST(quantity AS INTEGER) as quantity,\n  CASE \n    WHEN LOWER(active) IN ('true', 'yes', '1', 't') THEN true\n    WHEN LOWER(active) IN ('false', 'no', '0', 'f') THEN false\n    ELSE NULL\n  END as active\nFROM {{input}}"
+        }
+      }
+    },
+    {
+      "id": "transform-2",
+      "type": "default",
+      "position": {"x": 700, "y": 100},
+      "data": {
+        "label": "Filter Valid Records",
+        "subtype": "filter",
+        "config": {
+          "conditions": [
+            {"column": "amount", "operator": "!=", "value": "NULL"},
+            {"column": "order_date", "operator": "!=", "value": "NULL"}
+          ]
+        }
+      }
+    },
+    {
+      "id": "transform-3",
+      "type": "default",
+      "position": {"x": 700, "y": 250},
+      "data": {
+        "label": "Flag Invalid Records",
+        "subtype": "computed",
+        "config": {
+          "column": "validation_status",
+          "expression": "CASE \n  WHEN amount IS NULL OR order_date IS NULL THEN 'INVALID'\n  WHEN active IS NULL THEN 'WARNING'\n  ELSE 'VALID'\nEND"
+        }
+      }
+    },
+    {
+      "id": "aggregate-1",
+      "type": "default",
+      "position": {"x": 1000, "y": 100},
+      "data": {
+        "label": "Validation Summary",
+        "subtype": "aggregate",
+        "config": {
+          "groupBy": "validation_status",
+          "aggregations": [
+            {"column": "id", "operation": "COUNT", "alias": "record_count"}
+          ]
+        }
+      }
+    },
+    {
+      "id": "output-1",
+      "type": "output",
+      "position": {"x": 1300, "y": 100},
+      "data": {
+        "label": "Save Validated Data",
+        "subtype": "csv",
+        "config": {
+          "filename": "validated_data.csv"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {"id": "e1", "source": "input-1", "target": "transform-1"},
+    {"id": "e2", "source": "transform-1", "target": "transform-2"},
+    {"id": "e3", "source": "transform-2", "target": "aggregate-1"},
+    {"id": "e4", "source": "aggregate-1", "target": "output-1"}
+  ]
+}

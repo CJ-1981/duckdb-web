@@ -1,0 +1,92 @@
+{
+  "name": "Time-Series Rollup",
+  "description": "Aggregate time-series data into multiple time granularities (hourly, daily, weekly, monthly)",
+  "nodes": [
+    {
+      "id": "input-1",
+      "type": "input",
+      "position": { "x": 100, "y": 150 },
+      "data": {
+        "label": "Event Stream",
+        "subtype": "csv",
+        "config": {
+          "file_path": "examples/events.csv",
+          "sample_data": [
+            {"event_id": 1, "timestamp": "2024-01-15T10:00:00Z", "event_type": "page_view", "value": 0},
+            {"event_id": 2, "timestamp": "2024-01-15T10:05:00Z", "event_type": "click", "value": 1},
+            {"event_id": 3, "timestamp": "2024-01-15T10:10:00Z", "event_type": "page_view", "value": 0},
+            {"event_id": 4, "timestamp": "2024-01-15T10:15:00Z", "event_type": "purchase", "value": 150.50}
+          ]
+        }
+      }
+    },
+    {
+      "id": "aggregate-1",
+      "type": "default",
+      "position": { "x": 400, "y": 100 },
+      "data": {
+        "label": "Hourly Rollup",
+        "subtype": "aggregate",
+        "config": {
+          "groupBy": "date_trunc('hour', timestamp) as hour, event_type",
+          "aggregations": [
+            { "column": "event_id", "operation": "COUNT", "alias": "event_count" },
+            { "column": "value", "operation": "SUM", "alias": "total_value" },
+            { "column": "value", "operation": "AVG", "alias": "avg_value" }
+          ]
+        }
+      }
+    },
+    {
+      "id": "aggregate-2",
+      "type": "default",
+      "position": { "x": 400, "y": 250 },
+      "data": {
+        "label": "Daily Rollup",
+        "subtype": "aggregate",
+        "config": {
+          "groupBy": "date_trunc('day', timestamp) as day, event_type",
+          "aggregations": [
+            { "column": "event_id", "operation": "COUNT", "alias": "event_count" },
+            { "column": "value", "operation": "SUM", "alias": "total_value" }
+          ]
+        }
+      }
+    },
+    {
+      "id": "aggregate-3",
+      "type": "default",
+      "position": { "x": 750, "y": 175 },
+      "data": {
+        "label": "Weekly Rollup",
+        "subtype": "aggregate",
+        "config": {
+          "groupBy": "date_trunc('week', timestamp) as week, event_type",
+          "aggregations": [
+            { "column": "event_id", "operation": "COUNT", "alias": "weekly_count" },
+            { "column": "value", "operation": "SUM", "alias": "weekly_sum" }
+          ]
+        }
+      }
+    },
+    {
+      "id": "output-1",
+      "type": "output",
+      "position": { "x": 1100, "y": 175 },
+      "data": {
+        "label": "Save Multi-Granularity",
+        "subtype": "db_write",
+        "config": {
+          "tableName": "timeseries_rollups",
+          "filename": "timeseries_multi.csv"
+        }
+      }
+    }
+  ],
+  "edges": [
+    { "id": "e1", "source": "input-1", "target": "aggregate-1" },
+    { "id": "e2", "source": "input-1", "target": "aggregate-2" },
+    { "id": "e3", "source": "input-1", "target": "aggregate-3" },
+    { "id": "e4", "source": "aggregate-3", "target": "output-1" }
+  ]
+}

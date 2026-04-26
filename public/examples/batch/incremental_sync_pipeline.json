@@ -1,0 +1,162 @@
+{
+  "name": "Incremental Data Sync",
+  "description": "Sync only changed records using Change Data Capture (CDC) timestamps",
+  "nodes": [
+    {
+      "id": "input-1",
+      "type": "input",
+      "position": {
+        "x": 100,
+        "y": 150
+      },
+      "data": {
+        "label": "Source Database",
+        "subtype": "csv",
+        "config": {
+          "file_path": "examples/incremental_data_sync.csv",
+          "sample_data": [
+            {
+              "order_id": "ORD-001",
+              "customer_id": "CUST-001",
+              "amount": 150.50,
+              "order_date": "2024-01-15",
+              "updated_at": "2024-01-15T10:00:00Z"
+            },
+            {
+              "order_id": "ORD-002",
+              "customer_id": "CUST-002",
+              "amount": 275.00,
+              "order_date": "2024-01-15",
+              "updated_at": "2024-01-15T11:00:00Z"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "input-2",
+      "type": "input",
+      "position": {
+        "x": 100,
+        "y": 300
+      },
+      "data": {
+        "label": "Last Sync Timestamp",
+        "subtype": "csv",
+        "config": {
+          "tableName": "sync_log",
+          "query": "SELECT max(sync_timestamp) as last_sync FROM sync_log WHERE source_table = 'orders'",
+          "sample_data": [
+            {
+              "id": 1,
+              "value": "sample_value_1"
+            },
+            {
+              "id": 2,
+              "value": "sample_value_2"
+            },
+            {
+              "id": 3,
+              "value": "sample_value_3"
+            }
+          ],
+          "file_path": "examples/sync_log.csv"
+        }
+      }
+    },
+    {
+      "id": "transform-1",
+      "type": "default",
+      "position": {
+        "x": 400,
+        "y": 225
+      },
+      "data": {
+        "label": "Filter Changed Records",
+        "subtype": "filter",
+        "config": {
+          "conditions": [
+            {
+              "column": "updated_at",
+              "operator": ">",
+              "value": "{last_sync}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "transform-2",
+      "type": "default",
+      "position": {
+        "x": 700,
+        "y": 225
+      },
+      "data": {
+        "label": "Upsert Records",
+        "subtype": "raw_sql",
+        "config": {
+          "sql": "SELECT order_id, customer_id, amount, order_date, updated_at FROM {{input}}"
+        }
+      }
+    },
+    {
+      "id": "transform-3",
+      "type": "default",
+      "position": {
+        "x": 1000,
+        "y": 225
+      },
+      "data": {
+        "label": "Record Sync Log",
+        "subtype": "raw_sql",
+        "config": {
+          "sql": "SELECT 'orders' as source_table, NOW() as sync_timestamp, COUNT(*) as records_processed FROM {{input}}"
+        }
+      }
+    },
+    {
+      "id": "output-1",
+      "type": "output",
+      "position": {
+        "x": 1300,
+        "y": 225
+      },
+      "data": {
+        "label": "Sync Complete",
+        "subtype": "db_write",
+        "config": {
+          "tableName": "orders_sync",
+          "filename": "sync_log.csv"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "source": "input-1",
+      "target": "transform-1"
+    },
+    {
+      "id": "e2",
+      "source": "input-2",
+      "target": "transform-1"
+    },
+    {
+      "id": "e3",
+      "source": "transform-1",
+      "target": "transform-2"
+    },
+    {
+      "id": "e4",
+      "source": "transform-2",
+      "target": "transform-3"
+    },
+    {
+      "id": "e5",
+      "source": "transform-3",
+      "target": "output-1"
+    }
+  ]
+}

@@ -1,0 +1,78 @@
+{
+  "name": "Window Functions Analysis",
+  "description": "Advanced analytics using SQL window functions for ranking and time-series analysis",
+  "nodes": [
+    {
+      "id": "input-1",
+      "type": "input",
+      "position": {"x": 100, "y": 100},
+      "data": {
+        "label": "Sales Transactions",
+        "subtype": "csv",
+        "config": {
+          "file_path": "examples/sales_transactions.csv",
+          "sample_data": [
+            {"transaction_id": "T001", "customer_id": "C001", "transaction_date": "2024-01-15", "amount": 150.50, "category": "Electronics"},
+            {"transaction_id": "T002", "customer_id": "C001", "transaction_date": "2024-01-16", "amount": 75.25, "category": "Books"},
+            {"transaction_id": "T003", "customer_id": "C002", "transaction_date": "2024-01-15", "amount": 200.00, "category": "Electronics"},
+            {"transaction_id": "T004", "customer_id": "C003", "transaction_date": "2024-01-17", "amount": 99.99, "category": "Clothing"}
+          ]
+        }
+      }
+    },
+    {
+      "id": "transform-1",
+      "type": "default",
+      "position": {"x": 400, "y": 100},
+      "data": {
+        "label": "Rank Transactions",
+        "subtype": "raw_sql",
+        "config": {
+          "sql": "SELECT \n  transaction_id,\n  customer_id,\n  transaction_date,\n  amount,\n  category,\n  RANK() OVER (PARTITION BY customer_id ORDER BY amount DESC) as rank_by_amount,\n  ROW_NUMBER() OVER (PARTITION BY customer_id ORDER BY transaction_date) as transaction_sequence\nFROM {{input}}"
+        }
+      }
+    },
+    {
+      "id": "transform-2",
+      "type": "default",
+      "position": {"x": 700, "y": 100},
+      "data": {
+        "label": "Moving Average",
+        "subtype": "raw_sql",
+        "config": {
+          "sql": "SELECT \n  transaction_id,\n  customer_id,\n  transaction_date,\n  amount,\n  AVG(amount) OVER (\n    PARTITION BY customer_id \n    ORDER BY transaction_date \n    ROWS BETWEEN 2 PRECEDING AND CURRENT ROW\n  ) as moving_avg_3_transactions\nFROM {{input}}\nORDER BY customer_id, transaction_date"
+        }
+      }
+    },
+    {
+      "id": "transform-3",
+      "type": "default",
+      "position": {"x": 1000, "y": 100},
+      "data": {
+        "label": "Lag/Lead Analysis",
+        "subtype": "raw_sql",
+        "config": {
+          "sql": "SELECT \n  transaction_id,\n  customer_id,\n  transaction_date,\n  amount,\n  LAG(amount, 1) OVER (PARTITION BY customer_id ORDER BY transaction_date) as prev_amount,\n  LEAD(amount, 1) OVER (PARTITION BY customer_id ORDER BY transaction_date) as next_amount,\n  amount - LAG(amount, 1) OVER (PARTITION BY customer_id ORDER BY transaction_date) as amount_change\nFROM {{input}}\nORDER BY customer_id, transaction_date"
+        }
+      }
+    },
+    {
+      "id": "output-1",
+      "type": "output",
+      "position": {"x": 1300, "y": 100},
+      "data": {
+        "label": "Save Analysis Results",
+        "subtype": "csv",
+        "config": {
+          "filename": "window_analysis_results.csv"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {"id": "e1", "source": "input-1", "target": "transform-1"},
+    {"id": "e2", "source": "transform-1", "target": "transform-2"},
+    {"id": "e3", "source": "transform-2", "target": "transform-3"},
+    {"id": "e4", "source": "transform-3", "target": "output-1"}
+  ]
+}

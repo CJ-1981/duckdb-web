@@ -1,0 +1,113 @@
+{
+  "name": "REST API with Pagination",
+  "description": "Fetch data from REST API with automatic pagination, rate limiting, and error handling",
+  "nodes": [
+    {
+      "id": "input-1",
+      "type": "input",
+      "position": {
+        "x": 100,
+        "y": 150
+      },
+      "data": {
+        "label": "API Endpoints List",
+        "subtype": "csv",
+        "config": {
+          "file_path": "examples/api_endpoints.csv",
+          "sample_data": [
+            {
+              "id": 1,
+              "value": "sample_value_1"
+            },
+            {
+              "id": 2,
+              "value": "sample_value_2"
+            },
+            {
+              "id": 3,
+              "value": "sample_value_3"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "batch-1",
+      "type": "default",
+      "position": {
+        "x": 400,
+        "y": 150
+      },
+      "data": {
+        "label": "Fetch with Pagination",
+        "subtype": "raw_sql",
+        "config": {
+          "url_template": "{base_url}?page={page}&per_page=100",
+          "method": "GET",
+          "concurrency": 5,
+          "timeout": 30,
+          "rate_limit": {
+            "requests_per_second": 10,
+            "burst": 5
+          },
+          "retry_policy": {
+            "max_retries": 3,
+            "base_delay": 1.0,
+            "max_delay": 10.0
+          },
+          "extract_mode": "json",
+          "data_path": "$.data",
+          "sql": "SELECT * FROM {{input}} LIMIT 100"
+        }
+      }
+    },
+    {
+      "id": "transform-1",
+      "type": "default",
+      "position": {
+        "x": 700,
+        "y": 150
+      },
+      "data": {
+        "label": "Normalize Fields",
+        "subtype": "select",
+        "config": {
+          "sql": "SELECT * FROM {{input}} LIMIT 100"
+        }
+      }
+    },
+    {
+      "id": "output-1",
+      "type": "output",
+      "position": {
+        "x": 1000,
+        "y": 150
+      },
+      "data": {
+        "label": "Save Results",
+        "subtype": "db_write",
+        "config": {
+          "tableName": "api_users",
+          "filename": "api_users.json"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "source": "input-1",
+      "target": "batch-1"
+    },
+    {
+      "id": "e2",
+      "source": "batch-1",
+      "target": "transform-1"
+    },
+    {
+      "id": "e3",
+      "source": "transform-1",
+      "target": "output-1"
+    }
+  ]
+}

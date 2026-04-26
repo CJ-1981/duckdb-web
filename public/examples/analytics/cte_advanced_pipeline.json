@@ -1,0 +1,84 @@
+{
+  "name": "CTE and Complex Queries",
+  "description": "Using Common Table Expressions for readable, modular SQL queries",
+  "nodes": [
+    {
+      "id": "input-1",
+      "type": "input",
+      "position": {"x": 100, "y": 100},
+      "data": {
+        "label": "Order Data",
+        "subtype": "csv",
+        "config": {
+          "file_path": "examples/orders_cte.csv",
+          "sample_data": [
+            {"order_id": "O001", "customer_id": "C001", "order_date": "2024-01-15", "amount": 150.00, "status": "completed"},
+            {"order_id": "O002", "customer_id": "C001", "order_date": "2024-01-20", "amount": 200.00, "status": "pending"},
+            {"order_id": "O003", "customer_id": "C002", "order_date": "2024-01-18", "amount": 75.50, "status": "completed"},
+            {"order_id": "O004", "customer_id": "C003", "order_date": "2024-01-22", "amount": 300.00, "status": "cancelled"}
+          ]
+        }
+      }
+    },
+    {
+      "id": "transform-1",
+      "type": "default",
+      "position": {"x": 400, "y": 100},
+      "data": {
+        "label": "Customer Totals CTE",
+        "subtype": "raw_sql",
+        "config": {
+          "sql": "WITH customer_totals AS (\n  SELECT \n    customer_id,\n    COUNT(*) as total_orders,\n    SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed_orders,\n    SUM(amount) as total_spent\n  FROM {{input}}\n  GROUP BY customer_id\n),\nhigh_value_customers AS (\n  SELECT \n    customer_id,\n    total_orders,\n    completed_orders,\n    total_spent\n  FROM customer_totals\n  WHERE total_spent > 100\n)\nSELECT \n  customer_id,\n  total_orders,\n  completed_orders,\n  total_spent,\n  ROUND(completed_orders * 100.0 / total_orders, 2) as completion_rate\nFROM high_value_customers\nORDER BY total_spent DESC"
+        }
+      }
+    },
+    {
+      "id": "transform-2",
+      "type": "default",
+      "position": {"x": 700, "y": 100},
+      "data": {
+        "label": "Segment Customers",
+        "subtype": "computed",
+        "config": {
+          "column": "customer_segment",
+          "expression": "CASE \n  WHEN total_spent > 500 THEN 'VIP'\n  WHEN total_spent > 200 THEN 'High Value'\n  WHEN total_spent > 100 THEN 'Regular'\n  ELSE 'Low Value'\nEND"
+        }
+      }
+    },
+    {
+      "id": "aggregate-1",
+      "type": "default",
+      "position": {"x": 1000, "y": 100},
+      "data": {
+        "label": "Segment Summary",
+        "subtype": "aggregate",
+        "config": {
+          "groupBy": "customer_segment",
+          "aggregations": [
+            {"column": "customer_id", "operation": "COUNT", "alias": "customer_count"},
+            {"column": "total_spent", "operation": "AVG", "alias": "avg_spent"},
+            {"column": "total_spent", "operation": "SUM", "alias": "total_revenue"}
+          ]
+        }
+      }
+    },
+    {
+      "id": "output-1",
+      "type": "output",
+      "position": {"x": 1300, "y": 100},
+      "data": {
+        "label": "Save Customer Segments",
+        "subtype": "csv",
+        "config": {
+          "filename": "customer_segments.csv"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {"id": "e1", "source": "input-1", "target": "transform-1"},
+    {"id": "e2", "source": "transform-1", "target": "transform-2"},
+    {"id": "e3", "source": "transform-2", "target": "aggregate-1"},
+    {"id": "e4", "source": "aggregate-1", "target": "output-1"}
+  ]
+}

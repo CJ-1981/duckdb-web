@@ -1,0 +1,149 @@
+{
+  "name": "Data Cleaning Pipeline",
+  "description": "Remove duplicates, handle missing values, standardize formats, and validate data quality",
+  "nodes": [
+    {
+      "id": "input-1",
+      "type": "input",
+      "position": {
+        "x": 100,
+        "y": 150
+      },
+      "data": {
+        "label": "Raw Data",
+        "subtype": "csv",
+        "config": {
+          "file_path": "examples/messy_data.csv",
+          "sample_data": [
+            {
+              "id": 1,
+              "value": "sample_value_1"
+            },
+            {
+              "id": 2,
+              "value": "sample_value_2"
+            },
+            {
+              "id": 3,
+              "value": "sample_value_3"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "transform-1",
+      "type": "default",
+      "position": {
+        "x": 400,
+        "y": 150
+      },
+      "data": {
+        "label": "Remove Duplicates",
+        "subtype": "raw_sql",
+        "config": {
+          "sql": "SELECT DISTINCT * FROM {{input}}"
+        }
+      }
+    },
+    {
+      "id": "transform-2",
+      "type": "default",
+      "position": {
+        "x": 700,
+        "y": 150
+      },
+      "data": {
+        "label": "Handle Missing Values",
+        "subtype": "raw_sql",
+        "config": {
+          "sql": "SELECT \n  id,\n  coalesce(email, 'unknown@example.com') as email,\n  coalesce(phone, 'N/A') as phone,\n  coalesce(amount, 0) as amount,\n  created_at\nFROM {{input}}"
+        }
+      }
+    },
+    {
+      "id": "transform-3",
+      "type": "default",
+      "position": {
+        "x": 1000,
+        "y": 150
+      },
+      "data": {
+        "label": "Standardize Formats",
+        "subtype": "raw_sql",
+        "config": {
+          "sql": "SELECT \n  id,\n  lower(trim(email)) as email,\n  regexp_replace(phone, '[^0-9]', '') as phone,\n  round(amount::DECIMAL(10,2), 2) as amount,\n  date_trunc('day', created_at::TIMESTAMP) as created_at\nFROM {{input}}"
+        }
+      }
+    },
+    {
+      "id": "filter-1",
+      "type": "default",
+      "position": {
+        "x": 1300,
+        "y": 150
+      },
+      "data": {
+        "label": "Validate Data",
+        "subtype": "filter",
+        "config": {
+          "conditions": [
+            {
+              "column": "email",
+              "operator": "contains",
+              "value": "@"
+            },
+            {
+              "column": "amount",
+              "operator": ">=",
+              "value": 0
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "output-1",
+      "type": "output",
+      "position": {
+        "x": 1600,
+        "y": 150
+      },
+      "data": {
+        "label": "Save Clean Data",
+        "subtype": "db_write",
+        "config": {
+          "tableName": "clean_customers",
+          "filename": "customers_clean.csv"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "source": "input-1",
+      "target": "transform-1"
+    },
+    {
+      "id": "e2",
+      "source": "transform-1",
+      "target": "transform-2"
+    },
+    {
+      "id": "e3",
+      "source": "transform-2",
+      "target": "transform-3"
+    },
+    {
+      "id": "e4",
+      "source": "transform-3",
+      "target": "filter-1"
+    },
+    {
+      "id": "e5",
+      "source": "filter-1",
+      "target": "output-1"
+    }
+  ]
+}

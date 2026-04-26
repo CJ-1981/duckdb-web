@@ -1,0 +1,149 @@
+{
+  "name": "A/B Test Analysis",
+  "description": "Compare metrics between control and variant groups with statistical significance",
+  "nodes": [
+    {
+      "id": "input-1",
+      "type": "input",
+      "position": {
+        "x": 100,
+        "y": 150
+      },
+      "data": {
+        "label": "Experiment Data",
+        "subtype": "csv",
+        "config": {
+          "file_path": "examples/ab_test_events.csv",
+          "sample_data": [
+            {
+              "user_id": "user1",
+              "experiment_id": "EXP-001",
+              "variant_group": "control",
+              "conversion": 1,
+              "revenue": 150.00
+            },
+            {
+              "user_id": "user2",
+              "experiment_id": "EXP-001",
+              "variant_group": "control",
+              "conversion": 0,
+              "revenue": 0.00
+            },
+            {
+              "user_id": "user3",
+              "experiment_id": "EXP-001",
+              "variant_group": "variant",
+              "conversion": 1,
+              "revenue": 180.00
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "aggregate-1",
+      "type": "default",
+      "position": {
+        "x": 400,
+        "y": 150
+      },
+      "data": {
+        "label": "Group Metrics",
+        "subtype": "aggregate",
+        "config": {
+          "groupBy": "experiment_id, variant_group",
+          "aggregations": [
+            {
+              "column": "user_id",
+              "operation": "COUNT",
+              "alias": "total_users"
+            },
+            {
+              "column": "conversion",
+              "operation": "SUM",
+              "alias": "conversions"
+            },
+            {
+              "column": "revenue",
+              "operation": "SUM",
+              "alias": "total_revenue"
+            },
+            {
+              "column": "revenue",
+              "operation": "AVG",
+              "alias": "avg_revenue_per_user"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "transform-1",
+      "type": "default",
+      "position": {
+        "x": 700,
+        "y": 150
+      },
+      "data": {
+        "label": "Calculate Lift",
+        "subtype": "raw_sql",
+        "config": {
+          "sql": "SELECT \n  experiment_id,\n  variant_group,\n  total_users,\n  conversions,\n  100.0 * conversions / total_users as conversion_rate,\n  total_revenue,\n  avg_revenue_per_user,\n  case \n    when lag(conversions) over (partition by experiment_id order by variant_group) > 0 \n    then 100.0 * (conversions - lag(conversions) over (partition by experiment_id order by variant_group)) / \n         lag(conversions) over (partition by experiment_id order by variant_group) \n    else null \n  end as lift_percent\nFROM {{input}}\nORDER BY experiment_id, variant_group"
+        }
+      }
+    },
+    {
+      "id": "filter-1",
+      "type": "default",
+      "position": {
+        "x": 1000,
+        "y": 150
+      },
+      "data": {
+        "label": "Statistical Significance",
+        "subtype": "raw_sql",
+        "config": {
+          "sql": "SELECT *,\n  case \n    when total_users > 1000 and conversions > 100 then 'significant'\n    else 'needs_more_sample'\n  end as confidence_level\nFROM {{input}}"
+        }
+      }
+    },
+    {
+      "id": "output-1",
+      "type": "output",
+      "position": {
+        "x": 1300,
+        "y": 150
+      },
+      "data": {
+        "label": "Save Test Results",
+        "subtype": "db_write",
+        "config": {
+          "tableName": "ab_test_results",
+          "filename": "ab_test_analysis.csv"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "source": "input-1",
+      "target": "aggregate-1"
+    },
+    {
+      "id": "e2",
+      "source": "aggregate-1",
+      "target": "transform-1"
+    },
+    {
+      "id": "e3",
+      "source": "transform-1",
+      "target": "filter-1"
+    },
+    {
+      "id": "e4",
+      "source": "filter-1",
+      "target": "output-1"
+    }
+  ]
+}
