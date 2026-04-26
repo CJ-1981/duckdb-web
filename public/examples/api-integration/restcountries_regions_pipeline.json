@@ -1,0 +1,64 @@
+{
+  "name": "REST Countries - Regional Analysis",
+  "description": "Query country data by region with population and area information",
+  "nodes": [
+    {
+      "id": "input-1",
+      "type": "input",
+      "position": {"x": 100, "y": 100},
+      "data": {
+        "label": "Regional Queries",
+        "subtype": "csv",
+        "config": {
+          "file_path": "examples/regions_list.csv",
+          "sample_data": [
+            {"region": "Europe", "fields": "name,population,area,capital,languages,currencies"},
+            {"region": "Asia", "fields": "name,population,area,capital,languages,currencies"},
+            {"region": "Americas", "fields": "name,population,area,capital,languages,currencies"}
+          ]
+        }
+      }
+    },
+    {
+      "id": "transform-1",
+      "type": "default",
+      "position": {"x": 400, "y": 100},
+      "data": {
+        "label": "Build Region API URLs",
+        "subtype": "raw_sql",
+        "config": {
+          "sql": "SELECT \n  region,\n  fields,\n  'https://restcountries.com/v3.1/region/' || LOWER(region) as region_url,\n  'https://restcountries.com/v3.1/region/' || LOWER(region) || '?fields=' || fields as detailed_url,\n  'GET' as method,\n  'application/json' as accept_header\nFROM {{input}}\nORDER BY region"
+        }
+      }
+    },
+    {
+      "id": "transform-2",
+      "type": "default",
+      "position": {"x": 700, "y": 100},
+      "data": {
+        "label": "Add Country-Level URLs",
+        "subtype": "raw_sql",
+        "config": {
+          "sql": "SELECT \n  region,\n  region_url,\n  detailed_url,\n  'https://restcountries.com/v3.1/all' as fallback_all_countries\nFROM {{input}}\nORDER BY region"
+        }
+      }
+    },
+    {
+      "id": "output-1",
+      "type": "output",
+      "position": {"x": 1000, "y": 100},
+      "data": {
+        "label": "Save Regional API Requests",
+        "subtype": "csv",
+        "config": {
+          "filename": "restcountries_regional_requests.csv"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {"id": "e1", "source": "input-1", "target": "transform-1"},
+    {"id": "e2", "source": "transform-1", "target": "transform-2"},
+    {"id": "e3", "source": "transform-2", "target": "output-1"}
+  ]
+}

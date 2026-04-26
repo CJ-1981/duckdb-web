@@ -1,0 +1,122 @@
+{
+  "name": "GraphQL Query with Nested Data",
+  "description": "Query GraphQL API and extract nested fields into tabular format",
+  "nodes": [
+    {
+      "id": "input-1",
+      "type": "input",
+      "position": {
+        "x": 100,
+        "y": 150
+      },
+      "data": {
+        "label": "Query List",
+        "subtype": "csv",
+        "config": {
+          "file_path": "examples/graphql_queries.csv",
+          "sample_data": [
+            {
+              "id": 1,
+              "value": "sample_value_1"
+            },
+            {
+              "id": 2,
+              "value": "sample_value_2"
+            },
+            {
+              "id": 3,
+              "value": "sample_value_3"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "batch-1",
+      "type": "default",
+      "position": {
+        "x": 400,
+        "y": 150
+      },
+      "data": {
+        "label": "Execute GraphQL",
+        "subtype": "raw_sql",
+        "config": {
+          "custom_headers": {
+            "Content-Type": "application/json"
+          },
+          "sql": "SELECT * FROM {{input}} LIMIT 100"
+        }
+      }
+    },
+    {
+      "id": "transform-1",
+      "type": "default",
+      "position": {
+        "x": 700,
+        "y": 150
+      },
+      "data": {
+        "label": "Extract Nested Fields",
+        "subtype": "raw_sql",
+        "config": {
+          "alias": "repository",
+          "sql": "SELECT * FROM {{input}}"
+        }
+      }
+    },
+    {
+      "id": "transform-2",
+      "type": "default",
+      "position": {
+        "x": 1000,
+        "y": 150
+      },
+      "data": {
+        "label": "Flatten Repository Data",
+        "subtype": "select",
+        "config": {
+          "columns": "repository.node.name, repository.node.stargazer_count, repository.node.language, repository.node.owner.login"
+        }
+      }
+    },
+    {
+      "id": "output-1",
+      "type": "output",
+      "position": {
+        "x": 1300,
+        "y": 150
+      },
+      "data": {
+        "label": "Save Extracted Data",
+        "subtype": "db_write",
+        "config": {
+          "tableName": "github_repositories",
+          "filename": "repositories.csv"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "source": "input-1",
+      "target": "batch-1"
+    },
+    {
+      "id": "e2",
+      "source": "batch-1",
+      "target": "transform-1"
+    },
+    {
+      "id": "e3",
+      "source": "transform-1",
+      "target": "transform-2"
+    },
+    {
+      "id": "e4",
+      "source": "transform-2",
+      "target": "output-1"
+    }
+  ]
+}

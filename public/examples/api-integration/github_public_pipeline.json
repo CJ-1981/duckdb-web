@@ -1,0 +1,66 @@
+{
+  "name": "GitHub Public API",
+  "description": "Query public GitHub repositories and user information",
+  "nodes": [
+    {
+      "id": "input-1",
+      "type": "input",
+      "position": {"x": 100, "y": 100},
+      "data": {
+        "label": "GitHub Users",
+        "subtype": "csv",
+        "config": {
+          "file_path": "examples/github_users.csv",
+          "sample_data": [
+            {"username": "torvalds"},
+            {"username": "gaearon"},
+            {"username": "octocat"},
+            {"username": "mojombo"}
+          ]
+        }
+      }
+    },
+    {
+      "id": "transform-1",
+      "type": "default",
+      "position": {"x": 400, "y": 100},
+      "data": {
+        "label": "Build User API URLs",
+        "subtype": "raw_sql",
+        "config": {
+          "sql": "SELECT \n  username,\n  'https://api.github.com/users/' || username as user_api_url,\n  'https://api.github.com/users/' || username || '/repos' as repos_api_url,\n  'GET' as method,\n  'application/vnd.github.v3+json' as accept_header\nFROM {{input}}\nORDER BY username\nLIMIT 10"
+        }
+      }
+    },
+    {
+      "id": "transform-2",
+      "type": "default",
+      "position": {"x": 700, "y": 100},
+      "data": {
+        "label": "Add Rate Limit Info",
+        "subtype": "computed",
+        "config": {
+          "column": "rate_limit_docs",
+          "expression": "'https://docs.github.com/en/rest/overview/resources-in-the-rest-api#rate-limiting'"
+        }
+      }
+    },
+    {
+      "id": "output-1",
+      "type": "output",
+      "position": {"x": 1000, "y": 100},
+      "data": {
+        "label": "Save GitHub API Requests",
+        "subtype": "csv",
+        "config": {
+          "filename": "github_api_requests.csv"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {"id": "e1", "source": "input-1", "target": "transform-1"},
+    {"id": "e2", "source": "transform-1", "target": "transform-2"},
+    {"id": "e3", "source": "transform-2", "target": "output-1"}
+  ]
+}

@@ -1,0 +1,66 @@
+{
+  "name": "IP Geolocation - Batch Processing",
+  "description": "Process multiple IP addresses to get geolocation, ISP, and timezone information",
+  "nodes": [
+    {
+      "id": "input-1",
+      "type": "input",
+      "position": {"x": 100, "y": 100},
+      "data": {
+        "label": "IP Address List",
+        "subtype": "csv",
+        "config": {
+          "file_path": "examples/ip_batch.csv",
+          "sample_data": [
+            {"ip": "8.8.8.8", "type": "DNS Server"},
+            {"ip": "1.1.1.1", "type": "DNS Server"},
+            {"ip": "208.67.222.222", "type": "DNS Server"},
+            {"ip": "1.0.0.1", "type": "Local Network"},
+            {"ip": "216.58.200.1", "type": "Public IP"}
+          ]
+        }
+      }
+    },
+    {
+      "id": "transform-1",
+      "type": "default",
+      "position": {"x": 400, "y": 100},
+      "data": {
+        "label": "Build Geolocation URLs",
+        "subtype": "raw_sql",
+        "config": {
+          "sql": "SELECT \n  ip,\n  type,\n  'https://ipapi.co/' || ip as ip_url,\n  'https://ipapi.co/' || ip || '/json/' as json_url,\n  'https://ipapi.co/json/' || ip as fallback_url,\n  'GET' as method,\n  'application/json' as accept_type\nFROM {{input}}\nORDER BY type, ip"
+        }
+      }
+    },
+    {
+      "id": "transform-2",
+      "type": "default",
+      "position": {"x": 700, "y": 100},
+      "data": {
+        "label": "Extract Data Fields",
+        "subtype": "raw_sql",
+        "config": {
+          "sql": "SELECT \n  ip,\n  type,\n  ip_url,\n  'ip,version,country,region,city,postal,latitude,longitude,timezone,org' as requested_fields,\n  'false' as private_query\nFROM {{input}}\nORDER BY ip"
+        }
+      }
+    },
+    {
+      "id": "output-1",
+      "type": "output",
+      "position": {"x": 1000, "y": 100},
+      "data": {
+        "label": "Save IP Geolocation Requests",
+        "subtype": "csv",
+        "config": {
+          "filename": "ip_geolocation_batch_requests.csv"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {"id": "e1", "source": "input-1", "target": "transform-1"},
+    {"id": "e2", "source": "transform-1", "target": "transform-2"},
+    {"id": "e3", "source": "transform-2", "target": "output-1"}
+  ]
+}

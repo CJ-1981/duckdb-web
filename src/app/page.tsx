@@ -328,6 +328,51 @@ function Dashboard() {
     }
 
     try {
+      // Check if this is a sample workflow
+      const samplePipeline = allSamplePipelines.find((s: any) => s.name === name);
+      if (samplePipeline) {
+        // Load sample from public/examples directory
+        const response = await fetch(samplePipeline.file);
+        if (!response.ok) {
+          throw new Error('Failed to load sample pipeline');
+        }
+        const sampleData = await response.json();
+
+        const sanitizedNodes = (sampleData.nodes || []).map((n: any) => {
+          const { className, ...rest } = n;
+          return rest;
+        });
+        setNodes(sanitizedNodes);
+        setEdges(sampleData.edges || []);
+        setCurrentPipelineName(name);
+        setIsLoadModalOpen(false);
+        setExecutionMessage({ title: "Sample Pipeline loaded!", detail: `Loaded '${name}' sample workflow with ${sanitizedNodes.length} nodes.`, type: 'success' });
+        setExecutionSuccess(true);
+        setTimeout(() => { setExecutionSuccess(false); setExecutionMessage(null); }, 4000);
+        return;
+      }
+
+      // Check if this is a sample workflow loaded from public/examples (legacy check)
+      const sampleData = (window as any).sampleWorkflowData;
+      if (sampleData) {
+        // Clear the stored sample data after using it
+        delete (window as any).sampleWorkflowData;
+
+        const sanitizedNodes = (sampleData.nodes || []).map((n: any) => {
+          const { className, ...rest } = n;
+          return rest;
+        });
+        setNodes(sanitizedNodes);
+        setEdges(sampleData.edges || []);
+        setCurrentPipelineName(name);
+        setIsLoadModalOpen(false);
+        setExecutionMessage({ title: "Sample Pipeline loaded!", detail: `Loaded '${name}' sample workflow with ${sanitizedNodes.length} nodes.`, type: 'success' });
+        setExecutionSuccess(true);
+        setTimeout(() => { setExecutionSuccess(false); setExecutionMessage(null); }, 4000);
+        return;
+      }
+
+      // Otherwise load from backend
       const data = await loadWorkflowGraph(name);
       const sanitizedNodes = (data.nodes || []).map((n: any) => {
         const { className, ...rest } = n;
@@ -346,6 +391,92 @@ function Dashboard() {
       console.error(e);
     }
   };
+
+  const [loadModalTab, setLoadModalTab] = useState<'workflows' | 'samples'>('workflows');
+  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set(['⭐ Popular Samples']));
+
+  const toggleCategory = (category: string) => {
+    setExpandedCategories(prev => {
+      const next = new Set(prev);
+      if (next.has(category)) {
+        next.delete(category);
+      } else {
+        next.add(category);
+      }
+      return next;
+    });
+  };
+
+  const SAMPLE_CATEGORIES = {
+    '📥 Data Ingestion': [
+      { name: "CSV Auto-Detection Import", file: "/examples/ingestion/csv_auto_detect_pipeline.json", description: "Intelligent CSV import with schema detection and type inference" },
+      { name: "PostgreSQL Bulk Export", file: "/examples/ingestion/postgres_export_pipeline.json", description: "Export PostgreSQL table to DuckDB with batch processing" },
+      { name: "REST API with Pagination", file: "/examples/ingestion/api_pagination_pipeline.json", description: "Fetch data from REST API with automatic pagination and rate limiting" },
+      { name: "Kafka Stream Consumer", file: "/examples/ingestion/kafka_stream_pipeline.json", description: "Consume Kafka stream with windowing and real-time aggregation" }
+    ],
+    '🔄 Data Transformation': [
+      { name: "Data Cleaning Pipeline", file: "/examples/transformation/data_cleaning_pipeline.json", description: "Remove duplicates, handle missing values, standardize formats" },
+      { name: "PIVOT Table Generator", file: "/examples/transformation/pivot_table_pipeline.json", description: "Transform long-format data into wide pivot tables" },
+      { name: "Schema Evolution Migration", file: "/examples/transformation/schema_evolution_pipeline.json", description: "Handle schema changes with backward compatibility" }
+    ],
+    '🎯 Data Enrichment': [
+      { name: "Multi-Source Join Enrichment", file: "/examples/enrichment/multi_source_join_pipeline.json", description: "Join data from database, API, and files" },
+      { name: "Geocoding Enrichment", file: "/examples/enrichment/geocoding_enrichment_pipeline.json", description: "Add location-based data using geocoding API" },
+      { name: "ML Model Inference", file: "/examples/enrichment/ml_inference_pipeline.json", description: "Apply machine learning model predictions to batch data" }
+    ],
+    '✅ Data Quality': [
+      { name: "Data Validation Rules", file: "/examples/quality/data_validation_pipeline.json", description: "Validate data against business rules" },
+      { name: "Data Profiling & Statistics", file: "/examples/quality/data_profiling_pipeline.json", description: "Generate profile statistics and detect anomalies" }
+    ],
+    '📊 Analytics & Reporting': [
+      { name: "Time-Series Rollup", file: "/examples/analytics/timeseries_rollup_pipeline.json", description: "Aggregate time-series data into multiple granularities" },
+      { name: "Funnel Analysis", file: "/examples/analytics/funnel_analysis_pipeline.json", description: "Track conversion through multi-step funnel" },
+      { name: "A/B Test Analysis", file: "/examples/analytics/ab_test_analysis_pipeline.json", description: "Compare metrics between control and variant groups" }
+    ],
+    '⚡ Batch Processing': [
+      { name: "Slowly Changing Dimension Type 2", file: "/examples/batch/scd_type2_pipeline.json", description: "Track historical changes with effective dates" },
+      { name: "Incremental Data Sync", file: "/examples/batch/incremental_sync_pipeline.json", description: "Sync only changed records using CDC timestamps" },
+      { name: "Large Dataset Parallel Processing", file: "/examples/batch/parallel_processing_pipeline.json", description: "Process large dataset in parallel chunks" }
+    ],
+    '🔗 API Integration': [
+      { name: "JSONPlaceholder - Complete User Data", file: "/examples/api-integration/jsonplaceholder_full_pipeline.json", description: "Fetch user profiles, posts, albums, todos, and comments from JSONPlaceholder API" },
+      { name: "RandomUser - Profile Generation", file: "/examples/api-integration/random_user_profiles_pipeline.json", description: "Generate random user profiles with demographics and location data" },
+      { name: "REST Countries - Regional Analysis", file: "/examples/api-integration/restcountries_regions_pipeline.json", description: "Fetch country data by region with field filtering capabilities" },
+      { name: "CoinGecko - Portfolio Tracker", file: "/examples/api-integration/coingecko_portfolio_pipeline.json", description: "Track cryptocurrency portfolio values with price API integration" },
+      { name: "IP API - Batch Geolocation", file: "/examples/api-integration/ip_geolocation_batch_pipeline.json", description: "Process multiple IP addresses for geolocation and ISP information" },
+      { name: "Cat Facts - Collection Builder", file: "/examples/api-integration/cat_facts_collection_pipeline.json", description: "Build random cat facts collection with dynamic parameters" },
+      { name: "GitHub - Repository Analysis", file: "/examples/api-integration/github_repositories_pipeline.json", description: "Analyze GitHub repositories with rate limit awareness" },
+      { name: "PokeAPI - Pokemon Evolution", file: "/examples/api-integration/pokeapi_pokemon_evolution_pipeline.json", description: "Fetch Pokemon evolution chains with multi-endpoint data" },
+      { name: "OAuth2 Authenticated API", file: "/examples/api-integration/oauth2_api_pipeline.json", description: "Connect to OAuth2-protected API with token refresh" },
+      { name: "GraphQL Query", file: "/examples/api-integration/graphql_query_pipeline.json", description: "Query GraphQL API and extract nested fields" }
+    ],
+    '💾 Data Export': [
+      { name: "Multi-Format Export", file: "/examples/export/multi_format_export_pipeline.json", description: "Export dataset to CSV, JSON, Parquet, Excel" },
+      { name: "Database Bulk Load", file: "/examples/export/database_bulk_load_pipeline.json", description: "Bulk load data into target database" }
+    ],
+    '🔔 Notifications': [
+      { name: "Pipeline Failure Alerting", file: "/examples/notifications/pipeline_failure_alerting_pipeline.json", description: "Monitor execution and send alerts on failure" }
+    ],
+    '🎮 Orchestration': [
+      { name: "Conditional Branching", file: "/examples/orchestration/conditional_branching_pipeline.json", description: "Route data processing based on quality checks" },
+      { name: "Dynamic Parallel Tasks", file: "/examples/orchestration/dynamic_parallel_tasks_pipeline.json", description: "Generate tasks dynamically and execute in parallel" }
+    ],
+    '🔄 Data Comparison': [
+      { name: "Data Reconciliation", file: "/examples/comparison/data_reconciliation_pipeline.json", description: "Compare two data sources and identify discrepancies" },
+      { name: "CDC Diff Detection", file: "/examples/comparison/cdc_diff_pipeline.json", description: "Detect and capture changed records between snapshots" }
+    ],
+    '📋 Flattening': [
+      { name: "Nested JSON to Table", file: "/examples/flattening/nested_json_flatten_pipeline.json", description: "Flatten complex nested JSON into tabular format" },
+      { name: "XML Hierarchical Flattening", file: "/examples/flattening/xml_hierarchical_flatten_pipeline.json", description: "Flatten XML hierarchical structures" }
+    ],
+    '⭐ Popular Samples': [
+      { name: "User Profile Enrichment", file: "/examples/sample_user_enrichment_pipeline.json", description: "Fetch user profiles from JSONPlaceholder API" },
+      { name: "E-Commerce Product Scraper", file: "/examples/ecommerce_product_pipeline.json", description: "Multi-variable product scraping with filtering" },
+      { name: "Social Media Analytics", file: "/examples/social_media_pipeline.json", description: "Multi-variable URL substitution and analytics" }
+    ]
+  };
+
+  const allSamplePipelines = Object.values(SAMPLE_CATEGORIES).flat();
 
   const openLoadModal = async () => {
     try {
@@ -3162,7 +3293,7 @@ Please fix the SQL. Return ONLY the raw SQL query.`;
       {/* Load Modal */}
       {isLoadModalOpen && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-lg border border-[#DFE1E6] animate-in fade-in zoom-in duration-200 flex flex-col max-h-[calc(100vh-2rem)]">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-3xl border border-[#DFE1E6] animate-in fade-in zoom-in duration-200 flex flex-col max-h-[calc(100vh-2rem)]">
             <div className="p-6 pb-2 flex-shrink-0 flex items-center justify-between">
               <h3 className="text-lg font-bold text-[#172B4D] font-inter">Open Pipeline</h3>
               <div className="flex items-center gap-2">
@@ -3182,68 +3313,138 @@ Please fix the SQL. Return ONLY the raw SQL query.`;
                 <p className="text-sm text-red-600">{importError}</p>
               </div>
             )}
-            {availableWorkflows.length === 0 ? (
-              <div className="px-6 pb-6 flex-shrink-0">
-                <p className="text-sm text-[#6B778C]">No saved pipelines found on server.</p>
+
+            {/* Tabs */}
+            <div className="px-6 pt-4 flex-shrink-0">
+              <div className="flex gap-2 border-b border-[#DFE1E6]">
+                <button
+                  onClick={() => setLoadModalTab('workflows')}
+                  className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 ${loadModalTab === 'workflows' ? 'border-[#0052CC] text-[#0052CC]' : 'border-transparent text-[#6B778C] hover:text-[#172B4D]'}`}
+                >
+                  Your Workflows
+                </button>
+                <button
+                  onClick={() => setLoadModalTab('samples')}
+                  className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 ${loadModalTab === 'samples' ? 'border-[#0052CC] text-[#0052CC]' : 'border-transparent text-[#6B778C] hover:text-[#172B4D]'}`}
+                >
+                  Sample Pipelines
+                </button>
               </div>
-            ) : (
-              <div className="px-6 pb-4 flex-1 overflow-y-auto min-h-0">
-                <div className="space-y-2 pr-1">
-                  {availableWorkflows.map(name => (
-                    <div key={name} className="flex items-center justify-between space-x-3">
-                      {renamingWorkflow === name ? (
-                        <div className="flex-1 flex items-center gap-2">
-                          <input
-                            autoFocus
-                            value={renameValue}
-                            onChange={(e) => setRenameValue(e.target.value)}
-                            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); confirmRenameWorkflow(name); } if (e.key === 'Escape') { cancelRename(); } }}
-                            className="flex-1 px-3 py-2 border border-[#DFE1E6] rounded-md text-sm"
-                          />
-                          <button onClick={(e) => { e.stopPropagation(); confirmRenameWorkflow(name); }} disabled={renameLoading} className="px-3 py-2 bg-[#0052CC] text-white rounded-md text-sm">{renameLoading ? '...' : 'OK'}</button>
-                          <button onClick={(e) => { e.stopPropagation(); cancelRename(); }} className="px-3 py-2 bg-white border border-[#DFE1E6] rounded-md text-sm">Cancel</button>
+            </div>
+
+            <div className="px-6 pb-4 flex-1 overflow-y-auto min-h-0">
+              {loadModalTab === 'workflows' ? (
+                /* Workflows Tab Content */
+                availableWorkflows.length === 0 ? (
+                  <div className="py-12 text-center">
+                    <p className="text-sm text-[#6B778C]">No saved workflows found on server.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2 mt-4">
+                    {availableWorkflows.map(name => (
+                      <div key={name} className="flex items-center justify-between space-x-3">
+                        {renamingWorkflow === name ? (
+                          <div className="flex-1 flex items-center gap-2">
+                            <input
+                              autoFocus
+                              value={renameValue}
+                              onChange={(e) => setRenameValue(e.target.value)}
+                              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); confirmRenameWorkflow(name); } if (e.key === 'Escape') { cancelRename(); } }}
+                              className="flex-1 px-3 py-2 border border-[#DFE1E6] rounded-md text-sm"
+                            />
+                            <button onClick={(e) => { e.stopPropagation(); confirmRenameWorkflow(name); }} disabled={renameLoading} className="px-3 py-2 bg-[#0052CC] text-white rounded-md text-sm">{renameLoading ? '...' : 'OK'}</button>
+                            <button onClick={(e) => { e.stopPropagation(); cancelRename(); }} className="px-3 py-2 bg-white border border-[#DFE1E6] rounded-md text-sm">Cancel</button>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => handleLoadWorkflow(name)}
+                            className="flex-1 text-left px-4 py-3 text-sm text-[#172B4D] hover:bg-[#F4F5F7] border border-[#DFE1E6] rounded-md transition-all flex items-center group hover:border-[#0052CC]"
+                          >
+                            <span className="font-medium">{name}</span>
+                          </button>
+                        )}
+
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={async (e) => { e.stopPropagation(); try { const data = await loadWorkflowGraph(name); const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `${name}.json`; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url); } catch (err) { setExecutionMessage({ title: 'Export failed', detail: (err as any).message || 'Could not export workflow', type: 'error' }); setExecutionSuccess(true); } }}
+                            className="px-3 py-2 bg-[#EDEFFF] text-[#0052CC] rounded-md text-sm border border-[#DFE1E6]"
+                            title="Download JSON"
+                          >
+                            <FileDown size={14} />
+                          </button>
+
+                          <button
+                            onClick={(e) => { e.stopPropagation(); startRenameWorkflow(name); }}
+                            className="px-3 py-2 bg-white border border-[#DFE1E6] rounded-md text-sm"
+                            title="Rename"
+                          >
+                            <PenLine size={14} />
+                          </button>
+
+                          <button
+                            onClick={(e) => { e.stopPropagation(); handleDeleteWorkflow(name); }}
+                            disabled={deleteLoading === name}
+                            className="px-3 py-2 bg-white border border-[#DFE1E2] text-red-600 rounded-md text-sm"
+                            title="Delete"
+                          >
+                            {deleteLoading === name ? '...' : <Trash2 size={14} />}
+                          </button>
                         </div>
-                      ) : (
-                        <button
-                          onClick={() => handleLoadWorkflow(name)}
-                          className="flex-1 text-left px-4 py-3 text-sm text-[#172B4D] hover:bg-[#F4F5F7] border border-[#DFE1E6] rounded-md transition-all flex items-center group hover:border-[#0052CC]"
-                        >
-                          <span className="font-medium">{name}</span>
-                        </button>
-                      )}
-
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={async (e) => { e.stopPropagation(); try { const data = await loadWorkflowGraph(name); const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `${name}.json`; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url); } catch (err) { setExecutionMessage({ title: 'Export failed', detail: (err as any).message || 'Could not export workflow', type: 'error' }); setExecutionSuccess(true); } }}
-                          className="px-3 py-2 bg-[#EDEFFF] text-[#0052CC] rounded-md text-sm border border-[#DFE1E6]"
-                          title="Download JSON"
-                        >
-                          <FileDown size={14} />
-                        </button>
-
-                        <button
-                          onClick={(e) => { e.stopPropagation(); startRenameWorkflow(name); }}
-                          className="px-3 py-2 bg-white border border-[#DFE1E6] rounded-md text-sm"
-                          title="Rename"
-                        >
-                          <PenLine size={14} />
-                        </button>
-
-                        <button
-                          onClick={(e) => { e.stopPropagation(); handleDeleteWorkflow(name); }}
-                          disabled={deleteLoading === name}
-                          className="px-3 py-2 bg-white border border-[#FEE2E2] text-red-600 rounded-md text-sm"
-                          title="Delete"
-                        >
-                          {deleteLoading === name ? '...' : <Trash2 size={14} />}
-                        </button>
                       </div>
+                    ))}
+                  </div>
+                )
+              ) : (
+                /* Samples Tab Content */
+                <div className="space-y-4 mt-4">
+                  {Object.entries(SAMPLE_CATEGORIES).map(([category, samples]) => (
+                    <div key={category} className="border border-[#DFE1E6] rounded-md overflow-hidden">
+                      <button
+                        onClick={() => toggleCategory(category)}
+                        className="w-full px-4 py-3 bg-[#FAFBFC] flex items-center justify-between hover:bg-[#F4F5F7] transition-colors"
+                      >
+                        <span className="text-sm font-semibold text-[#172B4D]">{category}</span>
+                        <span className="text-xs text-[#6B778C] bg-white px-2 py-1 rounded-full border border-[#DFE1E6]">
+                          {samples.length} samples
+                        </span>
+                      </button>
+                      {expandedCategories.has(category) && (
+                        <div className="p-2 space-y-2 bg-white">
+                          {samples.map((sample: any) => (
+                            <div key={sample.name} className="flex items-center justify-between space-x-3">
+                              <button
+                                onClick={() => handleLoadWorkflow(sample.name)}
+                                className="flex-1 text-left px-4 py-3 text-sm text-[#172B4D] hover:bg-[#F4F5F7] border border-[#DFE1E6] rounded-md transition-all flex flex-col group hover:border-[#0052CC]"
+                              >
+                                <div className="flex items-center gap-2">
+                                  <span className="font-medium">{sample.name}</span>
+                                  <span className="px-2 py-0.5 bg-[#EDEFFF] text-[#0052CC] text-[10px] font-bold rounded-full uppercase">Sample</span>
+                                </div>
+                                <span className="text-xs text-[#6B778C] mt-1">{sample.description}</span>
+                              </button>
+                              <button
+                                onClick={async (e) => { e.stopPropagation(); try { const response = await fetch(sample.file); const data = await response.json(); const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `${sample.name}.json`; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url); } catch (err) { setExecutionMessage({ title: 'Export failed', detail: (err as any).message || 'Could not export sample', type: 'error' }); setExecutionSuccess(true); } }}
+                                className="px-3 py-2 bg-[#EDEFFF] text-[#0052CC] rounded-md text-sm border border-[#DFE1E6]"
+                                title="Download JSON"
+                              >
+                                <FileDown size={14} />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
-              </div>
-            )}
-            <div className="p-6 pt-4 border-t border-[#DFE1E6] flex justify-end flex-shrink-0">
+              )}
+            </div>
+            <div className="p-6 pt-4 border-t border-[#DFE1E6] flex justify-between items-center flex-shrink-0">
+              <span className="text-xs text-[#6B778C]">
+                {loadModalTab === 'workflows'
+                  ? `${availableWorkflows.length} workflows`
+                  : `${allSamplePipelines.length} sample pipelines in ${Object.keys(SAMPLE_CATEGORIES).length} categories`
+                }
+              </span>
               <button
                 onClick={() => setIsLoadModalOpen(false)}
                 className="px-4 py-2 text-sm text-[#6B778C] hover:bg-gray-100 rounded-md transition-colors"

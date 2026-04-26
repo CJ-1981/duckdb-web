@@ -1,0 +1,64 @@
+{
+  "name": "Cat Facts - Collection Builder",
+  "description": "Build a collection of random cat facts with different lengths and categories",
+  "nodes": [
+    {
+      "id": "input-1",
+      "type": "input",
+      "position": {"x": 100, "y": 100},
+      "data": {
+        "label": "Fact Requests",
+        "subtype": "csv",
+        "config": {
+          "file_path": "examples/cat_fact_requests.csv",
+          "sample_data": [
+            {"request_id": 1, "max_length": 100, "category": "general"},
+            {"request_id": 2, "max_length": 50, "category": "general"},
+            {"request_id": 3, "max_length": 200, "category": "general"}
+          ]
+        }
+      }
+    },
+    {
+      "id": "transform-1",
+      "type": "default",
+      "position": {"x": 400, "y": 100},
+      "data": {
+        "label": "Build Cat Fact URLs",
+        "subtype": "raw_sql",
+        "config": {
+          "sql": "SELECT \n  request_id,\n  max_length,\n  category,\n  'https://catfact.ninja/fact?max_length=' || max_length as fact_url,\n  'GET' as method,\n  'application/json' as accept_type\nFROM {{input}}\nORDER BY request_id"
+        }
+      }
+    },
+    {
+      "id": "transform-2",
+      "type": "default",
+      "position": {"x": 700, "y": 100},
+      "data": {
+        "label": "Add Alternative Sources",
+        "subtype": "raw_sql",
+        "config": {
+          "sql": "SELECT \n  request_id,\n  max_length,\n  category,\n  fact_url,\n  'https://meowfacts.herokuapp.com/v1/meowfacts | https://cat-fact-api.herokuapp.com/facts' as alternative_apis\nFROM {{input}}\nORDER BY request_id"
+        }
+      }
+    },
+    {
+      "id": "output-1",
+      "type": "output",
+      "position": {"x": 1000, "y": 100},
+      "data": {
+        "label": "Save Cat Fact Collection Requests",
+        "subtype": "csv",
+        "config": {
+          "filename": "cat_facts_collection_requests.csv"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {"id": "e1", "source": "input-1", "target": "transform-1"},
+    {"id": "e2", "source": "transform-1", "target": "transform-2"},
+    {"id": "e3", "source": "transform-2", "target": "output-1"}
+  ]
+}

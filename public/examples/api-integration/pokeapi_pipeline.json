@@ -1,0 +1,68 @@
+{
+  "name": "PokeAPI Pokemon Data",
+  "description": "Query Pokemon data from public API (https://pokeapi.co)",
+  "nodes": [
+    {
+      "id": "input-1",
+      "type": "input",
+      "position": {"x": 100, "y": 100},
+      "data": {
+        "label": "Pokemon List",
+        "subtype": "csv",
+        "config": {
+          "file_path": "examples/pokemon_list.csv",
+          "sample_data": [
+            {"pokemon_id": 1, "name": "bulbasaur"},
+            {"pokemon_id": 4, "name": "charmander"},
+            {"pokemon_id": 7, "name": "squirtle"},
+            {"pokemon_id": 25, "name": "pikachu"},
+            {"pokemon_id": 150, "name": "mewtwo"},
+            {"pokemon_id": 151, "name": "mew"}
+          ]
+        }
+      }
+    },
+    {
+      "id": "transform-1",
+      "type": "default",
+      "position": {"x": 400, "y": 100},
+      "data": {
+        "label": "Build PokeAPI URLs",
+        "subtype": "raw_sql",
+        "config": {
+          "sql": "SELECT \n  pokemon_id,\n  name,\n  'https://pokeapi.co/api/v2/pokemon/' || pokemon_id as pokemon_api_url,\n  'https://pokeapi.co/api/v2/pokemon/' || name as pokemon_by_name_url,\n  'https://pokeapi.co/api/v2/pokemon-species/' || pokemon_id as species_url,\n  'GET' as method\nFROM {{input}}\nORDER BY pokemon_id"
+        }
+      }
+    },
+    {
+      "id": "transform-2",
+      "type": "default",
+      "position": {"x": 700, "y": 100},
+      "data": {
+        "label": "Add Documentation Links",
+        "subtype": "computed",
+        "config": {
+          "column": "api_docs",
+          "expression": "'https://pokeapi.co/docs/v2.html'"
+        }
+      }
+    },
+    {
+      "id": "output-1",
+      "type": "output",
+      "position": {"x": 1000, "y": 100},
+      "data": {
+        "label": "Save Pokemon API Requests",
+        "subtype": "csv",
+        "config": {
+          "filename": "pokeapi_requests.csv"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {"id": "e1", "source": "input-1", "target": "transform-1"},
+    {"id": "e2", "source": "transform-1", "target": "transform-2"},
+    {"id": "e3", "source": "transform-2", "target": "output-1"}
+  ]
+}

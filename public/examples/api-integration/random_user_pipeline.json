@@ -1,0 +1,51 @@
+{
+  "name": "Random User Generator",
+  "description": "Generate random user profiles using public API (https://randomuser.me)",
+  "nodes": [
+    {
+      "id": "input-1",
+      "type": "input",
+      "position": {"x": 100, "y": 100},
+      "data": {
+        "label": "User Count",
+        "subtype": "csv",
+        "config": {
+          "file_path": "examples/user_count.csv",
+          "sample_data": [
+            {"count": 5},
+            {"count": 10},
+            {"count": 20}
+          ]
+        }
+      }
+    },
+    {
+      "id": "transform-1",
+      "type": "default",
+      "position": {"x": 400, "y": 100},
+      "data": {
+        "label": "Build API URLs",
+        "subtype": "raw_sql",
+        "config": {
+          "sql": "SELECT \n  count,\n  'https://randomuser.me/api/?results=' || count as api_url,\n  'GET' as method\nFROM {{input}}\nORDER BY count\nLIMIT 1"
+        }
+      }
+    },
+    {
+      "id": "output-1",
+      "type": "output",
+      "position": {"x": 700, "y": 100},
+      "data": {
+        "label": "Save API Request",
+        "subtype": "csv",
+        "config": {
+          "filename": "random_user_api_request.csv"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {"id": "e1", "source": "input-1", "target": "transform-1"},
+    {"id": "e2", "source": "transform-1", "target": "output-1"}
+  ]
+}

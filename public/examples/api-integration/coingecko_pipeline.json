@@ -1,0 +1,66 @@
+{
+  "name": "CoinGecko Crypto Prices",
+  "description": "Query cryptocurrency prices from public API (https://coingecko.com)",
+  "nodes": [
+    {
+      "id": "input-1",
+      "type": "input",
+      "position": {"x": 100, "y": 100},
+      "data": {
+        "label": "Crypto Currencies",
+        "subtype": "csv",
+        "config": {
+          "file_path": "examples/crypto_list.csv",
+          "sample_data": [
+            {"symbol": "bitcoin", "name": "Bitcoin"},
+            {"symbol": "ethereum", "name": "Ethereum"},
+            {"symbol": "solana", "name": "Solana"},
+            {"symbol": "cardano", "name": "Cardano"}
+          ]
+        }
+      }
+    },
+    {
+      "id": "transform-1",
+      "type": "default",
+      "position": {"x": 400, "y": 100},
+      "data": {
+        "label": "Build Price API URLs",
+        "subtype": "raw_sql",
+        "config": {
+          "sql": "SELECT \n  symbol,\n  name,\n  'https://api.coingecko.com/api/v3/simple/price?ids=' || symbol || '&vs_currencies=usd' as api_url,\n  'GET' as method,\n  'usd' as target_currency\nFROM {{input}}\nORDER BY symbol"
+        }
+      }
+    },
+    {
+      "id": "transform-2",
+      "type": "default",
+      "position": {"x": 700, "y": 100},
+      "data": {
+        "label": "Add API Documentation",
+        "subtype": "computed",
+        "config": {
+          "column": "api_documentation",
+          "expression": "'https://www.coingecko.com/en/api/documentation'"
+        }
+      }
+    },
+    {
+      "id": "output-1",
+      "type": "output",
+      "position": {"x": 1000, "y": 100},
+      "data": {
+        "label": "Save Crypto API Requests",
+        "subtype": "csv",
+        "config": {
+          "filename": "coingecko_price_requests.csv"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {"id": "e1", "source": "input-1", "target": "transform-1"},
+    {"id": "e2", "source": "transform-1", "target": "transform-2"},
+    {"id": "e3", "source": "transform-2", "target": "output-1"}
+  ]
+}

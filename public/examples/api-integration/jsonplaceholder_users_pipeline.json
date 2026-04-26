@@ -1,0 +1,53 @@
+{
+  "name": "JSONPlaceholder API - Users",
+  "description": "Fetch and analyze user data from JSONPlaceholder (free public API)",
+  "nodes": [
+    {
+      "id": "input-1",
+      "type": "input",
+      "position": {"x": 100, "y": 100},
+      "data": {
+        "label": "User IDs",
+        "subtype": "csv",
+        "config": {
+          "file_path": "examples/user_ids.csv",
+          "sample_data": [
+            {"user_id": 1},
+            {"user_id": 2},
+            {"user_id": 3},
+            {"user_id": 4},
+            {"user_id": 5}
+          ]
+        }
+      }
+    },
+    {
+      "id": "transform-1",
+      "type": "default",
+      "position": {"x": 400, "y": 100},
+      "data": {
+        "label": "Fetch Users",
+        "subtype": "raw_sql",
+        "config": {
+          "sql": "SELECT \n  user_id,\n  'https://jsonplaceholder.typicode.com/users/' || user_id as api_url,\n  'GET' as method\nFROM {{input}}\nORDER BY user_id\nLIMIT 10"
+        }
+      }
+    },
+    {
+      "id": "output-1",
+      "type": "output",
+      "position": {"x": 700, "y": 100},
+      "data": {
+        "label": "Save User URLs",
+        "subtype": "csv",
+        "config": {
+          "filename": "jsonplaceholder_users.csv"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {"id": "e1", "source": "input-1", "target": "transform-1"},
+    {"id": "e2", "source": "transform-1", "target": "output-1"}
+  ]
+}

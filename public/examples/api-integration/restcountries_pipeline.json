@@ -1,0 +1,70 @@
+{
+  "name": "REST Countries API",
+  "description": "Query country information from public REST API (https://restcountries.com)",
+  "nodes": [
+    {
+      "id": "input-1",
+      "type": "input",
+      "position": {"x": 100, "y": 100},
+      "data": {
+        "label": "Country Codes",
+        "subtype": "csv",
+        "config": {
+          "file_path": "examples/country_codes.csv",
+          "sample_data": [
+            {"code": "US"},
+            {"code": "GB"},
+            {"code": "JP"},
+            {"code": "DE"},
+            {"code": "FR"}
+          ]
+        }
+      }
+    },
+    {
+      "id": "transform-1",
+      "type": "default",
+      "position": {"x": 400, "y": 100},
+      "data": {
+        "label": "Build Country API URLs",
+        "subtype": "raw_sql",
+        "config": {
+          "sql": "SELECT \n  code,\n  'https://restcountries.com/v3.1/alpha/' || code as api_url,\n  'GET' as method,\n  code as country_code\nFROM {{input}}\nORDER BY code"
+        }
+      }
+    },
+    {
+      "id": "aggregate-1",
+      "type": "default",
+      "position": {"x": 700, "y": 100},
+      "data": {
+        "label": "API Statistics",
+        "subtype": "aggregate",
+        "config": {
+          "groupBy": null,
+          "aggregations": [
+            {"column": "code", "operation": "COUNT", "alias": "total_countries"},
+            {"column": "code", "operation": "COUNT_DISTINCT", "alias": "unique_codes"}
+          ]
+        }
+      }
+    },
+    {
+      "id": "output-1",
+      "type": "output",
+      "position": {"x": 1000, "y": 100},
+      "data": {
+        "label": "Save Country API Requests",
+        "subtype": "csv",
+        "config": {
+          "filename": "restcountries_api_requests.csv"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {"id": "e1", "source": "input-1", "target": "transform-1"},
+    {"id": "e2", "source": "transform-1", "target": "aggregate-1"},
+    {"id": "e3", "source": "aggregate-1", "target": "output-1"}
+  ]
+}

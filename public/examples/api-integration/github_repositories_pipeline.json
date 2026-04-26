@@ -1,0 +1,65 @@
+{
+  "name": "GitHub - Repository Analysis",
+  "description": "Analyze GitHub repositories for popular users including stats and language breakdown",
+  "nodes": [
+    {
+      "id": "input-1",
+      "type": "input",
+      "position": {"x": 100, "y": 100},
+      "data": {
+        "label": "GitHub Users",
+        "subtype": "csv",
+        "config": {
+          "file_path": "examples/github_repositories.csv",
+          "sample_data": [
+            {"username": "torvalds", "repo_type": "user"},
+            {"username": "gaearon", "repo_type": "user"},
+            {"username": "octocat", "repo_type": "organization"},
+            {"username": "mojombo", "repo_type": "user"}
+          ]
+        }
+      }
+    },
+    {
+      "id": "transform-1",
+      "type": "default",
+      "position": {"x": 400, "y": 100},
+      "data": {
+        "label": "Build Repository API URLs",
+        "subtype": "raw_sql",
+        "config": {
+          "sql": "SELECT \n  username,\n  repo_type,\n  'https://api.github.com/users/' || username as user_info_url,\n  'https://api.github.com/users/' || username || '/repos?sort=updated&per_page=100' as repos_url,\n  'https://api.github.com/users/' || username || '/repos?sort=pushed&direction=desc' as recently_pushed_url,\n  'GET' as method,\n  'application/vnd.github.v3+json' as accept_header\nFROM {{input}}\nORDER BY username"
+        }
+      }
+    },
+    {
+      "id": "transform-2",
+      "type": "default",
+      "position": {"x": 700, "y": 100},
+      "data": {
+        "label": "Add Rate Limit Headers",
+        "subtype": "raw_sql",
+        "config": {
+          "sql": "SELECT \n  username,\n  repo_type,\n  user_info_url,\n  repos_url,\n  recently_pushed_url,\n  method,\n  accept_header,\n  '60 requests/hour unauthenticated | 5000/hour authenticated' as rate_limit_info\nFROM {{input}}\nORDER BY username"
+        }
+      }
+    },
+    {
+      "id": "output-1",
+      "type": "output",
+      "position": {"x": 1000, "y": 100},
+      "data": {
+        "label": "Save GitHub Repository Requests",
+        "subtype": "csv",
+        "config": {
+          "filename": "github_repository_analysis.csv"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {"id": "e1", "source": "input-1", "target": "transform-1"},
+    {"id": "e2", "source": "transform-1", "target": "transform-2"},
+    {"id": "e3", "source": "transform-2", "target": "output-1"}
+  ]
+}

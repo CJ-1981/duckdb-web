@@ -1,0 +1,119 @@
+{
+  "name": "OAuth2 Authenticated API",
+  "description": "Connect to OAuth2-protected API with token refresh and retry logic",
+  "nodes": [
+    {
+      "id": "input-1",
+      "type": "input",
+      "position": {
+        "x": 100,
+        "y": 150
+      },
+      "data": {
+        "label": "OAuth Credentials",
+        "subtype": "csv",
+        "config": {
+          "file_path": "examples/oauth_config.csv",
+          "sample_data": [
+            {
+              "id": 1,
+              "value": "sample_value_1"
+            },
+            {
+              "id": 2,
+              "value": "sample_value_2"
+            },
+            {
+              "id": 3,
+              "value": "sample_value_3"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "transform-1",
+      "type": "default",
+      "position": {
+        "x": 400,
+        "y": 150
+      },
+      "data": {
+        "label": "Get Access Token",
+        "subtype": "raw_sql",
+        "config": {
+          "url_template": "https://auth.example.com/oauth/token",
+          "method": "POST",
+          "body_template": "{\"grant_type\": \"client_credentials\", \"client_id\": \"{client_id}\", \"client_secret\": \"{client_secret}\"}",
+          "extract_mode": "json",
+          "data_path": "$.access_token",
+          "sql": "SELECT * FROM {{input}} LIMIT 100"
+        }
+      }
+    },
+    {
+      "id": "batch-1",
+      "type": "default",
+      "position": {
+        "x": 700,
+        "y": 150
+      },
+      "data": {
+        "label": "Fetch Protected Data",
+        "subtype": "raw_sql",
+        "config": {
+          "url_template": "https://api.example.com/protected/data/{resource_id}",
+          "method": "GET",
+          "custom_headers": {
+            "Authorization": "Bearer {access_token}"
+          },
+          "concurrency": 5,
+          "timeout": 30,
+          "retry_policy": {
+            "max_retries": 3,
+            "base_delay": 1.0,
+            "max_delay": 10.0,
+            "retry_on": [
+              401,
+              429
+            ]
+          },
+          "sql": "SELECT * FROM {{input}} LIMIT 100"
+        }
+      }
+    },
+    {
+      "id": "output-1",
+      "type": "output",
+      "position": {
+        "x": 1000,
+        "y": 150
+      },
+      "data": {
+        "label": "Save API Data",
+        "subtype": "db_write",
+        "config": {
+          "tableName": "protected_api_data",
+          "filename": "api_data.json"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "source": "input-1",
+      "target": "transform-1"
+    },
+    {
+      "id": "e2",
+      "source": "transform-1",
+      "target": "batch-1"
+    },
+    {
+      "id": "e3",
+      "source": "batch-1",
+      "target": "output-1"
+    }
+  ]
+}

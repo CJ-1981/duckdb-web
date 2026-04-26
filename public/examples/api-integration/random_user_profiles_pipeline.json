@@ -1,0 +1,64 @@
+{
+  "name": "RandomUser - User Profile Generation",
+  "description": "Generate detailed random user profiles with demographics and location data",
+  "nodes": [
+    {
+      "id": "input-1",
+      "type": "input",
+      "position": {"x": 100, "y": 100},
+      "data": {
+        "label": "Profile Requirements",
+        "subtype": "csv",
+        "config": {
+          "file_path": "examples/user_profile_requirements.csv",
+          "sample_data": [
+            {"count": 5, "gender": "female", "nationality": "US"},
+            {"count": 5, "gender": "male", "nationality": "GB"},
+            {"count": 3, "gender": "female", "nationality": "CA"}
+          ]
+        }
+      }
+    },
+    {
+      "id": "transform-1",
+      "type": "default",
+      "position": {"x": 400, "y": 100},
+      "data": {
+        "label": "Build API URLs",
+        "subtype": "raw_sql",
+        "config": {
+          "sql": "SELECT \n  count,\n  gender,\n  nationality,\n  'https://randomuser.me/api/?results=' || count || '&gender=' || gender || '&nat=' || nationality as api_url,\n  'inc=location,registered,dob,phone,picture' as include_fields,\n  'password,username' as additional_fields,\n  'format=json' as response_format\nFROM {{input}}\nORDER BY count, gender"
+        }
+      }
+    },
+    {
+      "id": "transform-2",
+      "type": "default",
+      "position": {"x": 700, "y": 100},
+      "data": {
+        "label": "Add API Documentation",
+        "subtype": "raw_sql",
+        "config": {
+          "sql": "SELECT \n  count,\n  gender,\n  nationality,\n  api_url,\n  include_fields,\n  additional_fields,\n  response_format,\n  'https://randomuser.me/documentation#results' as api_documentation\nFROM {{input}}\nORDER BY count, gender"
+        }
+      }
+    },
+    {
+      "id": "output-1",
+      "type": "output",
+      "position": {"x": 1000, "y": 100},
+      "data": {
+        "label": "Save User Profile Requests",
+        "subtype": "csv",
+        "config": {
+          "filename": "randomuser_profile_requests.csv"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {"id": "e1", "source": "input-1", "target": "transform-1"},
+    {"id": "e2", "source": "transform-1", "target": "transform-2"},
+    {"id": "e3", "source": "transform-2", "target": "output-1"}
+  ]
+}

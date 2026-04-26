@@ -1,0 +1,66 @@
+{
+  "name": "JSONPlaceholder - Complete User Data",
+  "description": "Fetch complete user data with posts, comments, and albums from JSONPlaceholder",
+  "nodes": [
+    {
+      "id": "input-1",
+      "type": "input",
+      "position": {"x": 100, "y": 100},
+      "data": {
+        "label": "User IDs to Fetch",
+        "subtype": "csv",
+        "config": {
+          "file_path": "examples/jsonplaceholder_users.csv",
+          "sample_data": [
+            {"user_id": 1},
+            {"user_id": 2},
+            {"user_id": 3},
+            {"user_id": 4},
+            {"user_id": 5}
+          ]
+        }
+      }
+    },
+    {
+      "id": "transform-1",
+      "type": "default",
+      "position": {"x": 400, "y": 100},
+      "data": {
+        "label": "Build User API URLs",
+        "subtype": "raw_sql",
+        "config": {
+          "sql": "SELECT \n  user_id,\n  'https://jsonplaceholder.typicode.com/users/' || user_id as user_url,\n  'https://jsonplaceholder.typicode.com/users/' || user_id || '/posts' as posts_url,\n  'https://jsonplaceholder.typicode.com/users/' || user_id || '/albums' as albums_url,\n  'https://jsonplaceholder.typicode.com/users/' || user_id || '/todos' as todos_url,\n  'https://jsonplaceholder.typicode.com/users/' || user_id || '/comments' as comments_url\nFROM {{input}}\nORDER BY user_id\nLIMIT 10"
+        }
+      }
+    },
+    {
+      "id": "transform-2",
+      "type": "default",
+      "position": {"x": 700, "y": 100},
+      "data": {
+        "label": "Extract User Info",
+        "subtype": "raw_sql",
+        "config": {
+          "sql": "SELECT \n  user_id,\n  user_url,\n  'name,email,phone,website,company' as user_fields,\n  posts_url,\n  albums_url,\n  todos_url,\n  comments_url,\n  'https://jsonplaceholder.typicode.com/guide/' as documentation\nFROM {{input}}\nORDER BY user_id"
+        }
+      }
+    },
+    {
+      "id": "output-1",
+      "type": "output",
+      "position": {"x": 1000, "y": 100},
+      "data": {
+        "label": "Save User API Endpoints",
+        "subtype": "csv",
+        "config": {
+          "filename": "jsonplaceholder_user_endpoints.csv"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {"id": "e1", "source": "input-1", "target": "transform-1"},
+    {"id": "e2", "source": "transform-1", "target": "transform-2"},
+    {"id": "e3", "source": "transform-2", "target": "output-1"}
+  ]
+}

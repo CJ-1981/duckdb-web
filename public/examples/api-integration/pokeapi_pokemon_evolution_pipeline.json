@@ -1,0 +1,79 @@
+{
+  "name": "PokeAPI - Pokemon Evolution Chain",
+  "description": "Fetch Pokemon evolution chains including types, abilities, and stats",
+  "nodes": [
+    {
+      "id": "input-1",
+      "type": "input",
+      "position": {"x": 100, "y": 100},
+      "data": {
+        "label": "Pokemon Query",
+        "subtype": "csv",
+        "config": {
+          "file_path": "examples/pokemon_query.csv",
+          "sample_data": [
+            {"pokemon_id": 1, "name": "bulbasaur", "fetch_evolution": true},
+            {"pokemon_id": 4, "name": "charmander", "fetch_evolution": true},
+            {"pokemon_id": 7, "name": "squirtle", "fetch_evolution": true},
+            {"pokemon_id": 25, "name": "pikachu", "fetch_evolution": true},
+            {"pokemon_id": 133, "name": "eevee", "fetch_evolution": true}
+          ]
+        }
+      }
+    },
+    {
+      "id": "transform-1",
+      "type": "default",
+      "position": {"x": 400, "y": 100},
+      "data": {
+        "label": "Build PokeAPI URLs",
+        "subtype": "raw_sql",
+        "config": {
+          "sql": "SELECT \n  pokemon_id,\n  name,\n  fetch_evolution,\n  'https://pokeapi.co/api/v2/pokemon/' || pokemon_id as pokemon_url,\n  'https://pokeapi.co/api/v2/pokemon/' || pokemon_id || '/?fields=id,name,types,abilities,stats' as basic_info_url,\n  'https://pokeapi.co/api/v2/pokemon-species/' || pokemon_id as species_url,\n  'GET' as method\nFROM {{input}}\nORDER BY pokemon_id"
+        }
+      }
+    },
+    {
+      "id": "transform-2",
+      "type": "default",
+      "position": {"x": 700, "y": 100},
+      "data": {
+        "label": "Add Evolution Chain URL",
+        "subtype": "raw_sql",
+        "config": {
+          "sql": "SELECT \n  pokemon_id,\n  name,\n  fetch_evolution,\n  'https://pokeapi.co/api/v2/pokemon/' || pokemon_id as pokemon_url,\n  'https://pokeapi.co/api/v2/pokemon-species/' || pokemon_id as species_url,\n  'https://pokeapi.co/api/v2/evolution-chain/' || pokemon_id as evolution_chain_url,\n  'GET' as method\nFROM {{input}}\nORDER BY pokemon_id"
+        }
+      }
+    },
+    {
+      "id": "transform-3",
+      "type": "default",
+      "position": {"x": 1000, "y": 100},
+      "data": {
+        "label": "Add Documentation",
+        "subtype": "raw_sql",
+        "config": {
+          "sql": "SELECT \n  pokemon_id,\n  name,\n  evolution_chain_url,\n  'https://pokeapi.co/docs/v2.html' as api_documentation\nFROM {{input}}\nORDER BY pokemon_id"
+        }
+      }
+    },
+    {
+      "id": "output-1",
+      "type": "output",
+      "position": {"x": 1300, "y": 100},
+      "data": {
+        "label": "Save Pokemon Evolution Requests",
+        "subtype": "csv",
+        "config": {
+          "filename": "pokeapi_evolution_requests.csv"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {"id": "e1", "source": "input-1", "target": "transform-1"},
+    {"id": "e2", "source": "transform-1", "target": "transform-2"},
+    {"id": "e3", "source": "transform-2", "target": "transform-3"},
+    {"id": "e4", "source": "transform-3", "target": "output-1"}
+  ]
+}

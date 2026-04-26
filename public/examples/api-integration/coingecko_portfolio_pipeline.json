@@ -1,0 +1,79 @@
+{
+  "name": "CoinGecko - Crypto Portfolio Tracker",
+  "description": "Track cryptocurrency portfolio with prices, market caps, and 24h changes",
+  "nodes": [
+    {
+      "id": "input-1",
+      "type": "input",
+      "position": {"x": 100, "y": 100},
+      "data": {
+        "label": "Crypto Portfolio",
+        "subtype": "csv",
+        "config": {
+          "file_path": "examples/crypto_portfolio.csv",
+          "sample_data": [
+            {"symbol": "bitcoin", "holdings": 0.5, "purchase_price": 45000.00},
+            {"symbol": "ethereum", "holdings": 5.0, "purchase_price": 2500.00},
+            {"symbol": "solana", "holdings": 100.0, "purchase_price": 150.00},
+            {"symbol": "cardano", "holdings": 5000.0, "purchase_price": 0.50},
+            {"symbol": "ripple", "holdings": 2000.0, "purchase_price": 0.60}
+          ]
+        }
+      }
+    },
+    {
+      "id": "transform-1",
+      "type": "default",
+      "position": {"x": 400, "y": 100},
+      "data": {
+        "label": "Build Price API URLs",
+        "subtype": "raw_sql",
+        "config": {
+          "sql": "SELECT \n  symbol,\n  holdings,\n  purchase_price,\n  'https://api.coingecko.com/api/v3/simple/price?ids=' || symbol || '&vs_currencies=usd&include_market_cap=true&include_24hr_vol=true' as price_url,\n  'https://api.coingecko.com/api/v3/coins/' || symbol as details_url,\n  'usd' as target_currency\nFROM {{input}}\nORDER BY purchase_price DESC"
+        }
+      }
+    },
+    {
+      "id": "transform-2",
+      "type": "default",
+      "position": {"x": 700, "y": 100},
+      "data": {
+        "label": "Calculate Portfolio Value",
+        "subtype": "raw_sql",
+        "config": {
+          "sql": "SELECT \n  symbol,\n  holdings,\n  purchase_price,\n  price_url,\n  details_url,\n  target_currency,\n  holdings * purchase_price as cost_basis\nFROM {{input}}\nORDER BY cost_basis DESC"
+        }
+      }
+    },
+    {
+      "id": "transform-3",
+      "type": "default",
+      "position": {"x": 1000, "y": 100},
+      "data": {
+        "label": "Add Rate Limit Info",
+        "subtype": "raw_sql",
+        "config": {
+          "sql": "SELECT \n  symbol,\n  holdings,\n  purchase_price,\n  cost_basis,\n  price_url,\n  details_url,\n  'Free tier: 10-50 calls/min, includes rate limit headers' as rate_limit_note\nFROM {{input}}\nORDER BY symbol"
+        }
+      }
+    },
+    {
+      "id": "output-1",
+      "type": "output",
+      "position": {"x": 1300, "y": 100},
+      "data": {
+        "label": "Save Crypto Portfolio API Requests",
+        "subtype": "csv",
+        "config": {
+          "filename": "coingecko_portfolio_requests.csv"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {"id": "e1", "source": "input-1", "target": "transform-1"},
+    {"id": "e2", "source": "transform-1", "target": "transform-2"},
+    {"id": "e3", "source": "transform-2", "target": "transform-3"},
+    {"id": "e4", "source": "transform-3", "target": "output-1"}
+  ]
+}

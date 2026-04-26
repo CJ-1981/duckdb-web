@@ -1,0 +1,65 @@
+{
+  "name": "Cat Facts API",
+  "description": "Fetch random cat facts from public API (https://catfact.ninja/)",
+  "nodes": [
+    {
+      "id": "input-1",
+      "type": "input",
+      "position": {"x": 100, "y": 100},
+      "data": {
+        "label": "Fact Count",
+        "subtype": "csv",
+        "config": {
+          "file_path": "examples/fact_count.csv",
+          "sample_data": [
+            {"count": 1},
+            {"count": 3},
+            {"count": 5}
+          ]
+        }
+      }
+    },
+    {
+      "id": "transform-1",
+      "type": "default",
+      "position": {"x": 400, "y": 100},
+      "data": {
+        "label": "Build Cat Facts API URLs",
+        "subtype": "raw_sql",
+        "config": {
+          "sql": "SELECT \n  count,\n  'https://catfact.ninja/fact' || \n  CASE WHEN count > 1 THEN '?max_length=' || (count * 100) \n  ELSE '' END as api_url,\n  'GET' as method,\n  'random_' || count as fact_set_id\nFROM {{input}}\nORDER BY count"
+        }
+      }
+    },
+    {
+      "id": "transform-2",
+      "type": "default",
+      "position": {"x": 700, "y": 100},
+      "data": {
+        "label": "Add Alternative APIs",
+        "subtype": "computed",
+        "config": {
+          "column": "alternative_apis",
+          "expression": "'https://catfact.ninja/fact | https://meowfacts.herokuapp.com/v1/meowfacts'"
+        }
+      }
+    },
+    {
+      "id": "output-1",
+      "type": "output",
+      "position": {"x": 1000, "y": 100},
+      "data": {
+        "label": "Save Cat Facts Requests",
+        "subtype": "csv",
+        "config": {
+          "filename": "cat_facts_requests.csv"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {"id": "e1", "source": "input-1", "target": "transform-1"},
+    {"id": "e2", "source": "transform-1", "target": "transform-2"},
+    {"id": "e3", "source": "transform-2", "target": "output-1"}
+  ]
+}

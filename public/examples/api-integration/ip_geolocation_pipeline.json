@@ -1,0 +1,64 @@
+{
+  "name": "IP Geolocation Lookup",
+  "description": "Get geolocation data for IP addresses using public API (https://ipapi.co/)",
+  "nodes": [
+    {
+      "id": "input-1",
+      "type": "input",
+      "position": {"x": 100, "y": 100},
+      "data": {
+        "label": "IP Addresses",
+        "subtype": "csv",
+        "config": {
+          "file_path": "examples/ip_addresses.csv",
+          "sample_data": [
+            {"ip": "8.8.8.8", "note": "Google DNS"},
+            {"ip": "1.1.1.1", "note": "Cloudflare DNS"},
+            {"ip": "208.67.222.222", "note": "OpenDNS"}
+          ]
+        }
+      }
+    },
+    {
+      "id": "transform-1",
+      "type": "default",
+      "position": {"x": 400, "y": 100},
+      "data": {
+        "label": "Build Geolocation API URLs",
+        "subtype": "raw_sql",
+        "config": {
+          "sql": "SELECT \n  ip,\n  note,\n  'https://ipapi.co/' || ip as api_url,\n  'GET' as method,\n  'json' as response_format\nFROM {{input}}\nORDER BY ip"
+        }
+      }
+    },
+    {
+      "id": "transform-2",
+      "type": "default",
+      "position": {"x": 700, "y": 100},
+      "data": {
+        "label": "Add Fallback URL",
+        "subtype": "raw_sql",
+        "config": {
+          "sql": "SELECT \n  ip,\n  note,\n  api_url,\n  method,\n  response_format,\n  'https://ipapi.co/json/' as fallback_url\nFROM {{input}}\nORDER BY ip"
+        }
+      }
+    },
+    {
+      "id": "output-1",
+      "type": "output",
+      "position": {"x": 1000, "y": 100},
+      "data": {
+        "label": "Save IP Geolocation Requests",
+        "subtype": "csv",
+        "config": {
+          "filename": "ip_geolocation_requests.csv"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {"id": "e1", "source": "input-1", "target": "transform-1"},
+    {"id": "e2", "source": "transform-1", "target": "transform-2"},
+    {"id": "e3", "source": "transform-2", "target": "output-1"}
+  ]
+}
