@@ -62,7 +62,7 @@
         "label": "Unnest Items Array",
         "subtype": "raw_sql",
         "config": {
-          "sql": "SELECT \n  id,\n  name,\n  \"response.metadata.created_at\" as created_at,\n  \"response.metadata.updated_at\" as updated_at,\n  unnest(\"response.items\") as item\nFROM {{input}}"
+          "sql": "SELECT \n  id,\n  name,\n  \"response.metadata.created_at\" as created_at,\n  \"response.metadata.updated_at\" as updated_at,\n  unnest(json_extract(\"response.items\", '$$')) as item\nFROM {{input}}"
         }
       }
     },
@@ -77,7 +77,7 @@
         "label": "Extract Nested Fields",
         "subtype": "raw_sql",
         "config": {
-          "sql": "SELECT \n  id,\n  name,\n  created_at,\n  updated_at,\n  item.item_id as item_id,\n  item.quantity as quantity,\n  item.price as price\nFROM {{input}}"
+          "sql": "SELECT \n  id,\n  name,\n  created_at,\n  updated_at,\n  item->>'$.item_id' as item_id,\n  CAST(item->>'$.quantity' AS INTEGER) as quantity,\n  CAST(item->>'$.price' AS DOUBLE) as price\nFROM {{input}}"
         }
       }
     },
