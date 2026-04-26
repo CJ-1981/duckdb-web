@@ -62,7 +62,7 @@
         "label": "Unnest Items Array",
         "subtype": "raw_sql",
         "config": {
-          "sql": "SELECT \n  id,\n  name,\n  \"response.metadata.created_at\" as created_at,\n  \"response.metadata.updated_at\" as updated_at,\n  unnest(json_extract(\"response.items\", '$$')) as item\nFROM {{input}}"
+          "sql": "SELECT \n  id,\n  name,\n  \"response.metadata.created_at\" as created_at,\n  \"response.metadata.updated_at\" as updated_at,\n  unnest(json_parse(\"response.items\")) as item\nFROM {{input}}"
         }
       }
     },
