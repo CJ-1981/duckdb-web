@@ -78,7 +78,12 @@ const CustomNode = ({ data, type, selected }: any) => {
            animation: react-flow__dashdraw 0.5s linear infinite;
         }
       `}</style>
-      {!isNote && <Handle type="target" position={Position.Top} style={{ left: '50%', transform: 'translateX(-50%)' }} />}
+      <Handle 
+        type="target" 
+        position={Position.Top} 
+        style={{ left: '50%', transform: 'translateX(-50%)' }} 
+        className={isNote ? 'opacity-50 !bg-[#FFAB00]' : ''} 
+      />
       <div className="flex items-center justify-between p-3 w-full">
         <div className="flex flex-col items-center space-y-1.5 p-1 w-full">
           <div className="flex items-center space-x-2">
@@ -100,7 +105,12 @@ const CustomNode = ({ data, type, selected }: any) => {
           )}
         </div>
       </div>
-      {!isNote && <Handle type="source" position={Position.Bottom} style={{ left: '50%', transform: 'translateX(-50%)' }} />}
+      <Handle 
+        type="source" 
+        position={Position.Bottom} 
+        style={{ left: '50%', transform: 'translateX(-50%)' }} 
+        className={isNote ? 'opacity-50 !bg-[#FFAB00]' : ''} 
+      />
     </div>
   );
 };
@@ -175,12 +185,32 @@ export function WorkflowCanvas({
   const onConnect = useCallback(
     (params: Connection | Edge) => {
       takeSnapshot();
-      setEdges((eds: Edge[]) => addEdge({ ...params, animated: true } as Edge, eds));
-      if (onAfterConnect) {
+
+      // Determine if this is an annotation edge (connected to a Note node)
+      const sourceNode = nodes.find(n => n.id === params.source);
+      const targetNode = nodes.find(n => n.id === params.target);
+      const isAnnotation = sourceNode?.type === 'note' || targetNode?.type === 'note';
+
+      const edgeData: Edge = {
+        ...params,
+        animated: !isAnnotation,
+        style: isAnnotation ? { 
+          strokeDasharray: '5,5', 
+          stroke: '#FFAB00', 
+          strokeWidth: 2,
+          opacity: 0.6
+        } : { 
+          strokeWidth: 3, 
+          stroke: '#B1B1B1' 
+        }
+      } as Edge;
+
+      setEdges((eds: Edge[]) => addEdge(edgeData, eds));
+      if (onAfterConnect && !isAnnotation) {
         onAfterConnect(params as Connection);
       }
     },
-    [setEdges, takeSnapshot, onAfterConnect],
+    [nodes, setEdges, takeSnapshot, onAfterConnect],
   );
 
   const onSelectionChange = useCallback(
