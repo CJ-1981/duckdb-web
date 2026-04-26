@@ -545,7 +545,9 @@ class ParallelRequestExecutor:
             # Record success
             self.error_aggregator.record_success(url, row)
 
-            # Merge with input row
+            # Merge with input row - flatten dict results into top-level columns if possible
+            if isinstance(result, dict):
+                return {**row, **result}
             return {**row, "response": {"status": 200, "data": result}}
 
         except HTTPError as e:

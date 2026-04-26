@@ -451,6 +451,15 @@ async def execute_duckdb_workflow(
     # Create in-memory DuckDB connection
     con = duckdb.connect(":memory:")
 
+    # Register XML UDFs as fallback since official extension is often missing/404
+    try:
+        from src.core.database.utils import register_xml_udfs
+        register_xml_udfs(con)
+    except ImportError:
+        logger.warning("Could not import register_xml_udfs from database.utils")
+
+
+
     # Build execution order (topological sort)
     execution_order = topological_sort(nodes, edges)
 
@@ -545,6 +554,13 @@ async def execute_input_node(con: duckdb.DuckDBPyConnection, data: Dict) -> Dict
         con.execute(f"CREATE OR REPLACE TABLE {table_name} AS SELECT * FROM read_parquet('{file_path}')")
     elif file_ext == '.json':
         con.execute(f"CREATE OR REPLACE TABLE {table_name} AS SELECT * FROM read_json_auto('{file_path}')")
+    elif file_ext == '.xml':
+        with open(file_path, 'r', encoding='utf-8', errors='replace') as f:
+            xml_content = f.read()
+        import pandas as pd
+        df = pd.DataFrame([{"xml_data": xml_content}])
+        con.register(f'{table_name}_df', df)
+        con.execute(f"CREATE OR REPLACE TABLE {table_name} AS SELECT * FROM {table_name}_df")
     else:
         raise ValueError(f"Unsupported file format: {file_ext}")
 

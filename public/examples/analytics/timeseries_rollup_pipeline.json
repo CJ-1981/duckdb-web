@@ -12,10 +12,10 @@
         "config": {
           "file_path": "examples/events.csv",
           "sample_data": [
-            {"event_id": 1, "timestamp": "2024-01-15T10:00:00Z", "event_type": "page_view", "value": 0},
-            {"event_id": 2, "timestamp": "2024-01-15T10:05:00Z", "event_type": "click", "value": 1},
-            {"event_id": 3, "timestamp": "2024-01-15T10:10:00Z", "event_type": "page_view", "value": 0},
-            {"event_id": 4, "timestamp": "2024-01-15T10:15:00Z", "event_type": "purchase", "value": 150.50}
+            {"event_id": 1, "timestamp::TIMESTAMP": "2024-01-15T10:00:00Z", "event_type": "page_view", "value": 0},
+            {"event_id": 2, "timestamp::TIMESTAMP": "2024-01-15T10:05:00Z", "event_type": "click", "value": 1},
+            {"event_id": 3, "timestamp::TIMESTAMP": "2024-01-15T10:10:00Z", "event_type": "page_view", "value": 0},
+            {"event_id": 4, "timestamp::TIMESTAMP": "2024-01-15T10:15:00Z", "event_type": "purchase", "value": 150.50}
           ]
         }
       }
@@ -28,7 +28,7 @@
         "label": "Hourly Rollup",
         "subtype": "aggregate",
         "config": {
-          "groupBy": "date_trunc('hour', timestamp) as hour, event_type",
+          "groupBy": "date_trunc('hour', timestamp::TIMESTAMP) as hour, event_type",
           "aggregations": [
             { "column": "event_id", "operation": "COUNT", "alias": "event_count" },
             { "column": "value", "operation": "SUM", "alias": "total_value" },
@@ -45,7 +45,7 @@
         "label": "Daily Rollup",
         "subtype": "aggregate",
         "config": {
-          "groupBy": "date_trunc('day', timestamp) as day, event_type",
+          "groupBy": "date_trunc('day', timestamp::TIMESTAMP) as day, event_type",
           "aggregations": [
             { "column": "event_id", "operation": "COUNT", "alias": "event_count" },
             { "column": "value", "operation": "SUM", "alias": "total_value" }
@@ -61,7 +61,7 @@
         "label": "Weekly Rollup",
         "subtype": "aggregate",
         "config": {
-          "groupBy": "date_trunc('week', timestamp) as week, event_type",
+          "groupBy": "date_trunc('week', timestamp::TIMESTAMP) as week, event_type",
           "aggregations": [
             { "column": "event_id", "operation": "COUNT", "alias": "weekly_count" },
             { "column": "value", "operation": "SUM", "alias": "weekly_sum" }

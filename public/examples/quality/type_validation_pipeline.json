@@ -28,7 +28,7 @@
         "label": "Safe Type Conversion",
         "subtype": "raw_sql",
         "config": {
-          "sql": "SELECT \n  id,\n  TRY_CAST(REPLACE(REPLACE(amount, '$', ''), ',', '') AS DECIMAL(10,2)) as amount,\n  TRY_CAST(date AS DATE) as order_date,\n  TRY_CAST(quantity AS INTEGER) as quantity,\n  CASE \n    WHEN LOWER(active) IN ('true', 'yes', '1', 't') THEN true\n    WHEN LOWER(active) IN ('false', 'no', '0', 'f') THEN false\n    ELSE NULL\n  END as active\nFROM {{input}}"
+          "sql": "SELECT \n  id,\n  TRY_CAST(REPLACE(REPLACE(amount, '$', ''), ',', '') AS DECIMAL(10,2)) as amount,\n  TRY_CAST(date AS DATE) as order_date,\n  TRY_CAST(quantity AS INTEGER) as quantity,\n  CASE \n    WHEN LOWER(CAST(active AS VARCHAR)) IN ('true', 'yes', '1', 't') THEN true\n    WHEN LOWER(CAST(active AS VARCHAR)) IN ('false', 'no', '0', 'f') THEN false\n    ELSE NULL\n  END as active\nFROM {{input}}"
         }
       }
     },
@@ -90,8 +90,8 @@
   ],
   "edges": [
     {"id": "e1", "source": "input-1", "target": "transform-1"},
-    {"id": "e2", "source": "transform-1", "target": "transform-2"},
-    {"id": "e3", "source": "transform-2", "target": "aggregate-1"},
+    {"id": "e2", "source": "transform-1", "target": "transform-3"},
+    {"id": "e3", "source": "transform-3", "target": "aggregate-1"},
     {"id": "e4", "source": "aggregate-1", "target": "output-1"}
   ]
 }

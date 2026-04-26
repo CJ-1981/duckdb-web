@@ -42,7 +42,7 @@
         "label": "Generate Execution Plan",
         "subtype": "raw_sql",
         "config": {
-          "sql": "SELECT \n  task_id,\n  task_name,\n  source_table,\n  target_table,\n  transform_query,\n  'parallel' as execution_mode\nFROM {{input}}\nWHERE status = 'pending'\nORDER BY priority DESC"
+          "sql": "SELECT \n  task_id,\n  task_name,\n  source_table,\n  target_table,\n  transform_query,\n  status,\n  'parallel' as execution_mode\nFROM {{input}}\nWHERE status = 'pending'\nORDER BY priority DESC"
         }
       }
     },

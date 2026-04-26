@@ -42,7 +42,7 @@
         "label": "Map Legacy Fields",
         "subtype": "select",
         "config": {
-          "columns": "user_id as id, concat(first_name, ' ', last_name) as full_name, email_address as email, phone_number as phone"
+          "columns": "id, full_name, email_address as email"
         }
       }
     },
@@ -73,7 +73,7 @@
         "label": "Cast to New Types",
         "subtype": "raw_sql",
         "config": {
-          "sql": "SELECT \n  id::INTEGER as id,\n  full_name::VARCHAR,\n  email::VARCHAR,\n  phone::VARCHAR,\n  preferred_language::VARCHAR,\n  now()::TIMESTAMP as migrated_at\nFROM {{input}}"
+          "sql": "SELECT \n  id::INTEGER as id,\n  full_name::VARCHAR,\n  email::VARCHAR,\n  preferred_language::VARCHAR,\n  now()::TIMESTAMP as migrated_at\nFROM {{input}}"
         }
       }
     },

@@ -43,7 +43,7 @@
       },
       "data": {
         "label": "Fetch User Profiles",
-        "subtype": "raw_sql",
+        "subtype": "batch_request",
         "config": {
           "url_template": "https://jsonplaceholder.typicode.com/users/{user_id}",
           "method": "GET",

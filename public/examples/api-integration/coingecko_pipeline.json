@@ -12,10 +12,10 @@
         "config": {
           "file_path": "examples/crypto_list.csv",
           "sample_data": [
-            {"symbol": "bitcoin", "name": "Bitcoin"},
-            {"symbol": "ethereum", "name": "Ethereum"},
-            {"symbol": "solana", "name": "Solana"},
-            {"symbol": "cardano", "name": "Cardano"}
+            {"crypto_id": "bitcoin", "name": "Bitcoin"},
+            {"crypto_id": "ethereum", "name": "Ethereum"},
+            {"crypto_id": "solana", "name": "Solana"},
+            {"crypto_id": "cardano", "name": "Cardano"}
           ]
         }
       }
@@ -28,7 +28,7 @@
         "label": "Build Price API URLs",
         "subtype": "raw_sql",
         "config": {
-          "sql": "SELECT \n  symbol,\n  name,\n  'https://api.coingecko.com/api/v3/simple/price?ids=' || symbol || '&vs_currencies=usd' as api_url,\n  'GET' as method,\n  'usd' as target_currency\nFROM {{input}}\nORDER BY symbol"
+          "sql": "SELECT \n  crypto_id,\n  crypto_name,\n  'https://api.coingecko.com/api/v3/simple/price?ids=' || crypto_id || '&vs_currencies=usd' as api_url,\n  'GET' as method,\n  'usd' as target_currency\nFROM {{input}}\nORDER BY crypto_id"
         }
       }
     },

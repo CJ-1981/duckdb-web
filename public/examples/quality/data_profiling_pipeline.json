@@ -40,36 +40,9 @@
       },
       "data": {
         "label": "Column Statistics",
-        "subtype": "aggregate",
+        "subtype": "raw_sql",
         "config": {
-          "groupBy": "customer_id",
-          "aggregations": [
-            {
-              "column": "transaction_id",
-              "operation": "COUNT",
-              "alias": "total_count"
-            },
-            {
-              "column": "amount",
-              "operation": "AVG",
-              "alias": "avg_amount"
-            },
-            {
-              "column": "amount",
-              "operation": "MIN",
-              "alias": "min_amount"
-            },
-            {
-              "column": "amount",
-              "operation": "MAX",
-              "alias": "max_amount"
-            },
-            {
-              "column": "amount",
-              "operation": "STDDEV",
-              "alias": "stddev_amount"
-            }
-          ]
+          "sql": "SELECT \n  *,\n  AVG(amount) OVER (PARTITION BY customer_id) as avg_amount,\n  MIN(amount) OVER (PARTITION BY customer_id) as min_amount,\n  MAX(amount) OVER (PARTITION BY customer_id) as max_amount,\n  STDDEV(amount) OVER (PARTITION BY customer_id) as stddev_amount\nFROM {{input}}"
         }
       }
     },

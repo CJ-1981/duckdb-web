@@ -17,15 +17,15 @@
           "sample_data": [
             {
               "id": 1,
-              "value": "sample_value_1"
+              "metric_value": "sample_metric_value_1"
             },
             {
               "id": 2,
-              "value": "sample_value_2"
+              "metric_value": "sample_metric_value_2"
             },
             {
               "id": 3,
-              "value": "sample_value_3"
+              "metric_value": "sample_metric_value_3"
             }
           ]
         }
@@ -42,7 +42,7 @@
         "label": "Quality Check",
         "subtype": "raw_sql",
         "config": {
-          "sql": "SELECT *,\n  case \n    when missing_count > total_count * 0.1 then 'poor_quality'\n    when missing_count > 0 then 'medium_quality'\n    else 'high_quality'\n  end as quality_tier\nFROM (SELECT \n  *,\n  sum(case when value is null then 1 else 0 end) OVER () as missing_count,\n  count(*) OVER () as total_count\nFROM {{input}})"
+          "sql": "SELECT *,\n  case \n    when missing_count > total_count * 0.1 then 'poor_quality'\n    when missing_count > 0 then 'medium_quality'\n    else 'high_quality'\n  end as quality_tier\nFROM (SELECT \n  *,\n  sum(case when metric_value is null then 1 else 0 end) OVER () as missing_count,\n  count(*) OVER () as total_count\nFROM {{input}})"
         }
       }
     },
@@ -114,7 +114,7 @@
         "label": "Clean & Impute",
         "subtype": "raw_sql",
         "config": {
-          "sql": "SELECT \n  id,\n  coalesce(value, avg(value) OVER ()) as value,\n  'with_imputation' as processing_path\nFROM {{input}}"
+          "sql": "SELECT \n  date,\n  coalesce(metric_value, avg(metric_value) OVER ()) as metric_value,\n  'with_imputation' as processing_path\nFROM {{input}}"
         }
       }
     },

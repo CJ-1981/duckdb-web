@@ -21,3 +21,5 @@ rq
 redis
 alembic
 asyncpg
+aiohttp
+

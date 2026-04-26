@@ -17,16 +17,14 @@
           "query": "SELECT * FROM customers_snapshot WHERE snapshot_date = CURRENT_DATE - INTERVAL '1 day'",
           "sample_data": [
             {
-              "id": 1,
-              "value": "sample_value_1"
+              "customer_id": 1,
+              "email": "cust1@example.com",
+              "phone": "555-0001"
             },
             {
-              "id": 2,
-              "value": "sample_value_2"
-            },
-            {
-              "id": 3,
-              "value": "sample_value_3"
+              "customer_id": 2,
+              "email": "cust2@example.com",
+              "phone": "555-0002"
             }
           ]
         }
@@ -47,16 +45,14 @@
           "query": "SELECT * FROM customers_snapshot WHERE snapshot_date = CURRENT_DATE",
           "sample_data": [
             {
-              "id": 1,
-              "value": "sample_value_1"
+              "customer_id": 1,
+              "email": "cust1.new@example.com",
+              "phone": "555-0001"
             },
             {
-              "id": 2,
-              "value": "sample_value_2"
-            },
-            {
-              "id": 3,
-              "value": "sample_value_3"
+              "customer_id": 3,
+              "email": "cust3@example.com",
+              "phone": "555-0003"
             }
           ]
         }
@@ -73,7 +69,7 @@
         "label": "Detect Changes",
         "subtype": "raw_sql",
         "config": {
-          "sql": "WITH combined as (\n  SELECT *, 'old' as version FROM previous_snapshot\n  UNION ALL\n  SELECT *, 'new' as version FROM current_snapshot\n)\nSELECT \n  customer_id,\n  max(case when version = 'old' then email end) as old_email,\n  max(case when version = 'new' then email end) as new_email,\n  max(case when version = 'old' then phone end) as old_phone,\n  max(case when version = 'new' then phone end) as new_phone,\n  case \n    when max(case when version = 'old' then customer_id end) is null then 'insert'\n    when max(case when version = 'new' then customer_id end) is null then 'delete'\n    when max(case when version = 'old' then email end) != max(case when version = 'new' then email end) then 'update'\n    when max(case when version = 'old' then phone end) != max(case when version = 'new' then phone end) then 'update'\n    else 'unchanged'\n  end as change_type\nFROM combined\nGROUP BY customer_id"
+          "sql": "WITH combined as (\n  SELECT *, 'old' as version FROM {{input1}}\n  UNION ALL\n  SELECT *, 'new' as version FROM {{input2}}\n)\nSELECT \n  customer_id,\n  max(case when version = 'old' then email end) as old_email,\n  max(case when version = 'new' then email end) as new_email,\n  max(case when version = 'old' then phone end) as old_phone,\n  max(case when version = 'new' then phone end) as new_phone,\n  case \n    when max(case when version = 'old' then customer_id end) is null then 'insert'\n    when max(case when version = 'new' then customer_id end) is null then 'delete'\n    when max(case when version = 'old' then email end) != max(case when version = 'new' then email end) then 'update'\n    when max(case when version = 'old' then phone end) != max(case when version = 'new' then phone end) then 'update'\n    else 'unchanged'\n  end as change_type\nFROM combined\nGROUP BY customer_id"
         }
       }
     },

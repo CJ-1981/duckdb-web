@@ -69,7 +69,7 @@
         "label": "Calculate Conversion",
         "subtype": "raw_sql",
         "config": {
-          "sql": "SELECT COUNT(DISTINCT session_id) as total_sessions, SUM(step1_view) as step1_count, SUM(step2_cart) as step2_count, SUM(step3_checkout) as step3_count, SUM(step4_purchase) as step4_count FROM {{input}}"
+          "sql": "SELECT 1 as step_order, 'View' as event, SUM(step1_view) as unique_users FROM {{input}}\nUNION ALL\nSELECT 2 as step_order, 'Cart' as event, SUM(step2_cart) as unique_users FROM {{input}}\nUNION ALL\nSELECT 3 as step_order, 'Checkout' as event, SUM(step3_checkout) as unique_users FROM {{input}}\nUNION ALL\nSELECT 4 as step_order, 'Purchase' as event, SUM(step4_purchase) as unique_users FROM {{input}}"
         }
       }
     },

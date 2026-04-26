@@ -42,7 +42,7 @@
         "label": "Parse XML",
         "subtype": "raw_sql",
         "config": {
-          "sql": "SELECT \n  xpath_string(xml_data, '/catalog/@id') as catalog_id,\n  xpath_string(xml_data, '/catalog/name') as catalog_name\nFROM {{input}}"
+          "sql": "SELECT \n  xml_data,\n  xpath_string(xml_data, '/catalog/@id') as catalog_id,\n  xpath_string(xml_data, '/catalog/name') as catalog_name\nFROM {{input}}"
         }
       }
     },
@@ -70,11 +70,9 @@
       },
       "data": {
         "label": "Explode Arrays",
-        "subtype": "unnest",
+        "subtype": "raw_sql",
         "config": {
-          "column": "product_ids",
-          "alias": "product",
-          "with_ordinality": true
+          "sql": "SELECT \n  catalog_id,\n  catalog_name,\n  UNNEST(product_ids) as product_id,\n  UNNEST(product_names) as product_name,\n  try_cast(UNNEST(product_prices) as DECIMAL(10,2)) as price\nFROM {{input}}"
         }
       }
     },
@@ -86,10 +84,10 @@
         "y": 150
       },
       "data": {
-        "label": "Join with Names and Prices",
+        "label": "Final Output Formatter",
         "subtype": "raw_sql",
         "config": {
-          "sql": "SELECT \n  catalog_id,\n  catalog_name,\n  product_ids[ordinality] as product_id,\n  product_names[ordinality] as product_name,\n  try_cast(product_prices[ordinality] as DECIMAL(10,2)) as price\nFROM {{input}}"
+          "sql": "SELECT * FROM {{input}}"
         }
       }
     },
