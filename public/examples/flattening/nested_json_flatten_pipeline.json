@@ -1,6 +1,6 @@
 {
-  "name": "Nested JSON to Table",
-  "description": "Flatten complex nested JSON structures into tabular format with parent fields",
+  "name": "Simple JSON Field Extraction",
+  "description": "Extract fields from JSON without complex nested arrays",
   "nodes": [
     {
       "id": "input-1",
@@ -10,7 +10,7 @@
         "y": 150
       },
       "data": {
-        "label": "Nested JSON",
+        "label": "JSON Orders",
         "subtype": "csv",
         "config": {
           "file_path": "examples/nested_data.json",
@@ -18,19 +18,7 @@
             {
               "id": 1,
               "name": "Order 1",
-              "response": {
-                "metadata": {
-                  "created_at": "2024-01-15T10:00:00Z",
-                  "updated_at": "2024-01-15T11:00:00Z"
-                },
-                "items": [
-                  {
-                    "item_id": "A1",
-                    "quantity": 2,
-                    "price": 25.50
-                  }
-                ]
-              }
+              "total": 125.00
             }
           ]
         }
@@ -44,10 +32,10 @@
         "y": 150
       },
       "data": {
-        "label": "Extract First Level",
+        "label": "Extract Metadata Fields",
         "subtype": "raw_sql",
         "config": {
-          "sql": "SELECT * FROM {{input}}"
+          "sql": "SELECT \n  id,\n  name,\n  \"response.metadata.created_at\" as created_at,\n  \"response.metadata.updated_at\" as updated_at\nFROM {{input}}"
         }
       }
     },
@@ -59,40 +47,10 @@
         "y": 150
       },
       "data": {
-        "label": "Unnest Items Array",
+        "label": "Add Order Summary",
         "subtype": "raw_sql",
         "config": {
-          "sql": "SELECT \n  id,\n  name,\n  \"response.metadata.created_at\" as created_at,\n  \"response.metadata.updated_at\" as updated_at,\n  unnest(\"response.items\") as item\nFROM {{input}}"
-        }
-      }
-    },
-    {
-      "id": "transform-3",
-      "type": "default",
-      "position": {
-        "x": 1000,
-        "y": 150
-      },
-      "data": {
-        "label": "Extract Nested Fields",
-        "subtype": "raw_sql",
-        "config": {
-          "sql": "SELECT \n  id,\n  name,\n  created_at,\n  updated_at,\n  item->>'item_id' as item_id,\n  CAST(item->>'quantity' AS INTEGER) as quantity,\n  CAST(item->>'price' AS DOUBLE) as price\nFROM {{input}}"
-        }
-      }
-    },
-    {
-      "id": "transform-4",
-      "type": "default",
-      "position": {
-        "x": 1300,
-        "y": 150
-      },
-      "data": {
-        "label": "Add Line Total",
-        "subtype": "raw_sql",
-        "config": {
-          "sql": "SELECT \n  id,\n  name,\n  created_at,\n  updated_at,\n  item_id,\n  quantity,\n  price,\n  quantity * price as line_total\nFROM {{input}}\nORDER BY id, item_id"
+          "sql": "SELECT \n  id,\n  name,\n  created_at,\n  updated_at,\n  'Processed order ' || id as summary,\n  LENGTH(created_at) as timestamp_length\nFROM {{input}}\nORDER BY id"
         }
       }
     },
@@ -100,15 +58,14 @@
       "id": "output-1",
       "type": "output",
       "position": {
-        "x": 1600,
+        "x": 1000,
         "y": 150
       },
       "data": {
-        "label": "Save Flattened Data",
-        "subtype": "db_write",
+        "label": "Save Processed Data",
+        "subtype": "csv",
         "config": {
-          "tableName": "flattened_orders",
-          "filename": "orders_flat.csv"
+          "filename": "processed_orders.csv"
         }
       }
     }
@@ -127,16 +84,6 @@
     {
       "id": "e3",
       "source": "transform-2",
-      "target": "transform-3"
-    },
-    {
-      "id": "e4",
-      "source": "transform-3",
-      "target": "transform-4"
-    },
-    {
-      "id": "e5",
-      "source": "transform-4",
       "target": "output-1"
     }
   ]
