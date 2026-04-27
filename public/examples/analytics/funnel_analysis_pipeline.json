@@ -84,7 +84,7 @@
         "label": "Overall Funnel Metrics",
         "subtype": "raw_sql",
         "config": {
-          "sql": "SELECT \n  step_order,\n  event,\n  unique_users,\n  SUM(unique_users) OVER () as total_starting_users,\n  unique_users * 100.0 / MAX(unique_users) OVER () as pct_of_starting_users,\n  unique_users * 100.0 / NULLIF(LAG(unique_users, 1) OVER (ORDER BY step_order), 0) as pct_of_previous_step\nFROM {{input}}\nORDER BY step_order"
+          "sql": "SELECT \n  step_order,\n  event,\n  unique_users,\n  FIRST_VALUE(unique_users) OVER (ORDER BY step_order) as total_starting_users,\n  unique_users * 100.0 / FIRST_VALUE(unique_users) OVER (ORDER BY step_order) as pct_of_starting_users,\n  unique_users * 100.0 / NULLIF(LAG(unique_users, 1) OVER (ORDER BY step_order), 0) as pct_of_previous_step\nFROM {{input}}\nORDER BY step_order"
         }
       }
     },

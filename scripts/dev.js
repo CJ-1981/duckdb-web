@@ -66,7 +66,7 @@ async function startDevServer() {
 
   // Set PORT environment variable and spawn Next.js
   const env = { ...process.env, PORT: port.toString() };
-  const child = spawn('next', ['dev'], {
+  const child = spawn('next', ['dev', '--turbo'], {
     env,
     stdio: 'inherit',
     shell: true

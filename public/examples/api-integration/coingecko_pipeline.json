@@ -12,10 +12,10 @@
         "config": {
           "file_path": "examples/crypto_list.csv",
           "sample_data": [
-            {"crypto_id": "bitcoin", "name": "Bitcoin"},
-            {"crypto_id": "ethereum", "name": "Ethereum"},
-            {"crypto_id": "solana", "name": "Solana"},
-            {"crypto_id": "cardano", "name": "Cardano"}
+            {"crypto_id": "bitcoin", "crypto_name": "Bitcoin"},
+            {"crypto_id": "ethereum", "crypto_name": "Ethereum"},
+            {"crypto_id": "solana", "crypto_name": "Solana"},
+            {"crypto_id": "cardano", "crypto_name": "Cardano"}
           ]
         }
       }

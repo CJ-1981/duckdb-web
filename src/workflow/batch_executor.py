@@ -452,7 +452,8 @@ class ParallelRequestExecutor:
         method: str = "GET",
         headers: Optional[Dict[str, str]] = None,
         extract_mode: str = "json",
-        data_path: Optional[str] = None
+        data_path: Optional[str] = None,
+        body_template: Optional[str] = None
     ) -> List[Dict[str, Any]]:
         """
         Execute batch requests in parallel with comprehensive error handling.
@@ -472,7 +473,8 @@ class ParallelRequestExecutor:
                     method,
                     headers,
                     extract_mode,
-                    data_path
+                    data_path,
+                    body_template
                 )
                 tasks.append(task)
 
@@ -509,13 +511,40 @@ class ParallelRequestExecutor:
         row: Dict[str, Any],
         url_template: str,
         method: str,
-        headers: Optional[Dict[str, str]] = None,
-        extract_mode: str = "json",
-        data_path: Optional[str] = None
+        headers: Optional[Dict[str, str]],
+        extract_mode: str,
+        data_path: Optional[str],
+        body_template: Optional[str] = None
     ) -> Dict[str, Any]:
         """Execute single request with full error handling"""
         # Substitute URL template
-        url = self._substitute_url(url_template, row)
+        url = url_template.format(**row)
+
+        # Render body template if provided
+        body_data = None
+        if body_template:
+            try:
+                # Format the template with row values
+                # Handle potential missing keys gracefully
+                rendered_body = body_template
+                for key, value in row.items():
+                    placeholder = f"{{{key}}}"
+                    if placeholder in rendered_body:
+                        rendered_body = rendered_body.replace(placeholder, str(value))
+                
+                # Try to parse as JSON if it looks like it
+                stripped_body = rendered_body.strip()
+                if (stripped_body.startswith('{') and stripped_body.endswith('}')) or \
+                   (stripped_body.startswith('[') and stripped_body.endswith(']')):
+                    try:
+                        import json
+                        body_data = json.loads(rendered_body)
+                    except:
+                        body_data = rendered_body
+                else:
+                    body_data = rendered_body
+            except Exception as e:
+                logger.warning(f"Error rendering body_template: {e}")
 
         # Get fresh token if token manager is configured
         request_headers = headers.copy() if headers else {}
@@ -533,6 +562,8 @@ class ParallelRequestExecutor:
                     method,
                     url,
                     headers=request_headers,
+                    json=body_data if isinstance(body_data, (dict, list)) else None,
+                    data=body_data if isinstance(body_data, str) else None,
                     timeout=self.timeout
                 ) as response:
                     response.raise_for_status()
@@ -545,9 +576,7 @@ class ParallelRequestExecutor:
             # Record success
             self.error_aggregator.record_success(url, row)
 
-            # Merge with input row - flatten dict results into top-level columns if possible
-            if isinstance(result, dict):
-                return {**row, **result}
+            # Return consistent wrapper
             return {**row, "response": {"status": 200, "data": result}}
 
         except HTTPError as e:

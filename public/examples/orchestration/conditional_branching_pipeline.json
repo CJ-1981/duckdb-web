@@ -17,15 +17,18 @@
           "sample_data": [
             {
               "id": 1,
-              "metric_value": "sample_metric_value_1"
+              "date": "2024-01-01",
+              "metric_value": 10.5
             },
             {
               "id": 2,
-              "metric_value": "sample_metric_value_2"
+              "date": "2024-01-02",
+              "metric_value": null
             },
             {
               "id": 3,
-              "metric_value": "sample_metric_value_3"
+              "date": "2024-01-03",
+              "metric_value": 12.0
             }
           ]
         }
@@ -114,7 +117,7 @@
         "label": "Clean & Impute",
         "subtype": "raw_sql",
         "config": {
-          "sql": "SELECT \n  date,\n  coalesce(metric_value, avg(metric_value) OVER ()) as metric_value,\n  'with_imputation' as processing_path\nFROM {{input}}"
+          "sql": "SELECT \n  id,\n  coalesce(try_cast(metric_value AS DOUBLE), avg(try_cast(metric_value AS DOUBLE)) OVER ()) AS metric_value,\n  'with_imputation' AS processing_path\nFROM {{input}}"
         }
       }
     },

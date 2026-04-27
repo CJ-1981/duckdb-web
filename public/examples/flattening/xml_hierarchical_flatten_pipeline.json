@@ -42,7 +42,7 @@
         "label": "Parse XML",
         "subtype": "raw_sql",
         "config": {
-          "sql": "SELECT \n  xml_data,\n  xpath_string(xml_data, '/catalog/@id') as catalog_id,\n  xpath_string(xml_data, '/catalog/name') as catalog_name\nFROM {{input}}"
+          "sql": "SELECT \n  xml_data,\n  xpath_string(xml_data, '/catalog/@id') as catalog_id,\n  xpath_string(xml_data, '/catalog/@name') as catalog_name\nFROM {{input}}"
         }
       }
     },

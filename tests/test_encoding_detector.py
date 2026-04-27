@@ -4,7 +4,7 @@ import pytest
 import time
 from pathlib import Path
 
-from src.csv.encoding_detector import detect_encoding
+from src.csv_parser.encoding_detector import detect_encoding
 
 
 class TestEncodingDetection:
@@ -97,7 +97,7 @@ class TestEncodingDetection:
             f.write(b'\x00\x01\x02\x03\x04\x05')
 
         # Mock chardet to return low confidence
-        import src.csv.encoding_detector as enc_module
+        import src.csv_parser.encoding_detector as enc_module
         original_detect = enc_module.chardet.detect
 
         def mock_detect(data):
@@ -121,7 +121,7 @@ class TestEncodingDetection:
         test_file.write_text("name,age\nAlice,30\n", encoding='utf-8')
 
         # Mock chardet to return None encoding
-        import src.csv.encoding_detector as enc_module
+        import src.csv_parser.encoding_detector as enc_module
 
         def mock_detect(data):
             return {'encoding': None, 'confidence': 0.0}
@@ -143,7 +143,7 @@ class TestEncodingDetection:
         using a very short timeout to avoid long test execution.
         """
         import signal
-        from src.csv.encoding_detector import detect_encoding, TimeoutError
+        from src.csv_parser.encoding_detector import detect_encoding, TimeoutError
 
         # Create a test file
         test_file = Path("/tmp/test_timeout.csv")

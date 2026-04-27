@@ -23,8 +23,8 @@ def register_xml_udfs(conn: duckdb.DuckDBPyConnection) -> None:
         # Try official extension first
         conn.execute("INSTALL xml; LOAD xml;")
         return
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug(f"DuckDB 'xml' extension unavailable, falling back to lxml UDFs: {e}")
 
     # Fallback to lxml UDFs
     try:
@@ -95,7 +95,10 @@ def register_xml_udfs(conn: duckdb.DuckDBPyConnection) -> None:
 
         
     except ImportError as e:
-        logger.warning(f"lxml not found, xpath_string UDF will not be available. Error: {e}")
+        logger.warning(
+            "lxml not found; XML UDFs (xpath_string, xml_extract_string, xpath, "
+            f"xpath_list, xml_extract) will not be available. Error: {e}"
+        )
     except Exception as e:
         logger.error(f"Failed to register XML UDFs: {e}")
 

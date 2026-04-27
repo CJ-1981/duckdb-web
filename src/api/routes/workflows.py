@@ -26,15 +26,6 @@ from reportlab.pdfbase.ttfonts import TTFont
 
 logger = logging.getLogger(__name__)
 
-# Diagnostic logging for environment issues
-import sys
-logger.info(f">>> [ENV] Python Executable: {sys.executable}")
-try:
-    import aiohttp
-    logger.info(f">>> [ENV] aiohttp version: {aiohttp.__version__}")
-except ImportError:
-    logger.error(">>> [ENV] aiohttp NOT FOUND in this environment")
-
 # Feature flag: Use pandas for CSV parsing (better NULL handling)
 USE_PANDAS_CSV = os.getenv('USE_PANDAS_CSV', 'false').lower() == 'true'
 
@@ -843,6 +834,15 @@ def _sanitize_df_for_duckdb(df: pd.DataFrame) -> pd.DataFrame:
     DuckDB's conn.register() doesn't recognize pandas StringDtype.
     Convert StringDtype columns to object dtype before registration.
     """
+    # Strip ::TYPE suffixes from column names (e.g. 'timestamp::TIMESTAMP' -> 'timestamp')
+    new_cols = []
+    for col in df.columns:
+        if isinstance(col, str) and '::' in col:
+            new_cols.append(col.split('::')[0])
+        else:
+            new_cols.append(col)
+    df.columns = new_cols
+
     for col in df.columns:
         if isinstance(df[col].dtype, pd.StringDtype):
             df[col] = df[col].astype(object)
@@ -1824,6 +1824,10 @@ async def execute_workflow_graph(
                         val = str(cond.get("value", "")).strip()
                         
                         if col:
+                            # Treat the literal sentinel "NULL" / "null" as a NULL-check rather than a string comparison
+                            if val.upper() == "NULL" and op in ("==", "!="):
+                                op = "is_null" if op == "==" else "is_not_null"
+                            
                             clean_val = val.replace("'", "''")
                             qc = quote_identifier(col)
                             part = ""
@@ -1916,15 +1920,31 @@ async def execute_workflow_graph(
 
                     if schemas_to_fix:
                         processed_sql = fix_replace_for_numeric_columns(processed_sql, schemas_to_fix)
-                        logger.info(f">>> [EXECUTE] Fixed REPLACE calls for {len(schemas_to_fix)} columns with schema info")
 
                     # Auto-convert backticks to double quotes for standard DuckDB support
                     processed_sql = processed_sql.replace("`", "\"")
-                    # Detect non-SELECT statements (UPDATE, INSERT, DELETE, etc)
-                    first_word = processed_sql.strip().split()[0].upper() if processed_sql.strip() else ""
-                    if first_word in ["UPDATE", "INSERT", "DELETE", "MERGE", "DROP", "ALTER"]:
-                        conn.execute(processed_sql)
-                        node_to_table[node_id] = prev_table
+                    
+                    # Detect if this is a mutation (even with WITH)
+                    sql_stripped = processed_sql.strip()
+                    first_word = sql_stripped.split()[0].upper() if sql_stripped else ""
+                    is_mutation = first_word in ["UPDATE", "INSERT", "DELETE", "MERGE", "DROP", "ALTER", "CREATE"]
+                    if first_word == "WITH":
+                         # Check for mutation keywords later in the query
+                         if re.search(r'\b(UPDATE|INSERT|DELETE|MERGE)\b', sql_stripped.upper()):
+                             is_mutation = True
+                    
+                    if is_mutation:
+                        # Prevent mutation leakage: copy prev_table to table_name first if exists
+                        if prev_table:
+                            conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT * FROM {prev_table}")
+                            # Execute mutation on the NEW table
+                            # We replace prev_table ref in SQL with our new table name
+                            mut_sql = processed_sql.replace(f'"{prev_table}"', f'"{table_name}"')
+                            conn.execute(mut_sql)
+                            node_to_table[node_id] = table_name
+                        else:
+                            conn.execute(processed_sql)
+                            node_to_table[node_id] = table_name
                     else:
                         conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS {processed_sql}")
                         node_to_table[node_id] = table_name
@@ -1941,7 +1961,7 @@ async def execute_workflow_graph(
                     conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT DISTINCT * FROM {prev_table}")
                 node_to_table[node_id] = table_name
 
-            elif subtype == "select":
+            elif subtype == "select" or "Select" in label:
                 if not prev_table: continue
                 cols_raw = str(config.get("columns") or "")
                 if cols_raw:
@@ -2161,15 +2181,6 @@ async def execute_workflow_graph(
                 else:
                     node_to_table[node_id] = prev_table
                     
-            elif subtype == "select" or "Select" in label:
-                if not prev_table: continue
-                cols = [c.strip() for c in config.get("columns", "").split(',') if c.strip()]
-                if cols:
-                    conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT {', '.join([quote_identifier(c) for c in cols])} FROM {prev_table}")
-                    node_to_table[node_id] = table_name
-                else:
-                    node_to_table[node_id] = prev_table
-                    
             elif subtype == "combine" or "Combine" in label:
                 if len(preds) < 2:
                     node_to_table[node_id] = prev_table
@@ -2297,6 +2308,9 @@ async def execute_workflow_graph(
                     sql = f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT {sel_agg} FROM {prev_table}"
                 
                 conn.execute(sql)
+                if window_config:
+                    win_table = f"{table_name}_windowed"
+                    conn.execute(f"DROP TABLE IF EXISTS {win_table}")
                 node_to_table[node_id] = table_name
 
             elif subtype == "batch_request" or "Batch" in label:
@@ -2353,6 +2367,7 @@ async def execute_workflow_graph(
                     timeout = config.get("timeout", 30)
                     extract_mode = config.get("extract_mode", "json")
                     data_path = config.get("data_path")
+                    body_template = config.get("body_template")
 
                     # Build base headers
                     base_headers = config.get("custom_headers", {})
@@ -2392,7 +2407,8 @@ async def execute_workflow_graph(
                         method=method,
                         headers=base_headers,
                         extract_mode=extract_mode,
-                        data_path=data_path
+                        data_path=data_path,
+                        body_template=body_template
                     )
 
                     # Apply output filter if configured
@@ -3008,39 +3024,50 @@ async def inspect_node_dataset(request: InspectRequest):
                             where = config.get("customWhere", "")
                             # Validate WHERE clause to prevent SQL injection
                             if where:
-                                validate_sql_fragment(conn, where, "WHERE")
+                                validate_sql_fragment(conn, where, "WHERE", prev_table)
                         else:
-                            col, op = config.get("column"), config.get("operator", "==")
-                            val = str(config.get("value", "")).strip()
-                            if col:
-                                qc = quote_identifier(col)
-                                cv = val.replace("'", "''")
-                                if op == "==": where = f"TRIM(CAST({qc} AS VARCHAR)) = '{cv}'"
-                                elif op == "!=": where = f"(TRIM(CAST({qc} AS VARCHAR)) != '{cv}' OR {qc} IS NULL)"
-                                elif op == "contains": where = f"CAST({qc} AS VARCHAR) ILIKE '%{cv}%'"
-                                elif op == "is_null": where = f"({qc} IS NULL OR CAST({qc} AS VARCHAR) = '')"
-                                elif op == "is_not_null": where = f"({qc} IS NOT NULL AND CAST({qc} AS VARCHAR) != '')"
-                                elif op in [">", "<", ">=", "<="]:
-                                    num_val = cv.replace(',', '')
-                                    # Validate numeric value
-                                    try:
-                                        float(num_val)
-                                        where = f"TRY_CAST(REPLACE(CAST({qc} AS VARCHAR), ',', '') AS DOUBLE) {op} {num_val}"
-                                    except ValueError:
-                                        raise HTTPException(
-                                            status_code=400,
-                                            detail=f"Invalid numeric value for comparison: '{val}'. Operator {op} requires a numeric value."
-                                        )
+                            conditions = config.get("conditions", [])
+                            if not conditions and config.get("column"):
+                                conditions = [{"column": config.get("column"), "operator": config.get("operator", "=="), "value": config.get("value", "")}]
+                            where_parts = []
+                            for cond in conditions:
+                                col = cond.get("column")
+                                op = cond.get("operator", "==")
+                                val = str(cond.get("value", "")).strip()
+                                if col:
+                                    # Treat literal "NULL" as a real NULL check
+                                    if val.upper() == "NULL" and op in ("==", "!="):
+                                        op = "is_null" if op == "==" else "is_not_null"
+                                    
+                                    qc = quote_identifier(col)
+                                    cv = val.replace("'", "''")
+                                    if op == "==": part = f"TRIM(CAST({qc} AS VARCHAR)) = '{cv}'"
+                                    elif op == "!=": part = f"(TRIM(CAST({qc} AS VARCHAR)) != '{cv}' OR {qc} IS NULL)"
+                                    elif op == "contains": part = f"CAST({qc} AS VARCHAR) ILIKE '%{cv}%'"
+                                    elif op == "is_null": part = f"({qc} IS NULL OR CAST({qc} AS VARCHAR) = '')"
+                                    elif op == "is_not_null": part = f"({qc} IS NOT NULL AND CAST({qc} AS VARCHAR) != '')"
+                                    elif op in [">", "<", ">=", "<="]:
+                                        num_val = cv.replace(',', '')
+                                        try:
+                                            float(num_val)
+                                            part = f"TRY_CAST(REPLACE(CAST({qc} AS VARCHAR), ',', '') AS DOUBLE) {op} {num_val}"
+                                        except ValueError: continue
+                                    if part: where_parts.append(part)
+                            if where_parts: where = " AND ".join(where_parts)
+                        
                         if where:
                             conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT * FROM {prev_table} WHERE {where}")
                             node_to_table[node_id] = table_name
                         else: node_to_table[node_id] = prev_table
                     elif subtype == "select" or "Select" in label:
-                        cols = [c.strip() for c in config.get("columns", "").split(',') if c.strip()]
-                        if cols:
-                            conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT {', '.join([quote_identifier(c) for c in cols])} FROM {prev_table}")
+                        if not prev_table: continue
+                        cols_raw = str(config.get("columns") or "")
+                        if cols_raw:
+                            # Support expressions
+                            conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT {cols_raw} FROM {prev_table}")
                             node_to_table[node_id] = table_name
-                        else: node_to_table[node_id] = prev_table
+                        else:
+                            node_to_table[node_id] = prev_table
                     elif subtype == "aggregate" or "Aggregate" in label:
                         group_by = [c.strip() for c in config.get("groupBy", "").split(',') if c.strip()]
                         aggs = config.get("aggregations", []) or []
@@ -3056,13 +3083,23 @@ async def inspect_node_dataset(request: InspectRequest):
                             else: agg_parts.append(f"COUNT(*) AS {quote_identifier(al)}")
                         sel = ", ".join(agg_parts)
                         if group_by: sel = f"{', '.join([quote_identifier(c) for c in group_by])}, {sel}"
+                        
+                        # Windowing support for aggregate nodes
+                        window_config = config.get("window")
+                        if window_config:
+                            ts_col = window_config.get("timestamp_column", "timestamp")
+                            win_expr = f"date_trunc('minute', CAST({quote_identifier(ts_col)} AS TIMESTAMP))"
+                            win_table = f"{table_name}_windowed"
+                            conn.execute(f"CREATE OR REPLACE TEMP TABLE {win_table} AS SELECT *, {win_expr} AS window_start FROM {prev_table}")
+                            prev_table = win_table
+                            sel = f"window_start, {sel}"
+                            group_by = ["window_start"] + group_by
+                        
                         sql = f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT {sel} FROM {prev_table}"
                         if group_by: sql += f" GROUP BY {', '.join([quote_identifier(c) for c in group_by])}"
                         conn.execute(sql); node_to_table[node_id] = table_name
+                        if window_config: conn.execute(f"DROP TABLE IF EXISTS {table_name}_windowed")
                     elif subtype == "batch_request" or "Batch" in label:
-                        """
-                        Batch Request Node - Inspect mode (no execution, just validation)
-                        """
                         if prev_table:
                             node_to_table[node_id] = prev_table
                         else:

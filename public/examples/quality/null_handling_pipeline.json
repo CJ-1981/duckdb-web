@@ -12,10 +12,10 @@
         "config": {
           "file_path": "examples/messy_data.csv",
           "sample_data": [
-            {"customer_id": "C001", "name": "John Doe", "email": "john@example.com", "phone": null, "amount": 35},
-            {"customer_id": "C002", "name": null, "email": "jane@example.com", "phone": "555-1234", "amount": 28},
-            {"customer_id": "C003", "name": "Bob Smith", "email": null, "phone": null, "amount": null},
-            {"customer_id": "C004", "name": "Alice Johnson", "email": "alice@example.com", "phone": "555-5678", "amount": 42}
+            {"id": "C001", "name": "John Doe", "email": "john@example.com", "phone": null, "amount": 35},
+            {"id": "C002", "name": null, "email": "jane@example.com", "phone": "555-1234", "amount": 28},
+            {"id": "C003", "name": "Bob Smith", "email": null, "phone": null, "amount": null},
+            {"id": "C004", "name": "Alice Johnson", "email": "alice@example.com", "phone": "555-5678", "amount": 42}
           ]
         }
       }

@@ -127,7 +127,7 @@
             {
               "column": "status",
               "operator": "==",
-              "value": "completed"
+              "value": "pending"
             }
           ]
         }

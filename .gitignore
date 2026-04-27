@@ -253,8 +253,7 @@ playwright/.cache/
 .env*
 .moai/docs/user-guides/job-scheduling.md
 .moai/reports/session-3eb120c5-33a2-4100-9903-b84e61beb008.md
-
 # Temporary test files
-scratch/
+scratch/*
 server_log.txt
 sample.xml

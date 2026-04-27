@@ -38,13 +38,15 @@
         "label": "Execute GraphQL",
         "subtype": "batch_request",
         "config": {
-          "url_template": "{endpoint}",
+          "url_template": "https://api.github.com/graphql",
           "method": "POST",
           "custom_headers": {
-            "Content-Type": "application/json"
+            "Content-Type": "application/json",
+            "User-Agent": "DuckDB-Workflow-Engine"
           },
-          "data_path": "data.repository",
-          "sql": "SELECT * FROM {{input}} LIMIT 100"
+          "body_template": "{\"query\": \"query { repository(owner: \\\"{owner}\\\", name: \\\"{repo}\\\") { description starlightCount } }\"}",
+          "extract_mode": "json",
+          "data_path": "data.repository"
         }
       }
     },

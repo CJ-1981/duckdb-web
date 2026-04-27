@@ -9,7 +9,7 @@ from unittest.mock import Mock, patch
 from fastapi.testclient import TestClient
 from fastapi import status
 
-from src.csv.api import router, get_session_manager
+from src.csv_parser.api import router, get_session_manager
 
 
 # ============================================================================
@@ -86,7 +86,7 @@ def test_upload_cp949_file(client, cp949_csv_file):
     session_manager._sessions.clear()
 
     # Mock encoding detection to avoid signal issues in tests
-    with patch('src.csv.api.detect_encoding') as mock_detect:
+    with patch('src.csv_parser.api.detect_encoding') as mock_detect:
         mock_detect.return_value = ('cp949', 0.85)
 
         # Mock pandas read_csv for CP949
@@ -155,7 +155,7 @@ def test_upload_oversized_file_rejected(client):
     # Mock file size check by creating a file that exceeds limit
     large_content = b"x" * (501 * 1024 * 1024)  # 501MB
 
-    with patch('src.csv.api.MAX_FILE_SIZE', 500 * 1024 * 1024):
+    with patch('src.csv_parser.api.MAX_FILE_SIZE', 500 * 1024 * 1024):
         # Use a smaller file but mock the size check
         response = client.post(
             "/api/csv/upload",
