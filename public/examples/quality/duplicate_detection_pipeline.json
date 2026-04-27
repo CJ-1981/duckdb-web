@@ -86,12 +86,26 @@
           "filename": "unique_customers.csv"
         }
       }
+    },
+    {
+      "id": "output-2",
+      "type": "output",
+      "position": {"x": 1300, "y": 250},
+      "data": {
+        "label": "Save Duplicate Summary",
+        "subtype": "csv",
+        "config": {
+          "filename": "duplicate_summary.csv"
+        }
+      }
     }
   ],
   "edges": [
     {"id": "e1", "source": "input-1", "target": "transform-1"},
     {"id": "e2", "source": "transform-1", "target": "transform-2"},
-    {"id": "e3", "source": "transform-2", "target": "aggregate-1"},
-    {"id": "e4", "source": "aggregate-1", "target": "output-1"}
+    {"id": "e3", "source": "transform-1", "target": "transform-3"},
+    {"id": "e4", "source": "transform-3", "target": "aggregate-1"},
+    {"id": "e5", "source": "transform-2", "target": "output-1"},
+    {"id": "e6", "source": "aggregate-1", "target": "output-2"}
   ]
 }

@@ -108,6 +108,51 @@ from src.core.connectors.csv import CSVConnector
 
 router = APIRouter(prefix="/api/v1/workflows", tags=["Workflows"])
 
+def _apply_node_aliasing(conn, node, node_id, node_to_table):
+    """
+    Helper to apply universal aliasing logic for a node.
+
+    @MX:ANCHOR: Universal logical-name aliasing (fan_in: every input/transform subtype + finalize)
+    @MX:REASON: Drops the existing view (SCD Type 2) before re-creating an aliased TEMP TABLE so UPDATEs work.
+    """
+    config = node.get("data", {}).get("config", {})
+    logical_name = config.get("tableName") or config.get("alias")
+    tname = node_to_table.get(node_id)
+    if tname and logical_name and logical_name != tname:
+        try:
+            # Drop view if it exists to avoid conflict when creating a table (SCD Type 2 support)
+            conn.execute(f"DROP VIEW IF EXISTS {quote_identifier(logical_name)}")
+            # Use TABLE instead of VIEW to allow UPDATE/INSERT statements on logical aliases
+            conn.execute(f"CREATE OR REPLACE TEMP TABLE {quote_identifier(logical_name)} AS SELECT * FROM {tname}")
+            logger.info(f">>> [FLOW] Aliased node {node_id} ({tname}) to {logical_name}")
+        except Exception as e:
+            logger.error(f">>> [FLOW] Failed to alias node {node_id} to {logical_name}: {e}")
+
+def _finalize_node_state(conn, node, node_id, node_to_table, node_hash):
+    """
+    Finalize node state: apply aliasing and update cache.
+
+    @MX:ANCHOR: Single point of truth for post-execution state (fan_in: all node-type branches)
+    @MX:REASON: Centralizes aliasing + _NODE_CACHE write so the schema/timestamp invariants stay in sync.
+    """
+    _apply_node_aliasing(conn, node, node_id, node_to_table)
+    
+    final_table = node_to_table.get(node_id)
+    if final_table:
+        import time
+        # Preserve existing schema information if present
+        existing_cache = _NODE_CACHE.get(node_id, {})
+        cache_entry = {
+            "hash": node_hash,
+            "table_name": final_table,
+            "timestamp": time.time()
+        }
+        if "schema" in existing_cache:
+            cache_entry["schema"] = existing_cache["schema"]
+            
+        _NODE_CACHE[node_id] = cache_entry
+        logger.info(f">>> [FLOW] Cached node {node_id} results as {final_table}")
+
 # Global State for Incremental Caching
 # node_id -> { "hash": str, "table_name": str, "timestamp": float }
 _NODE_CACHE: Dict[str, Dict[str, Any]] = {}
@@ -123,11 +168,17 @@ _SQL_RESULT_CACHE: Dict[str, Dict[str, Any]] = {}
 # Maximum cache size to prevent unbounded growth
 _MAX_SQL_RESULT_CACHE_SIZE = 100
 
+from src.core.database.utils import register_xml_udfs, load_xml_into_table
+
+
 def get_connection():
     global _GLOBAL_CONN
     if _GLOBAL_CONN is None:
         _GLOBAL_CONN = duckdb.connect(database=':memory:')
+        # Register XML UDFs as fallback since official extension is often missing/404
+        register_xml_udfs(_GLOBAL_CONN)
     return _GLOBAL_CONN
+
 
 
 def _read_csv_sql(file_param: str, delimiter: str = ',') -> str:
@@ -410,7 +461,11 @@ def build_cast_expressions(schema: Dict[str, str], table_alias: str = "", actual
 
     cast_expressions = []
     for col_name, col_type in schema.items():
-        # Use raw name if found in map, otherwise use the col_name from schema
+        # If actual_cols is provided, ensure the column exists in the file
+        if actual_cols and col_name not in name_map:
+            logger.warning(f">>> [SCHEMA] Column '{col_name}' in schema but not found in physical file - skipping")
+            continue
+            
         raw_name = name_map.get(col_name, col_name)
         
         quoted_raw = quote_identifier(raw_name)
@@ -565,18 +620,19 @@ def map_duckdb_error_to_user_message(error: Exception) -> str:
     return error_original[:200]
 
 
-def validate_sql_fragment(conn: duckdb.DuckDBPyConnection, sql_fragment: str, fragment_type: str = "expression") -> None:
+def validate_sql_fragment(conn: duckdb.DuckDBPyConnection, sql_fragment: str, fragment_type: str = "expression", table_name: str = None) -> None:
     """
     Validate a SQL fragment to prevent SQL injection.
 
     This function validates SQL syntax and prevents malicious SQL injection.
     For WHEN clauses, it uses pattern-based validation instead of EXPLAIN
-    to avoid column binding errors.
+    to avoid column binding errors, unless table_name is provided.
 
     Args:
         conn: DuckDB connection
         sql_fragment: SQL fragment to validate (WHERE clause, expression, etc.)
         fragment_type: Type of fragment for error messages (WHERE, expression, WHEN, etc.)
+        table_name: Optional table name to validate against (prevents column binding errors)
 
     Raises:
         HTTPException: If SQL fragment is invalid or potentially malicious
@@ -584,8 +640,8 @@ def validate_sql_fragment(conn: duckdb.DuckDBPyConnection, sql_fragment: str, fr
     if not sql_fragment or not sql_fragment.strip():
         return
 
-    # For WHEN clauses, use pattern-based validation to avoid column binding issues
-    if fragment_type == "WHEN":
+    # For WHEN clauses without table_name, use pattern-based validation to avoid column binding issues
+    if fragment_type == "WHEN" and not table_name:
         # Use pre-compiled regex patterns for better performance
         for pattern in SQL_INJECTION_PATTERNS:
             if pattern.search(sql_fragment):
@@ -597,16 +653,17 @@ def validate_sql_fragment(conn: duckdb.DuckDBPyConnection, sql_fragment: str, fr
         # WHEN clause validation passed
         return
 
-    # For other fragment types, use EXPLAIN validation
+    # For other fragment types (or WHEN with table), use EXPLAIN validation
     try:
         # Use EXPLAIN to validate syntax without executing
         # We wrap the fragment in a SELECT with dummy columns to prevent binding errors
+        from_clause = f" FROM {table_name}" if table_name else ""
         if fragment_type == "WHERE":
-            test_sql = f"EXPLAIN SELECT 1 AS dummy WHERE FALSE AND ({sql_fragment})"
+            test_sql = f"EXPLAIN SELECT 1 AS dummy{from_clause} WHERE FALSE AND ({sql_fragment})"
         elif fragment_type == "expression":
-            test_sql = f"EXPLAIN SELECT {sql_fragment} AS validation_column, 1 AS dummy WHERE FALSE"
+            test_sql = f"EXPLAIN SELECT {sql_fragment} AS validation_column, 1 AS dummy{from_clause} WHERE FALSE"
         else:
-            test_sql = f"EXPLAIN SELECT {sql_fragment}, 1 AS dummy WHERE FALSE"
+            test_sql = f"EXPLAIN SELECT {sql_fragment}, 1 AS dummy{from_clause} WHERE FALSE"
 
         conn.execute(test_sql)
     except Exception as e:
@@ -777,6 +834,15 @@ def _sanitize_df_for_duckdb(df: pd.DataFrame) -> pd.DataFrame:
     DuckDB's conn.register() doesn't recognize pandas StringDtype.
     Convert StringDtype columns to object dtype before registration.
     """
+    # Strip ::TYPE suffixes from column names (e.g. 'timestamp::TIMESTAMP' -> 'timestamp')
+    new_cols = []
+    for col in df.columns:
+        if isinstance(col, str) and '::' in col:
+            new_cols.append(col.split('::')[0])
+        else:
+            new_cols.append(col)
+    df.columns = new_cols
+
     for col in df.columns:
         if isinstance(df[col].dtype, pd.StringDtype):
             df[col] = df[col].astype(object)
@@ -1151,6 +1217,9 @@ async def validate_sql(
 
     try:
         conn = duckdb.connect(database=':memory:')
+        # Register XML UDFs so validation passes for queries using xpath_string
+        register_xml_udfs(conn)
+
 
         # Build dummy tables for schema validation
         for table_info in tables_to_process:
@@ -1325,6 +1394,11 @@ async def execute_workflow_graph(
             node_state = {"config": config, "inputs": input_hashes, "subtype": subtype, "type": node["type"]}
             
             # Use deterministic hash
+            # If config has a file_path, include its mtime in the hash to detect external changes
+            f_path = config.get("file_path")
+            if f_path and os.path.exists(f_path):
+                node_state["mtime"] = os.path.getmtime(f_path)
+                
             import hashlib
             node_state_str = json.dumps(node_state, sort_keys=True)
             node_hash = hashlib.sha256(node_state_str.encode()).hexdigest()
@@ -1361,6 +1435,8 @@ async def execute_workflow_graph(
                         node_to_table[node_id] = table_name
                     except Exception as e:
                         logger.error(f"Failed to load remote file {url}: {e}")
+                    # Finalize state before continue
+                    _finalize_node_state(conn, node, node_id, node_to_table, node_hash)
                     continue
 
                 # REST API input
@@ -1387,6 +1463,8 @@ async def execute_workflow_graph(
                     except Exception as e:
                         logger.error(f">>> [INPUT NODE] Failed to load REST API: {e}")
                         raise HTTPException(status_code=400, detail=f"REST API error: {str(e)}")
+                    # Finalize state before continue
+                    _finalize_node_state(conn, node, node_id, node_to_table, node_hash)
                     continue
 
                 # Web Scraper input
@@ -1408,7 +1486,48 @@ async def execute_workflow_graph(
                     except Exception as e:
                         logger.error(f">>> [INPUT NODE] Failed to scrape web page: {e}")
                         raise HTTPException(status_code=400, detail=f"Web scraper error: {str(e)}")
+                    # Finalize state before continue
+                    _finalize_node_state(conn, node, node_id, node_to_table, node_hash)
                     continue
+                
+                # Database Read input
+                if subtype == "db_read":
+                    db_table = config.get("tableName")
+                    if db_table:
+                        # Check if table exists explicitly to avoid swallowing other errors
+                        try:
+                            # Search in information_schema for the table
+                            exists_query = "SELECT 1 FROM information_schema.tables WHERE table_name = ?"
+                            table_exists = conn.execute(exists_query, [db_table]).fetchone()
+                            
+                            if table_exists:
+                                conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT * FROM {quote_identifier(db_table)}")
+                                node_to_table[node_id] = table_name
+                                logger.info(f">>> [INPUT NODE] Loaded table {db_table} into {table_name}")
+                                # Finalize state (required before early continue)
+                                _finalize_node_state(conn, node, node_id, node_to_table, node_hash)
+                                continue
+                            else:
+                                logger.warning(f">>> [INPUT NODE] Table {db_table} not found in DB, falling back to sample data")
+                        except Exception as e:
+                            logger.error(f">>> [INPUT NODE] Error probing table {db_table}: {e}")
+                            
+                    # Fallback to sample_data
+                    sample = config.get("sample_data")
+                    if sample:
+                        try:
+                            import pandas as pd
+                            df = pd.DataFrame(sample)
+                            df = _sanitize_df_for_duckdb(df)
+                            conn.register(f'{table_name}_df', df)
+                            conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT * FROM {table_name}_df")
+                            node_to_table[node_id] = table_name
+                            logger.info(f">>> [INPUT NODE] Loaded sample data for {node_id}")
+                            # Finalize state (required before early continue)
+                            _finalize_node_state(conn, node, node_id, node_to_table, node_hash)
+                            continue
+                        except Exception as e:
+                            logger.error(f">>> [INPUT NODE] Failed to load sample data: {e}")
 
                 file_path = config.get("file_path")
                 logger.info(f">>> [INPUT NODE] Processing file: {file_path}")
@@ -1436,6 +1555,8 @@ async def execute_workflow_graph(
                         conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT * FROM {table_name}_df")
                         node_to_table[node_id] = table_name
                         logger.info(f">>> [INPUT NODE] Loaded Excel file with {len(df)} rows from sheet '{selected_sheet or 'default'}'")
+                        # Finalize state before continue
+                        _finalize_node_state(conn, node, node_id, node_to_table, node_hash)
                         continue  # Skip the rest of the file loading logic
                     except Exception as e:
                         logger.error(f">>> [INPUT NODE] Failed to load Excel file {file_path}: {e}")
@@ -1457,6 +1578,8 @@ async def execute_workflow_graph(
                         conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT * FROM {table_name}_df")
                         node_to_table[node_id] = table_name
                         logger.info(f">>> [INPUT NODE] Loaded Parquet file with {len(df)} rows")
+                        # Finalize state before continue
+                        _finalize_node_state(conn, node, node_id, node_to_table, node_hash)
                         continue  # Skip the rest of the file loading logic
                     except Exception as e:
                         logger.error(f">>> [INPUT NODE] Failed to load Parquet file {file_path}: {e}")
@@ -1479,12 +1602,38 @@ async def execute_workflow_graph(
                         conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT * FROM {table_name}_df")
                         node_to_table[node_id] = table_name
                         logger.info(f">>> [INPUT NODE] Loaded {format.upper()} file with {len(df)} rows")
+                        # Finalize state before continue
+                        _finalize_node_state(conn, node, node_id, node_to_table, node_hash)
                         continue  # Skip the rest of the file loading logic
                     except Exception as e:
                         logger.error(f">>> [INPUT NODE] Failed to load JSON file {file_path}: {e}")
                         raise HTTPException(
                             status_code=400,
                             detail=f"Failed to load JSON file: {str(e)}"
+                        )
+
+                # Handle XML files
+                if file_ext == '.xml':
+                    try:
+                        logger.info(f">>> [INPUT NODE] Processing XML file: {file_path}")
+                        # Use centralized XML loading helper
+                        load_xml_into_table(conn, file_path, table_name)
+                        node_to_table[node_id] = table_name
+                        
+                        # Support optional tableName from config for direct SQL reference
+                        custom_table_name = config.get("tableName")
+                        if custom_table_name and custom_table_name != table_name:
+                            conn.execute(f"CREATE OR REPLACE TEMP TABLE {quote_identifier(custom_table_name)} AS SELECT * FROM {table_name}")
+                            logger.info(f">>> [INPUT NODE] Aliased {table_name} as {custom_table_name}")
+                        logger.info(f">>> [INPUT NODE] Loaded XML file into 'xml_data' column")
+                        # Finalize state before continue
+                        _finalize_node_state(conn, node, node_id, node_to_table, node_hash)
+                        continue  # Skip the rest of the file loading logic
+                    except Exception as e:
+                        logger.error(f">>> [INPUT NODE] Failed to load XML file {file_path}: {e}")
+                        raise HTTPException(
+                            status_code=400,
+                            detail=f"Failed to load XML file: {str(e)}"
                         )
 
                 load_format = config.get("format", "flat")
@@ -1501,7 +1650,16 @@ async def execute_workflow_graph(
                         _NODE_CACHE[node_id]["schema"] = schema
 
                         node_to_table[node_id] = table_name
+                        
+                        # Support optional tableName from config for direct SQL reference
+                        custom_table_name = config.get("tableName")
+                        if custom_table_name and custom_table_name != table_name:
+                            conn.execute(f"CREATE OR REPLACE TEMP TABLE {quote_identifier(custom_table_name)} AS SELECT * FROM {table_name}")
+                            logger.info(f">>> [INPUT NODE] Aliased {table_name} as {custom_table_name}")
+                            
                         logger.info(f">>> [INPUT NODE] Pandas loaded {result['row_count']} rows as '{table_name}'")
+                        # Finalize state before continue
+                        _finalize_node_state(conn, node, node_id, node_to_table, node_hash)
                         continue  # Skip the rest of the CSV loading logic
                     except Exception as e:
                         logger.warning(f">>> [INPUT NODE] Pandas loading failed, falling back to standard method: {str(e)}")
@@ -1631,6 +1789,12 @@ async def execute_workflow_graph(
                             logger.info(f">>> [CSV LOAD] Created table {table_name} with NULLIF handling (schema inference failed, delim: '{delim}')")
 
                         node_to_table[node_id] = table_name
+                        
+                        # Support optional tableName from config for direct SQL reference
+                        custom_table_name = config.get("tableName")
+                        if custom_table_name and custom_table_name != table_name:
+                            conn.execute(f"CREATE OR REPLACE TEMP TABLE {quote_identifier(custom_table_name)} AS SELECT * FROM {table_name}")
+                            logger.info(f">>> [INPUT NODE] Aliased {table_name} as {custom_table_name}")
                 
             elif subtype == "filter" or "Filter" in label:
                 if not prev_table: continue
@@ -1642,40 +1806,64 @@ async def execute_workflow_graph(
                     where = config.get("customWhere", "")
                     # Validate WHERE clause to prevent SQL injection
                     if where:
-                        validate_sql_fragment(conn, where, "WHERE")
+                        validate_sql_fragment(conn, where, "WHERE", prev_table)
                 else:
-                    col = config.get("column")
-                    op = config.get("operator", "==")
-                    val = str(config.get("value", "")).strip()
+                    # Support both single condition and conditions list
+                    conditions = config.get("conditions", [])
+                    if not conditions and config.get("column"):
+                        conditions = [{
+                            "column": config.get("column"),
+                            "operator": config.get("operator", "=="),
+                            "value": config.get("value", "")
+                        }]
                     
-                    if col:
-                        clean_val = val.replace("'", "''")
-                        qc = quote_identifier(col)
-                        if op == "==": where = f"TRIM(CAST({qc} AS VARCHAR)) = '{clean_val}'"
-                        elif op == "!=": where = f"(TRIM(CAST({qc} AS VARCHAR)) != '{clean_val}' OR {qc} IS NULL)"
-                        elif op == "contains": where = f"CAST({qc} AS VARCHAR) ILIKE '%{clean_val}%'"
-                        elif op == "not_contains": where = f"(TRIM(CAST({qc} AS VARCHAR)) NOT ILIKE '%{clean_val}%' OR {qc} IS NULL)"
-                        elif op == "starts_with": where = f"CAST({qc} AS VARCHAR) ILIKE '{clean_val}%'"
-                        elif op == "ends_with": where = f"CAST({qc} AS VARCHAR) ILIKE '%{clean_val}'"
-                        elif op == "is_null": where = f"({qc} IS NULL OR CAST({qc} AS VARCHAR) = '')"
-                        elif op == "is_not_null": where = f"({qc} IS NOT NULL AND CAST({qc} AS VARCHAR) != '')"
-                        elif op == "in":
-                            items = ["'" + v.strip().replace("'", "''") + "'" for v in val.split(',')]
-                            where = f"TRIM(CAST({qc} AS VARCHAR)) IN ({', '.join(items)})"
-                        elif op == "not_in":
-                            items = ["'" + v.strip().replace("'", "''") + "'" for v in val.split(',')]
-                            where = f"(TRIM(CAST({qc} AS VARCHAR)) NOT IN ({', '.join(items)}) OR {qc} IS NULL)"
-                        elif op in [">", "<", ">=", "<="]:
-                            num_val = clean_val.replace(',', '')
-                            # Validate that the value is actually numeric
-                            try:
-                                float(num_val)
-                                where = f"TRY_CAST(REPLACE(CAST({qc} AS VARCHAR), ',', '') AS DOUBLE) {op} {num_val}"
-                            except ValueError:
-                                raise HTTPException(
-                                    status_code=400,
-                                    detail=f"Invalid numeric value for comparison: '{clean_val}'. Operator {op} requires a numeric value."
-                                )
+                    where_parts = []
+                    for cond in conditions:
+                        col = cond.get("column")
+                        op = cond.get("operator", "==")
+                        val = str(cond.get("value", "")).strip()
+                        
+                        if col:
+                            # Treat the literal sentinel "NULL" / "null" as a NULL-check rather than a string comparison
+                            if val.upper() == "NULL" and op in ("==", "!="):
+                                op = "is_null" if op == "==" else "is_not_null"
+                            
+                            clean_val = val.replace("'", "''")
+                            qc = quote_identifier(col)
+                            part = ""
+                            if op == "==": part = f"TRIM(CAST({qc} AS VARCHAR)) = '{clean_val}'"
+                            elif op == "!=": part = f"(TRIM(CAST({qc} AS VARCHAR)) != '{clean_val}' OR {qc} IS NULL)"
+                            elif op == "contains": part = f"CAST({qc} AS VARCHAR) ILIKE '%{clean_val}%'"
+                            elif op == "not_contains": part = f"(TRIM(CAST({qc} AS VARCHAR)) NOT ILIKE '%{clean_val}%' OR {qc} IS NULL)"
+                            elif op == "starts_with": part = f"CAST({qc} AS VARCHAR) ILIKE '{clean_val}%'"
+                            elif op == "ends_with": part = f"CAST({qc} AS VARCHAR) ILIKE '%{clean_val}'"
+                            elif op == "is_null": part = f"({qc} IS NULL OR CAST({qc} AS VARCHAR) = '')"
+                            elif op == "is_not_null": part = f"({qc} IS NOT NULL AND CAST({qc} AS VARCHAR) != '')"
+                            elif op == "in":
+                                items = ["'" + v.strip().replace("'", "''") + "'" for v in val.split(',')]
+                                part = f"TRIM(CAST({qc} AS VARCHAR)) IN ({', '.join(items)})"
+                            elif op == "not_in":
+                                items = ["'" + v.strip().replace("'", "''") + "'" for v in val.split(',')]
+                                part = f"(TRIM(CAST({qc} AS VARCHAR)) NOT IN ({', '.join(items)}) OR {qc} IS NULL)"
+                            elif op in [">", "<", ">=", "<="]:
+                                num_val = clean_val.replace(',', '')
+                                # Check if it looks like a number
+                                is_numeric = False
+                                try:
+                                    float(num_val)
+                                    is_numeric = True
+                                except: pass
+                                
+                                if is_numeric:
+                                    part = f"TRY_CAST(REPLACE(CAST({qc} AS VARCHAR), ',', '') AS DOUBLE) {op} {num_val}"
+                                else:
+                                    part = f"CAST({qc} AS VARCHAR) {op} '{clean_val}'"
+                            
+                            if part:
+                                where_parts.append(part)
+                    
+                    if where_parts:
+                        where = " AND ".join(where_parts)
                 
                 if where:
                     conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT * FROM {prev_table} WHERE {where}")
@@ -1686,10 +1874,10 @@ async def execute_workflow_graph(
             elif subtype == "computed":
                 if not prev_table: continue
                 expr = config.get("expression")
-                alias = config.get("alias", "new_column")
+                alias = config.get("alias") if config.get("alias") is not None else (config.get("column") if config.get("column") is not None else "new_column")
                 if expr and alias:
                     # Validate expression to prevent SQL injection
-                    validate_sql_fragment(conn, expr, "expression")
+                    validate_sql_fragment(conn, expr, "expression", prev_table)
                     conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT *, {expr} AS {quote_identifier(alias)} FROM {prev_table}")
                     node_to_table[node_id] = table_name
                 else:
@@ -1705,15 +1893,17 @@ async def execute_workflow_graph(
                     # Replace indexed placeholders
                     for idx, pred_id in enumerate(all_preds, start=1):
                         cached = _NODE_CACHE.get(pred_id)
-                        if cached:
-                            table_ref = f'"{cached["table_name"].replace('"', '""')}"'
+                        tname = cached["table_name"] if cached else node_to_table.get(pred_id)
+                        if tname:
+                            table_ref = f'"{tname.replace('"', '""')}"'
                             processed_sql = processed_sql.replace(f"{{{{input{idx}}}}}", table_ref)
 
                     # Backward compatible: {{input}} → first predecessor
                     if "{{input}}" in processed_sql and all_preds:
                         cached = _NODE_CACHE.get(all_preds[0])
-                        if cached:
-                            table_ref = f'"{cached["table_name"].replace('"', '""')}"'
+                        tname = cached["table_name"] if cached else node_to_table.get(all_preds[0])
+                        if tname:
+                            table_ref = f'"{tname.replace('"', '""')}"'
                             processed_sql = processed_sql.replace("{{input}}", table_ref)
                         elif prev_table:
                             # Fallback to prev_table if no predecessors
@@ -1730,23 +1920,56 @@ async def execute_workflow_graph(
 
                     if schemas_to_fix:
                         processed_sql = fix_replace_for_numeric_columns(processed_sql, schemas_to_fix)
-                        logger.info(f">>> [EXECUTE] Fixed REPLACE calls for {len(schemas_to_fix)} columns with schema info")
 
                     # Auto-convert backticks to double quotes for standard DuckDB support
                     processed_sql = processed_sql.replace("`", "\"")
-                    conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS {processed_sql}")
-                    node_to_table[node_id] = table_name
+                    
+                    # Detect if this is a mutation (even with WITH)
+                    sql_stripped = processed_sql.strip()
+                    first_word = sql_stripped.split()[0].upper() if sql_stripped else ""
+                    is_mutation = first_word in ["UPDATE", "INSERT", "DELETE", "MERGE", "DROP", "ALTER", "CREATE"]
+                    if first_word == "WITH":
+                         # Check for mutation keywords later in the query
+                         if re.search(r'\b(UPDATE|INSERT|DELETE|MERGE)\b', sql_stripped.upper()):
+                             is_mutation = True
+                    
+                    if is_mutation:
+                        # Prevent mutation leakage: copy prev_table to table_name first if exists
+                        if prev_table:
+                            conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT * FROM {prev_table}")
+                            # Execute mutation on the NEW table
+                            # We replace prev_table ref in SQL with our new table name
+                            mut_sql = processed_sql.replace(f'"{prev_table}"', f'"{table_name}"')
+                            conn.execute(mut_sql)
+                            node_to_table[node_id] = table_name
+                        else:
+                            conn.execute(processed_sql)
+                            node_to_table[node_id] = table_name
+                    else:
+                        conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS {processed_sql}")
+                        node_to_table[node_id] = table_name
                 else:
                     node_to_table[node_id] = prev_table
 
             elif subtype == "distinct":
                 if not prev_table: continue
-                cols_raw = config.get("columns", "")
+                cols_raw = str(config.get("columns") or "")
                 if cols_raw:
                     cols = [quote_identifier(c.strip()) for c in cols_raw.split(',') if c.strip()]
                     conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT DISTINCT {', '.join(cols)} FROM {prev_table}")
                 else:
                     conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT DISTINCT * FROM {prev_table}")
+                node_to_table[node_id] = table_name
+
+            elif subtype == "select" or "Select" in label:
+                if not prev_table: continue
+                cols_raw = str(config.get("columns") or "")
+                if cols_raw:
+                    # columns can be a comma-separated list of expressions
+                    # We don't quote them as a whole because they might contain 'AS' or functions
+                    conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT {cols_raw} FROM {prev_table}")
+                else:
+                    conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT * FROM {prev_table}")
                 node_to_table[node_id] = table_name
 
             elif subtype == "rename":
@@ -1778,7 +2001,7 @@ async def execute_workflow_graph(
                 if not prev_table: continue
                 conditions = config.get("conditions", [])
                 else_val_raw = str(config.get("elseValue", "NULL")).strip()
-                alias = config.get("alias", "case_result")
+                alias = config.get("alias") if config.get("alias") is not None else (config.get("column") if config.get("column") is not None else "case_result")
                 
                 def sql_val(v):
                     if v is None: return "NULL"
@@ -1800,7 +2023,7 @@ async def execute_workflow_graph(
                         w, t = c.get('when'), c.get('then')
                         if w and t:
                             # Validate WHEN clause to prevent SQL injection
-                            validate_sql_fragment(conn, w, "WHEN")
+                            validate_sql_fragment(conn, w, "WHEN", prev_table)
                             case_parts.append(f"WHEN {w} THEN {sql_val(t)}")
                     case_parts.append(f"ELSE {sql_val(else_val_raw)} END AS {quote_identifier(alias)}")
                     conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT *, {' '.join(case_parts)} FROM {prev_table}")
@@ -1914,7 +2137,12 @@ async def execute_workflow_graph(
                 col = config.get("column", "")
                 alias = config.get("alias", "unnested_value")
                 if col:
-                    sql = f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT * EXCLUDE ({quote_identifier(col)}), UNNEST({quote_identifier(col)}) AS {quote_identifier(alias)} FROM {prev_table}"
+                    # Robust unnest: handle VARCHAR lists from CSVs by splitting on comma after removing brackets
+                    # Ensure both CASE branches return VARCHAR[] to avoid Binder Error
+                    unnest_expr = f"UNNEST(CASE WHEN typeof({quote_identifier(col)}) = 'VARCHAR' THEN CAST(STR_SPLIT(REPLACE(REPLACE(REPLACE(REPLACE({quote_identifier(col)}, '[', ''), ']', ''), '\"', ''), '''', ''), ',') AS VARCHAR[]) ELSE CAST({quote_identifier(col)} AS VARCHAR[]) END)"
+                    # If unnesting into a new column name, keep the original column (needed for downstream nodes)
+                    exclude_clause = f"EXCLUDE ({quote_identifier(col)})" if alias == col else ""
+                    sql = f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT * {exclude_clause}, {unnest_expr} AS {quote_identifier(alias)} FROM {prev_table}"
                     logger.info(f"Unnest SQL: {sql}")
                     conn.execute(sql)
                     node_to_table[node_id] = table_name
@@ -1953,15 +2181,6 @@ async def execute_workflow_graph(
                 else:
                     node_to_table[node_id] = prev_table
                     
-            elif subtype == "select" or "Select" in label:
-                if not prev_table: continue
-                cols = [c.strip() for c in config.get("columns", "").split(',') if c.strip()]
-                if cols:
-                    conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT {', '.join([quote_identifier(c) for c in cols])} FROM {prev_table}")
-                    node_to_table[node_id] = table_name
-                else:
-                    node_to_table[node_id] = prev_table
-                    
             elif subtype == "combine" or "Combine" in label:
                 if len(preds) < 2:
                     node_to_table[node_id] = prev_table
@@ -1987,7 +2206,22 @@ async def execute_workflow_graph(
 
             elif subtype == "aggregate" or "Aggregate" in label:
                 if not prev_table: continue
-                group_by = [c.strip() for c in config.get("groupBy", "").split(',') if c.strip()]
+                group_by_raw = str(config.get("groupBy") or "")
+                
+                # Smart split to ignore commas inside parentheses
+                group_by = []
+                current, depth = [], 0
+                for char in group_by_raw:
+                    if char == '(': depth += 1
+                    elif char == ')': depth -= 1
+                    if char == ',' and depth == 0:
+                        group_by.append("".join(current).strip())
+                        current = []
+                    else:
+                        current.append(char)
+                if current: group_by.append("".join(current).strip())
+                group_by = [c for c in group_by if c]
+
                 aggs = config.get("aggregations", [])
                 if not aggs:
                     op_raw = config.get("operation") or "sum"
@@ -1999,18 +2233,84 @@ async def execute_workflow_graph(
                     c, f = a.get("column"), a.get("operation", "sum").upper()
                     al = a.get("alias") or f"{f.lower()}_{c}"
                     if c:
-                        qc = quote_identifier(c)
+                        qc = quote_identifier(c) if c != "*" else "*"
                         qa = quote_identifier(al)
-                        clean = f"TRY_CAST(REPLACE(CAST({qc} AS VARCHAR), ',', '') AS DOUBLE)"
-                        agg_parts.append(f"COUNT({qc}) AS {qa}" if f == "COUNT" else f"{f}({clean}) AS {qa}")
+                        # Special handling for count/distinct
+                        if f == "COUNT":
+                            agg_parts.append(f"COUNT({qc}) AS {qa}")
+                        elif f == "COUNT_DISTINCT":
+                            agg_parts.append(f"COUNT(DISTINCT {qc}) AS {qa}")
+                        else:
+                            # For other aggs, handle potential string-formatted numbers
+                            clean = f"TRY_CAST(REPLACE(CAST({qc} AS VARCHAR), ',', '') AS DOUBLE)"
+                            agg_parts.append(f"{f}({clean}) AS {qa}")
                     else:
                         agg_parts.append(f"COUNT(*) AS {quote_identifier(al)}")
 
-                sel = ", ".join(agg_parts)
-                if group_by: sel = f"{', '.join([quote_identifier(c) for c in group_by])}, {sel}"
-                sql = f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT {sel} FROM {prev_table}"
-                if group_by: sql += f" GROUP BY {', '.join([quote_identifier(c) for c in group_by])}"
+                sel_agg = ", ".join(agg_parts)
+
+                # Windowing support (Tumbling/Sliding)
+                window_config = config.get("window")
+                if window_config:
+                    w_duration = str(window_config.get("duration", "1 minute")).lower()
+                    ts_col = window_config.get("timestamp_column", "timestamp")
+                    
+                    # Determine truncation unit or epoch floor
+                    import re
+                    match = re.search(r'(\d+)\s*(\w+)', w_duration)
+                    if match:
+                        num = int(match.group(1))
+                        unit = match.group(2).rstrip('s') # minute, hour, day
+                        
+                        if unit == 'second':
+                            win_expr = f"to_timestamp(floor(epoch(CAST({quote_identifier(ts_col)} AS TIMESTAMP)) / {num}) * {num})"
+                        elif unit == 'minute':
+                            if num == 1: win_expr = f"date_trunc('minute', CAST({quote_identifier(ts_col)} AS TIMESTAMP))"
+                            else: win_expr = f"to_timestamp(floor(epoch(CAST({quote_identifier(ts_col)} AS TIMESTAMP)) / {num * 60}) * {num * 60})"
+                        elif unit == 'hour':
+                            if num == 1: win_expr = f"date_trunc('hour', CAST({quote_identifier(ts_col)} AS TIMESTAMP))"
+                            else: win_expr = f"to_timestamp(floor(epoch(CAST({quote_identifier(ts_col)} AS TIMESTAMP)) / {num * 3600}) * {num * 3600})"
+                        elif unit == 'day':
+                            if num == 1: win_expr = f"date_trunc('day', CAST({quote_identifier(ts_col)} AS TIMESTAMP))"
+                            else: win_expr = f"to_timestamp(floor(epoch(CAST({quote_identifier(ts_col)} AS TIMESTAMP)) / {num * 86400}) * {num * 86400})"
+                        else:
+                            win_expr = f"date_trunc('minute', CAST({quote_identifier(ts_col)} AS TIMESTAMP))"
+                    else:
+                        win_expr = f"date_trunc('minute', CAST({quote_identifier(ts_col)} AS TIMESTAMP))"
+
+                    # Add window_start to a temporary table so it can be grouped
+                    win_table = f"{table_name}_windowed"
+                    conn.execute(f"CREATE OR REPLACE TEMP TABLE {win_table} AS SELECT *, {win_expr} AS window_start FROM {prev_table}")
+                    prev_table = win_table
+
+                if group_by:
+                    select_parts = []
+                    group_parts = []
+                    for c in group_by:
+                        # Detect alias in expression
+                        import re
+                        match = re.search(r'\s+as\s+', c, re.IGNORECASE)
+                        if match:
+                            expr = c[:match.start()].strip()
+                            alias = c[match.end():].strip()
+                            select_parts.append(f"{expr} AS {quote_identifier(alias)}")
+                            group_parts.append(quote_identifier(alias))
+                        elif "(" in c or " " in c:
+                            select_parts.append(c)
+                            group_parts.append(c)
+                        else:
+                            qc = quote_identifier(c)
+                            select_parts.append(qc)
+                            group_parts.append(qc)
+                    
+                    sql = f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT {', '.join(select_parts)}, {sel_agg} FROM {prev_table} GROUP BY {', '.join(group_parts)}"
+                else:
+                    sql = f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT {sel_agg} FROM {prev_table}"
+                
                 conn.execute(sql)
+                if window_config:
+                    win_table = f"{table_name}_windowed"
+                    conn.execute(f"DROP TABLE IF EXISTS {win_table}")
                 node_to_table[node_id] = table_name
 
             elif subtype == "batch_request" or "Batch" in label:
@@ -2067,6 +2367,7 @@ async def execute_workflow_graph(
                     timeout = config.get("timeout", 30)
                     extract_mode = config.get("extract_mode", "json")
                     data_path = config.get("data_path")
+                    body_template = config.get("body_template")
 
                     # Build base headers
                     base_headers = config.get("custom_headers", {})
@@ -2100,15 +2401,15 @@ async def execute_workflow_graph(
                     )
 
                     # Run async execution
-                    import asyncio
-                    results = asyncio.run(executor.execute_batch(
+                    results = await executor.execute_batch(
                         rows=rows,
                         url_template=url_template,
                         method=method,
                         headers=base_headers,
                         extract_mode=extract_mode,
-                        data_path=data_path
-                    ))
+                        data_path=data_path,
+                        body_template=body_template
+                    )
 
                     # Apply output filter if configured
                     output_filter_config = config.get("output_filter")
@@ -2151,45 +2452,8 @@ async def execute_workflow_graph(
             if node_id not in node_to_table and prev_table:
                 node_to_table[node_id] = prev_table
 
-            # Finalize Cached State
-            final_table = node_to_table.get(node_id)
-            if final_table:
-                import time
-                # Preserve existing schema information if present
-                existing_cache = _NODE_CACHE.get(node_id, {})
-                cache_entry = {
-                    "hash": node_hash,
-                    "table_name": final_table,
-                    "timestamp": time.time()
-                }
-                # Preserve schema if it exists in cache
-                if "schema" in existing_cache:
-                    cache_entry["schema"] = existing_cache["schema"]
-                else:
-                    # For transformation nodes, infer and cache schema
-                    # This enables downstream nodes to benefit from type detection
-                    try:
-                        desc_df = _get_df(conn, f"DESCRIBE {final_table}")
-                        inferred_schema = {}
-                        for _, row in desc_df.iterrows():
-                            # Extract column name and type safely
-                            col_name_raw = row['column_name']
-                            col_type_raw = row['column_type']
-
-                            # Convert to strings, handling non-scalar types
-                            try:
-                                col_name = str(col_name_raw) if col_name_raw is not None else ""
-                                col_type = str(col_type_raw) if col_type_raw is not None else "VARCHAR"
-                            except Exception:
-                                logger.warning(f">>> [CACHE] Skipping invalid column: {col_name_raw}")
-                                continue
-
-                            inferred_schema[col_name] = col_type
-                        cache_entry["schema"] = inferred_schema
-                        logger.info(f">>> [CACHE] Inferred schema for node {node_id}: {len(inferred_schema)} columns")
-                    except Exception as e:
-                        logger.warning(f">>> [CACHE] Failed to infer schema for node {node_id}: {e}")
-                _NODE_CACHE[node_id] = cache_entry
+            # Finalize node state using helper
+            _finalize_node_state(conn, node, node_id, node_to_table, node_hash)
 
         if not sorted_nodes:
             return {
@@ -2238,8 +2502,9 @@ async def execute_workflow_graph(
                 node_types[nid] = desc_df[['column_name', 'column_type']].to_dict(orient='records')
                 
                 logger.info(f">>> [FLOW] Node {nid} ({tname}) cols: {node_columns[nid]}")
-                
-                node_samples[nid] = _get_df(conn, f"SELECT * FROM {tname} LIMIT {preview_limit}").fillna("").to_dict(orient="records")
+                # Safely convert to JSON-serializable dict using to_json
+                sample_df = _get_df(conn, f"SELECT * FROM {tname} LIMIT {preview_limit}")
+                node_samples[nid] = json.loads(sample_df.astype(object).fillna("").to_json(orient="records"))
             except:
                 pass
 
@@ -2250,7 +2515,7 @@ async def execute_workflow_graph(
             "node_columns": node_columns,
             "node_types": node_types,
             "node_samples": node_samples,
-            "preview": df.head(preview_limit).fillna("").to_dict(orient="records"),
+            "preview": json.loads(df.head(preview_limit).astype(object).fillna("").to_json(orient="records")),
             "columns": df.columns.tolist(),
             "export_url": export_url
         }
@@ -2759,39 +3024,50 @@ async def inspect_node_dataset(request: InspectRequest):
                             where = config.get("customWhere", "")
                             # Validate WHERE clause to prevent SQL injection
                             if where:
-                                validate_sql_fragment(conn, where, "WHERE")
+                                validate_sql_fragment(conn, where, "WHERE", prev_table)
                         else:
-                            col, op = config.get("column"), config.get("operator", "==")
-                            val = str(config.get("value", "")).strip()
-                            if col:
-                                qc = quote_identifier(col)
-                                cv = val.replace("'", "''")
-                                if op == "==": where = f"TRIM(CAST({qc} AS VARCHAR)) = '{cv}'"
-                                elif op == "!=": where = f"(TRIM(CAST({qc} AS VARCHAR)) != '{cv}' OR {qc} IS NULL)"
-                                elif op == "contains": where = f"CAST({qc} AS VARCHAR) ILIKE '%{cv}%'"
-                                elif op == "is_null": where = f"({qc} IS NULL OR CAST({qc} AS VARCHAR) = '')"
-                                elif op == "is_not_null": where = f"({qc} IS NOT NULL AND CAST({qc} AS VARCHAR) != '')"
-                                elif op in [">", "<", ">=", "<="]:
-                                    num_val = cv.replace(',', '')
-                                    # Validate numeric value
-                                    try:
-                                        float(num_val)
-                                        where = f"TRY_CAST(REPLACE(CAST({qc} AS VARCHAR), ',', '') AS DOUBLE) {op} {num_val}"
-                                    except ValueError:
-                                        raise HTTPException(
-                                            status_code=400,
-                                            detail=f"Invalid numeric value for comparison: '{val}'. Operator {op} requires a numeric value."
-                                        )
+                            conditions = config.get("conditions", [])
+                            if not conditions and config.get("column"):
+                                conditions = [{"column": config.get("column"), "operator": config.get("operator", "=="), "value": config.get("value", "")}]
+                            where_parts = []
+                            for cond in conditions:
+                                col = cond.get("column")
+                                op = cond.get("operator", "==")
+                                val = str(cond.get("value", "")).strip()
+                                if col:
+                                    # Treat literal "NULL" as a real NULL check
+                                    if val.upper() == "NULL" and op in ("==", "!="):
+                                        op = "is_null" if op == "==" else "is_not_null"
+                                    
+                                    qc = quote_identifier(col)
+                                    cv = val.replace("'", "''")
+                                    if op == "==": part = f"TRIM(CAST({qc} AS VARCHAR)) = '{cv}'"
+                                    elif op == "!=": part = f"(TRIM(CAST({qc} AS VARCHAR)) != '{cv}' OR {qc} IS NULL)"
+                                    elif op == "contains": part = f"CAST({qc} AS VARCHAR) ILIKE '%{cv}%'"
+                                    elif op == "is_null": part = f"({qc} IS NULL OR CAST({qc} AS VARCHAR) = '')"
+                                    elif op == "is_not_null": part = f"({qc} IS NOT NULL AND CAST({qc} AS VARCHAR) != '')"
+                                    elif op in [">", "<", ">=", "<="]:
+                                        num_val = cv.replace(',', '')
+                                        try:
+                                            float(num_val)
+                                            part = f"TRY_CAST(REPLACE(CAST({qc} AS VARCHAR), ',', '') AS DOUBLE) {op} {num_val}"
+                                        except ValueError: continue
+                                    if part: where_parts.append(part)
+                            if where_parts: where = " AND ".join(where_parts)
+                        
                         if where:
                             conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT * FROM {prev_table} WHERE {where}")
                             node_to_table[node_id] = table_name
                         else: node_to_table[node_id] = prev_table
                     elif subtype == "select" or "Select" in label:
-                        cols = [c.strip() for c in config.get("columns", "").split(',') if c.strip()]
-                        if cols:
-                            conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT {', '.join([quote_identifier(c) for c in cols])} FROM {prev_table}")
+                        if not prev_table: continue
+                        cols_raw = str(config.get("columns") or "")
+                        if cols_raw:
+                            # Support expressions
+                            conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT {cols_raw} FROM {prev_table}")
                             node_to_table[node_id] = table_name
-                        else: node_to_table[node_id] = prev_table
+                        else:
+                            node_to_table[node_id] = prev_table
                     elif subtype == "aggregate" or "Aggregate" in label:
                         group_by = [c.strip() for c in config.get("groupBy", "").split(',') if c.strip()]
                         aggs = config.get("aggregations", []) or []
@@ -2807,13 +3083,23 @@ async def inspect_node_dataset(request: InspectRequest):
                             else: agg_parts.append(f"COUNT(*) AS {quote_identifier(al)}")
                         sel = ", ".join(agg_parts)
                         if group_by: sel = f"{', '.join([quote_identifier(c) for c in group_by])}, {sel}"
+                        
+                        # Windowing support for aggregate nodes
+                        window_config = config.get("window")
+                        if window_config:
+                            ts_col = window_config.get("timestamp_column", "timestamp")
+                            win_expr = f"date_trunc('minute', CAST({quote_identifier(ts_col)} AS TIMESTAMP))"
+                            win_table = f"{table_name}_windowed"
+                            conn.execute(f"CREATE OR REPLACE TEMP TABLE {win_table} AS SELECT *, {win_expr} AS window_start FROM {prev_table}")
+                            prev_table = win_table
+                            sel = f"window_start, {sel}"
+                            group_by = ["window_start"] + group_by
+                        
                         sql = f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT {sel} FROM {prev_table}"
                         if group_by: sql += f" GROUP BY {', '.join([quote_identifier(c) for c in group_by])}"
                         conn.execute(sql); node_to_table[node_id] = table_name
+                        if window_config: conn.execute(f"DROP TABLE IF EXISTS {table_name}_windowed")
                     elif subtype == "batch_request" or "Batch" in label:
-                        """
-                        Batch Request Node - Inspect mode (no execution, just validation)
-                        """
                         if prev_table:
                             node_to_table[node_id] = prev_table
                         else:

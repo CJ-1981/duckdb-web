@@ -30,7 +30,7 @@ from src.api.routes.users import router as users_router
 from src.api.routes.data import router as data_router
 from src.api.routes.workflows import router as workflows_router
 from src.api.routes.jobs import router as jobs_router
-from src.csv.api import router as csv_router
+from src.csv_parser.api import router as csv_router
 
 
 # Configure logging

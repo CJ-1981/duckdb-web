@@ -139,14 +139,14 @@ export function NodePalette({ isCollapsed, searchQuery, onSearchChange, onShowTo
                     className={`flex items-center space-x-3 p-3 bg-white border border-[#DFE1E6] rounded-md cursor-grab transition-all hover:shadow-sm ${
                       item.type === 'input' ? 'hover:border-[#0052CC]' :
                       item.type === 'output' ? 'hover:border-[#36B37E]' :
-                      item.type === 'note' ? 'hover:border-[#F59E0B]' :
+                      item.type === 'note' ? 'hover:border-[#FFAB00]' :
                       'hover:border-[#6554C0]'
                     }`}
                   >
                     <div className={`p-1.5 rounded ${
                       item.type === 'input' ? 'bg-blue-50 text-[#0052CC]' :
                       item.type === 'output' ? 'bg-green-50 text-[#36B37E]' :
-                      item.type === 'note' ? 'bg-yellow-50 text-[#F59E0B]' :
+                      item.type === 'note' ? 'bg-amber-50 text-[#FFAB00]' :
                       'bg-purple-50 text-[#6554C0]'
                     }`}>
                       {item.icon}

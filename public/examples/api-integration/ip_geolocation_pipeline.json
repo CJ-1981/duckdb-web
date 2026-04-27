@@ -27,7 +27,7 @@
         "label": "Build Geolocation API URLs",
         "subtype": "raw_sql",
         "config": {
-          "sql": "SELECT \n  ip,\n  note,\n  'https://ipapi.co/' || ip as api_url,\n  'GET' as method,\n  'json' as response_format\nFROM {{input}}\nORDER BY ip"
+          "sql": "SELECT \n  ip,\n  label,\n  'https://ipapi.co/' || ip as api_url,\n  'GET' as method,\n  'json' as response_format\nFROM {{input}}\nORDER BY ip"
         }
       }
     },
@@ -39,7 +39,7 @@
         "label": "Add Fallback URL",
         "subtype": "raw_sql",
         "config": {
-          "sql": "SELECT \n  ip,\n  note,\n  api_url,\n  method,\n  response_format,\n  'https://ipapi.co/json/' as fallback_url\nFROM {{input}}\nORDER BY ip"
+          "sql": "SELECT \n  ip,\n  label,\n  api_url,\n  method,\n  response_format,\n  'https://ipapi.co/json/' as fallback_url\nFROM {{input}}\nORDER BY ip"
         }
       }
     },

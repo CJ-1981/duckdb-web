@@ -16,21 +16,21 @@
           "file_path": "examples/ab_test_events.csv",
           "sample_data": [
             {
-              "user_id": "user1",
+              "customer_id": "user1",
               "experiment_id": "EXP-001",
               "variant_group": "control",
               "conversion": 1,
               "revenue": 150.00
             },
             {
-              "user_id": "user2",
+              "customer_id": "user2",
               "experiment_id": "EXP-001",
               "variant_group": "control",
               "conversion": 0,
               "revenue": 0.00
             },
             {
-              "user_id": "user3",
+              "customer_id": "user3",
               "experiment_id": "EXP-001",
               "variant_group": "variant",
               "conversion": 1,
@@ -54,7 +54,7 @@
           "groupBy": "experiment_id, variant_group",
           "aggregations": [
             {
-              "column": "user_id",
+              "column": "customer_id",
               "operation": "COUNT",
               "alias": "total_users"
             },

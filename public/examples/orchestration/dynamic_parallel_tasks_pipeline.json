@@ -16,16 +16,31 @@
           "file_path": "examples/task_config.csv",
           "sample_data": [
             {
-              "id": 1,
-              "value": "sample_value_1"
+              "task_id": 1,
+              "task_name": "sample_task_1",
+              "source_table": "source_1",
+              "target_table": "target_1",
+              "transform_query": "SELECT * FROM source_1",
+              "status": "pending",
+              "priority": 1
             },
             {
-              "id": 2,
-              "value": "sample_value_2"
+              "task_id": 2,
+              "task_name": "sample_task_2",
+              "source_table": "source_2",
+              "target_table": "target_2",
+              "transform_query": "SELECT * FROM source_2",
+              "status": "pending",
+              "priority": 2
             },
             {
-              "id": 3,
-              "value": "sample_value_3"
+              "task_id": 3,
+              "task_name": "sample_task_3",
+              "source_table": "source_3",
+              "target_table": "target_3",
+              "transform_query": "SELECT * FROM source_3",
+              "status": "pending",
+              "priority": 3
             }
           ]
         }
@@ -42,7 +57,7 @@
         "label": "Generate Execution Plan",
         "subtype": "raw_sql",
         "config": {
-          "sql": "SELECT \n  task_id,\n  task_name,\n  source_table,\n  target_table,\n  transform_query,\n  'parallel' as execution_mode\nFROM {{input}}\nWHERE status = 'pending'\nORDER BY priority DESC"
+          "sql": "SELECT \n  task_id,\n  task_name,\n  source_table,\n  target_table,\n  transform_query,\n  status,\n  'parallel' as execution_mode\nFROM {{input}}\nWHERE status = 'pending'\nORDER BY priority DESC"
         }
       }
     },
@@ -112,7 +127,7 @@
             {
               "column": "status",
               "operator": "==",
-              "value": "completed"
+              "value": "pending"
             }
           ]
         }

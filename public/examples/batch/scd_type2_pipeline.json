@@ -13,19 +13,23 @@
         "label": "Current Dimension",
         "subtype": "db_read",
         "config": {
-          "tableName": "dim_customers",
+          "tableName": "dim_customers_v4",
           "sample_data": [
             {
-              "id": 1,
-              "value": "sample_value_1"
+              "customer_id": 1,
+              "email": "old.email1@example.com",
+              "segment": "Retail",
+              "is_current": true,
+              "effective_start": "2024-01-01",
+              "effective_end": "2099-12-31"
             },
             {
-              "id": 2,
-              "value": "sample_value_2"
-            },
-            {
-              "id": 3,
-              "value": "sample_value_3"
+              "customer_id": 2,
+              "email": "old.email2@example.com",
+              "segment": "Enterprise",
+              "is_current": true,
+              "effective_start": "2024-01-01",
+              "effective_end": "2099-12-31"
             }
           ]
         }
@@ -71,7 +75,8 @@
         "label": "Detect Changes",
         "subtype": "raw_sql",
         "config": {
-          "sql": "SELECT \n  coalesce(c.customer_id, i.customer_id) as customer_id,\n  c.email as current_email,\n  i.email as new_email,\n  c.segment as current_segment,\n  i.segment as new_segment,\n  case \n    when c.customer_id is null then 'new'\n    when c.email != i.email or c.segment != i.segment then 'changed'\n    else 'unchanged'\n  end as change_type\nFROM current_dim c\nFULL OUTER JOIN incoming_updates i ON c.customer_id = i.customer_id"
+          "alias": "changes",
+          "sql": "SELECT \n  coalesce(c.customer_id, i.customer_id) as customer_id,\n  c.email as current_email,\n  i.email as new_email,\n  c.segment as current_segment,\n  i.segment as new_segment,\n  case \n    when c.customer_id is null then 'new'\n    when c.email != i.email or c.segment != i.segment then 'changed'\n    else 'unchanged'\n  end as change_type\nFROM {{input1}} c\nFULL OUTER JOIN {{input2}} i ON c.customer_id = i.customer_id"
         }
       }
     },
@@ -86,7 +91,7 @@
         "label": "Expire Old Records",
         "subtype": "raw_sql",
         "config": {
-          "sql": "UPDATE dim_customers \nSET is_current = false, \n    effective_end = now()\nWHERE customer_id IN (SELECT customer_id FROM changes WHERE change_type = 'changed')\n  AND is_current = true"
+          "sql": "UPDATE dim_customers_v4 \nSET is_current = false, \n    effective_end = now()::VARCHAR\nWHERE customer_id IN (SELECT customer_id FROM changes WHERE change_type = 'changed')\n  AND is_current = true"
         }
       }
     },
@@ -101,7 +106,7 @@
         "label": "Insert New Versions",
         "subtype": "raw_sql",
         "config": {
-          "sql": "INSERT INTO dim_customers (customer_id, email, segment, is_current, effective_start, effective_end)\nSELECT \n  customer_id,\n  coalesce(new_email, current_email) as email,\n  coalesce(new_segment, current_segment) as segment,\n  true as is_current,\n  now() as effective_start,\n  NULL as effective_end\nFROM changes\nWHERE change_type IN ('new', 'changed')"
+          "sql": "INSERT INTO dim_customers_v4 (customer_id, email, segment, is_current, effective_start, effective_end)\nSELECT \n  customer_id,\n  coalesce(new_email, current_email) as email,\n  coalesce(new_segment, current_segment) as segment,\n  true as is_current,\n  now()::VARCHAR as effective_start,\n  NULL as effective_end\nFROM changes\nWHERE change_type IN ('new', 'changed')"
         }
       }
     },
@@ -116,7 +121,7 @@
         "label": "Complete",
         "subtype": "db_write",
         "config": {
-          "tableName": "dim_customers",
+          "tableName": "dim_customers_v4",
           "filename": "scd2_log.csv"
         }
       }

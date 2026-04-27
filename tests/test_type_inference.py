@@ -14,8 +14,8 @@ from pathlib import Path
 from typing import List, Dict, Any
 import pytest
 
-from src.csv.type_inference import infer_schema
-from src.csv.encoding_detector import detect_encoding
+from src.csv_parser.type_inference import infer_schema
+from src.csv_parser.encoding_detector import detect_encoding
 
 
 # ========================================================================

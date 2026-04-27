@@ -17,15 +17,11 @@
           "sample_data": [
             {
               "id": 1,
-              "value": "sample_value_1"
+              "endpoint": "https://api.github.com/graphql"
             },
             {
               "id": 2,
-              "value": "sample_value_2"
-            },
-            {
-              "id": 3,
-              "value": "sample_value_3"
+              "endpoint": "https://api.github.com/graphql"
             }
           ]
         }
@@ -40,12 +36,17 @@
       },
       "data": {
         "label": "Execute GraphQL",
-        "subtype": "raw_sql",
+        "subtype": "batch_request",
         "config": {
+          "url_template": "https://api.github.com/graphql",
+          "method": "POST",
           "custom_headers": {
-            "Content-Type": "application/json"
+            "Content-Type": "application/json",
+            "User-Agent": "DuckDB-Workflow-Engine"
           },
-          "sql": "SELECT * FROM {{input}} LIMIT 100"
+          "body_template": "{\"query\": \"query { repository(owner: \\\"{owner}\\\", name: \\\"{repo}\\\") { description starlightCount } }\"}",
+          "extract_mode": "json",
+          "data_path": "data.repository"
         }
       }
     },
@@ -76,7 +77,7 @@
         "label": "Flatten Repository Data",
         "subtype": "select",
         "config": {
-          "columns": "repository.node.name, repository.node.stargazer_count, repository.node.language, repository.node.owner.login"
+          "columns": "*"
         }
       }
     },

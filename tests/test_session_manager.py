@@ -5,7 +5,7 @@ import time
 from uuid import UUID
 from datetime import datetime, timedelta
 
-from src.csv.session_manager import SessionManager
+from src.csv_parser.session_manager import SessionManager
 
 
 # ============================================================================

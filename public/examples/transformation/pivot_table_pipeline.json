@@ -42,7 +42,7 @@
         "label": "PIVOT by Category",
         "subtype": "raw_sql",
         "config": {
-          "sql": "SELECT \n  date,\n  SUM(CASE WHEN category = 'Electronics' THEN amount ELSE 0 END) as electronics_total,\n  SUM(CASE WHEN category = 'Clothing' THEN amount ELSE 0 END) as clothing_total,\n  SUM(CASE WHEN category = 'Food' THEN amount ELSE 0 END) as food_total,\n  SUM(CASE WHEN category = 'Other' THEN amount ELSE 0 END) as other_total,\n  SUM(amount) as grand_total,\n  COUNT(*) as transaction_count\nFROM {{input}}\nGROUP BY date\nORDER BY date"
+          "sql": "SELECT \n  CAST(created_at AS DATE) as date,\n  SUM(CASE WHEN status = 'completed' THEN amount ELSE 0 END) as completed_total,\n  SUM(CASE WHEN status = 'pending' THEN amount ELSE 0 END) as pending_total,\n  SUM(CASE WHEN status = 'shipped' THEN amount ELSE 0 END) as shipped_total,\n  SUM(amount) as grand_total,\n  COUNT(*) as transaction_count\nFROM {{input}}\nGROUP BY date\nORDER BY date"
         }
       }
     },
@@ -57,7 +57,7 @@
         "label": "Final Summary",
         "subtype": "raw_sql",
         "config": {
-          "sql": "SELECT \n  date,\n  electronics_total,\n  clothing_total,\n  food_total,\n  other_total,\n  (electronics_total + clothing_total + food_total + other_total) as grand_total,\n  transaction_count\nFROM {{input}}\nORDER BY date"
+          "sql": "SELECT \n  date,\n  completed_total,\n  pending_total,\n  shipped_total,\n  grand_total,\n  transaction_count\nFROM {{input}}\nORDER BY date"
         }
       }
     },

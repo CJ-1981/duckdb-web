@@ -451,6 +451,15 @@ async def execute_duckdb_workflow(
     # Create in-memory DuckDB connection
     con = duckdb.connect(":memory:")
 
+    # Register XML UDFs as fallback since official extension is often missing/404
+    try:
+        from src.core.database.utils import register_xml_udfs, load_xml_into_table
+        register_xml_udfs(con)
+    except ImportError:
+        logger.warning("Could not import register_xml_udfs/load_xml_into_table from database.utils")
+
+
+
     # Build execution order (topological sort)
     execution_order = topological_sort(nodes, edges)
 
@@ -519,6 +528,10 @@ async def execute_node(con: duckdb.DuckDBPyConnection, node: Dict, context: Dict
         # Export result
         return await execute_output_node(con, data, context)
 
+    elif node_type == 'note':
+        # Note nodes are for annotation only
+        return {}
+
     else:
         raise ValueError(f"Unknown node type: {node_type}")
 
@@ -545,6 +558,9 @@ async def execute_input_node(con: duckdb.DuckDBPyConnection, data: Dict) -> Dict
         con.execute(f"CREATE OR REPLACE TABLE {table_name} AS SELECT * FROM read_parquet('{file_path}')")
     elif file_ext == '.json':
         con.execute(f"CREATE OR REPLACE TABLE {table_name} AS SELECT * FROM read_json_auto('{file_path}')")
+    elif file_ext == '.xml':
+        # Use centralized XML loading helper
+        load_xml_into_table(con, file_path, table_name)
     else:
         raise ValueError(f"Unsupported file format: {file_ext}")
 
@@ -601,21 +617,24 @@ def topological_sort(nodes: List[Dict], edges: List[Dict]) -> List[str]:
     @MX:WARN: Does not detect cycles - assumes valid DAG from UI
     @MX:REASON: UI validation ensures DAG; cycle detection would be defensive programming
     """
-    # Build adjacency list and in-degree count
-    node_ids = [n['id'] for n in nodes]
-    graph = {node_id: [] for node_id in node_ids}
-    in_degree = {node_id: 0 for node_id in node_ids}
+    # Build adjacency list and in-degree count - Ignore note nodes for execution logic
+    execution_nodes = [n for n in nodes if n.get('type') != 'note']
+    execution_node_ids = [n['id'] for n in execution_nodes]
+    
+    graph = {node_id: [] for node_id in execution_node_ids}
+    in_degree = {node_id: 0 for node_id in execution_node_ids}
 
     for edge in edges:
         source = edge.get('source')
         target = edge.get('target')
 
-        if source and target and source in in_degree and target in in_degree:
+        # Only count edges between non-note nodes for execution order
+        if source and target and source in execution_node_ids and target in execution_node_ids:
             graph[source].append(target)
             in_degree[target] += 1
 
-    # Initialize queue with nodes having no dependencies
-    queue = [node_id for node_id in node_ids if in_degree[node_id] == 0]
+    # Initialize queue with execution nodes having no dependencies
+    queue = [node_id for node_id in execution_node_ids if in_degree[node_id] == 0]
     result = []
 
     while queue:
@@ -627,8 +646,9 @@ def topological_sort(nodes: List[Dict], edges: List[Dict]) -> List[str]:
             if in_degree[neighbor] == 0:
                 queue.append(neighbor)
 
-    if len(result) != len(node_ids):
-        raise ValueError("Workflow contains a cycle - cannot execute")
+    # Note nodes are not part of execution_node_ids, so we check against that list
+    if len(result) != len(execution_node_ids):
+        raise ValueError("Workflow contains a cycle in processing nodes - cannot execute")
 
     return result
 

@@ -79,12 +79,14 @@ export function PropertiesPanel({ node, onUpdate, getUpstreamColumns, nodes, edg
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-[#6B778C] mb-2">Description / Notes</label>
+            <label className="block text-xs font-semibold text-[#6B778C] mb-2">
+              {node.type === 'note' ? 'Note Body / Content' : 'Description / Notes'}
+            </label>
             <textarea
               value={String(node.data?.description || '')}
               onChange={(e) => updateNodeData('description', e.target.value)}
-              className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-sm min-h-[100px] resize-vertical"
-              placeholder={node.type === 'note' ? 'Add documentation, notes, or instructions...' : 'Add notes about this node\'s purpose, configuration, or any important details...'}
+              className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-sm min-h-[150px] resize-vertical focus:border-[#FFAB00] focus:ring-1 focus:ring-[#FFAB00]"
+              placeholder={node.type === 'note' ? 'Enter the content for this note...' : 'Add notes about this node\'s purpose...'}
             />
           </div>
 
@@ -97,7 +99,7 @@ export function PropertiesPanel({ node, onUpdate, getUpstreamColumns, nodes, edg
             </div>
           )}
 
-          {node.data?.rowCount !== undefined && node.data.rowCount !== null && (
+          {node.data?.rowCount !== undefined && node.data.rowCount !== null && node.type !== 'note' && (
             <div>
               <label className="block text-xs font-semibold text-[#6B778C] mb-2">Row Count</label>
               <div className="px-3 py-2 bg-[#EAE6FF] border border-[#D1CAFF] rounded-md text-sm font-bold text-[#403294]">

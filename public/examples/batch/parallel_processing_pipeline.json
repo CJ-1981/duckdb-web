@@ -86,7 +86,7 @@
         "label": "Combine Results",
         "subtype": "raw_sql",
         "config": {
-          "sql": "SELECT * FROM processed_batches ORDER BY batch_number"
+          "sql": "SELECT * FROM {{input}} ORDER BY batch_number"
         }
       }
     },

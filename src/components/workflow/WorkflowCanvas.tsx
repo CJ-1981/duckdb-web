@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useRef, useCallback } from 'react';
+import React, { useRef, useCallback, useMemo } from 'react';
 import {
   ReactFlow,
   Background,
@@ -22,10 +22,13 @@ const CustomNode = ({ data, type, selected }: any) => {
   let borderColor = '#6554C0';
   if (type === 'input') borderColor = '#0052CC';
   if (type === 'output') borderColor = '#36B37E';
+  if (type === 'note') borderColor = '#FFAB00';
+
+  const isNote = type === 'note';
 
   return (
     <div
-      className={`react-flow__node-custom bg-white border-2 rounded-md shadow-lg font-medium text-gray-800 text-sm transition-all duration-200 relative min-w-[200px] ${selected ? 'ring-2 ring-[#0052CC] ring-offset-2 shadow-xl border-[#0052CC]' : ''}`}
+      className={`react-flow__node-custom ${isNote ? 'bg-[#FFFAE6]' : 'bg-white'} border-2 rounded-md shadow-lg font-medium text-gray-800 text-sm transition-all duration-200 relative min-w-[200px] ${selected ? 'ring-2 ring-[#0052CC] ring-offset-2 shadow-xl border-[#0052CC]' : ''}`}
       style={{ borderColor }}
     >
       <style>{`
@@ -75,32 +78,41 @@ const CustomNode = ({ data, type, selected }: any) => {
            animation: react-flow__dashdraw 0.5s linear infinite;
         }
       `}</style>
-      <Handle type="target" position={Position.Top} style={{ left: '50%', transform: 'translateX(-50%)' }} />
+      <Handle 
+        type="target" 
+        position={Position.Top} 
+        style={{ left: '50%', transform: 'translateX(-50%)' }} 
+        className={isNote ? 'opacity-50 !bg-[#FFAB00]' : ''} 
+      />
       <div className="flex items-center justify-between p-3 w-full">
         <div className="flex flex-col items-center space-y-1.5 p-1 w-full">
           <div className="flex items-center space-x-2">
             {type === 'input' && <span className="w-1.5 h-6 bg-[#0052CC] rounded-full"></span>}
             {type === 'output' && <span className="w-1.5 h-6 bg-[#36B37E] rounded-full"></span>}
+            {isNote && <span className="text-lg">📝</span>}
             <span className="text-sm font-bold tracking-tight text-center">{data.label}</span>
           </div>
-          {data.rowCount !== undefined && (
+          {data.rowCount !== undefined && !isNote && (
             <div className="flex items-center space-x-1.5 bg-[#EAE6FF] text-[#403294] px-3 py-1 rounded-full font-bold shadow-sm border border-[#D1CAFF]">
               <span className="text-[10px] uppercase opacity-60">Rows</span>
               <span className="text-xs">{data.rowCount.toLocaleString()}</span>
             </div>
           )}
+          {data.description && (
+            <div className={`mt-1 px-2 py-1 rounded border ${isNote ? 'text-gray-700 bg-white border-[#FFAB00]/40 text-sm leading-relaxed whitespace-pre-wrap w-full text-left font-normal' : 'text-xs text-gray-500 bg-gray-50 border-gray-200'}`}>
+              {data.description}
+            </div>
+          )}
         </div>
       </div>
-      <Handle type="source" position={Position.Bottom} style={{ left: '50%', transform: 'translateX(-50%)' }} />
+      <Handle 
+        type="source" 
+        position={Position.Bottom} 
+        style={{ left: '50%', transform: 'translateX(-50%)' }} 
+        className={isNote ? 'opacity-50 !bg-[#FFAB00]' : ''} 
+      />
     </div>
   );
-};
-
-const nodeTypes = {
-  input: CustomNode,
-  default: CustomNode,
-  output: CustomNode,
-  note: CustomNode,
 };
 
 interface WorkflowCanvasProps {
@@ -159,6 +171,13 @@ export function WorkflowCanvas({
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const { screenToFlowPosition, setViewport } = useReactFlow();
 
+  const nodeTypes = useMemo(() => ({
+    input: CustomNode,
+    default: CustomNode,
+    output: CustomNode,
+    note: CustomNode,
+  }), []);
+
   const takeSnapshot = useCallback(() => {
     pushToHistory?.(JSON.parse(JSON.stringify(nodes)), JSON.parse(JSON.stringify(edges)));
   }, [pushToHistory, nodes, edges]);
@@ -166,12 +185,32 @@ export function WorkflowCanvas({
   const onConnect = useCallback(
     (params: Connection | Edge) => {
       takeSnapshot();
-      setEdges((eds: Edge[]) => addEdge({ ...params, animated: true } as Edge, eds));
-      if (onAfterConnect) {
+
+      // Determine if this is an annotation edge (connected to a Note node)
+      const sourceNode = nodes.find(n => n.id === params.source);
+      const targetNode = nodes.find(n => n.id === params.target);
+      const isAnnotation = sourceNode?.type === 'note' || targetNode?.type === 'note';
+
+      const edgeData: Edge = {
+        ...params,
+        animated: !isAnnotation,
+        style: isAnnotation ? { 
+          strokeDasharray: '5,5', 
+          stroke: '#FFAB00', 
+          strokeWidth: 2,
+          opacity: 0.6
+        } : { 
+          strokeWidth: 3, 
+          stroke: '#B1B1B1' 
+        }
+      } as Edge;
+
+      setEdges((eds: Edge[]) => addEdge(edgeData, eds));
+      if (onAfterConnect && !isAnnotation) {
         onAfterConnect(params as Connection);
       }
     },
-    [setEdges, takeSnapshot, onAfterConnect],
+    [nodes, setEdges, takeSnapshot, onAfterConnect],
   );
 
   const onSelectionChange = useCallback(
