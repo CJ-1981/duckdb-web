@@ -63,6 +63,10 @@ if defined VENV_DIR (
 
 set "ACTIVATE_SCRIPT=!VENV_PATH!\Scripts\activate.bat"
 
+:: Set environment variables for development mode
+set "APP_NO_BROWSER=true"
+set "PYTHONUNBUFFERED=1"
+
 if exist "!ACTIVATE_SCRIPT!" (
     echo Starting backend with virtual environment...
     start "uvicorn-backend" /b cmd /c "call ""!ACTIVATE_SCRIPT!"" && python -m uvicorn src.api.main:create_app --factory --port 8000"
@@ -74,7 +78,7 @@ if exist "!ACTIVATE_SCRIPT!" (
 
 :: 4. Wait for backend to initialize
 echo Waiting for backend to start (8000)...
-timeout /t 3 /nobreak > nul
+timeout /t 2 /nobreak > nul
 
 :: 5. Start Frontend (Next.js)
 echo Starting Frontend (Next.js)...
@@ -103,9 +107,14 @@ if not defined PORT (
 :port_found
 echo 🎯 Using port !PORT!
 
-:: Start frontend and WAIT for it (since it's the main process)
-echo Starting on http://localhost:!PORT!...
-call npm run dev -- -p !PORT!
+:: Launch browser for the frontend in the background
+echo 🚀 Opening http://localhost:!PORT! in your browser...
+start http://localhost:!PORT!
+
+:: Start frontend (this will block until exit)
+echo Starting Next.js...
+set "PORT=!PORT!"
+call npm run dev
 
 :: 6. Cleanup on exit
 :cleanup
@@ -114,11 +123,14 @@ set "CLEANUP_DONE=1"
 
 echo.
 echo Cleaning up background processes...
-:: Kill the backend specifically
+:: Kill the backend specifically using the window title
 taskkill /F /FI "WINDOWTITLE eq uvicorn-backend" /T >nul 2>&1
+:: Also kill any orphaned python processes from this session
+taskkill /F /IM python.exe /FI "WINDOWTITLE eq uvicorn-backend" /T >nul 2>&1
 
 if not defined CI (
     echo Application stopped.
     pause
 )
 exit /b
+

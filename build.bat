@@ -44,6 +44,7 @@ echo [3/4] Packaging application with PyInstaller...
 :: We add the 'out' directory which contains the static frontend.
 :: We include uvicorn hidden imports which are often missed by PyInstaller.
 
+set PYINSTALLER_BUILD=true
 pyinstaller --name "data-analyst-web" ^
             --onedir ^
             --clean ^
@@ -61,6 +62,7 @@ pyinstaller --name "data-analyst-web" ^
             --hidden-import uvicorn.lifespan.on ^
             --paths . ^
             src/api/main.py
+
 
 if %errorlevel% neq 0 (
     echo Error: PyInstaller packaging failed.

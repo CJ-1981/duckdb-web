@@ -201,7 +201,11 @@ app = create_app()
 if __name__ == "__main__":
     import uvicorn
     import webbrowser
+    import multiprocessing
     from threading import Timer
+
+    # Required for Windows executables using multiprocessing
+    multiprocessing.freeze_support()
 
     # Load port from config or default
     port = 8000
@@ -211,12 +215,22 @@ if __name__ == "__main__":
     except:
         pass
 
-    # Open browser automatically
+    # Open browser automatically with safety checks
     def open_browser():
-        webbrowser.open(f"http://localhost:{port}")
+        # Skip if explicitly disabled via environment variable
+        if os.getenv("APP_NO_BROWSER", "false").lower() == "true":
+            return
 
-    Timer(1.5, open_browser).start()
+        try:
+            webbrowser.open(f"http://localhost:{port}")
+        except:
+            pass
+
+    # Start timer to open browser after server starts
+    if not os.getenv("PYINSTALLER_BUILD"):
+        Timer(1.5, open_browser).start()
     
     # Run uvicorn
-    app = create_app()
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    app_instance = create_app()
+    uvicorn.run(app_instance, host="0.0.0.0", port=port)
+

@@ -60,9 +60,15 @@ async function findAvailablePort() {
 async function startDevServer() {
   console.log('🚀 Starting Next.js dev server...\n');
 
-  const port = await findAvailablePort();
+  let port = process.env.PORT;
+  if (!port) {
+    port = await findAvailablePort();
+  } else {
+    console.log(`🎯 Using port ${port} from environment`);
+  }
 
   console.log(`\n🎯 Starting on port ${port}...\n`);
+
 
   // Set PORT environment variable and spawn Next.js
   const env = { ...process.env, PORT: port.toString() };
