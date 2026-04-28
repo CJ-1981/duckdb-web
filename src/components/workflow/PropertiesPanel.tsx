@@ -868,6 +868,45 @@ export function PropertiesPanel({
                     <option value="Markdown">Markdown</option>
                 </select>
             </div>
+            <div>
+                <label className="block text-[10px] uppercase font-bold text-[#6B778C] mb-2">Include Sections</label>
+                <div className="space-y-2">
+                    <label className="flex items-center gap-2 text-xs text-[#172B4D] cursor-pointer">
+                        <input 
+                            type="checkbox" 
+                            checked={config.includeTable !== false} 
+                            onChange={(e) => {
+                                const sections = (config.sections || []);
+                                if (e.target.checked) {
+                                    updateConfig('sections', [...sections, { heading: 'Data Table', type: 'table' }]);
+                                    updateConfig('includeTable', true);
+                                } else {
+                                    updateConfig('sections', sections.filter((s: any) => s.type !== 'table'));
+                                    updateConfig('includeTable', false);
+                                }
+                            }}
+                        />
+                        Data Sample (First 20 rows)
+                    </label>
+                    <label className="flex items-center gap-2 text-xs text-[#172B4D] cursor-pointer">
+                        <input 
+                            type="checkbox" 
+                            checked={config.includeStats !== false} 
+                            onChange={(e) => {
+                                const sections = (config.sections || []);
+                                if (e.target.checked) {
+                                    updateConfig('sections', [...sections, { heading: 'Statistics', type: 'stats' }]);
+                                    updateConfig('includeStats', true);
+                                } else {
+                                    updateConfig('sections', sections.filter((s: any) => s.type !== 'stats'));
+                                    updateConfig('includeStats', false);
+                                }
+                            }}
+                        />
+                        Key Statistics (Describe)
+                    </label>
+                </div>
+            </div>
             <button 
                 onClick={async () => {
                     try {

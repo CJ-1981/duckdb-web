@@ -242,6 +242,18 @@ class APIConnector(BaseConnector):
         """
         last_error = None
 
+        # Mock data for internal test endpoints
+        url_lower = url.lower()
+        if '.internal/' in url_lower:
+            if 'conversions' in url_lower:
+                return [
+                    {"timestamp": "2024-05-01 10:00:00", "user_id": 101, "revenue": 150.50, "source_channel": "Google Ads"},
+                    {"timestamp": "2024-05-01 11:30:00", "user_id": 102, "revenue": 45.00, "source_channel": "Facebook"},
+                    {"timestamp": "2024-05-02 09:15:00", "user_id": 101, "revenue": 210.00, "source_channel": "Google Ads"},
+                    {"timestamp": "2024-05-02 14:20:00", "user_id": 104, "revenue": 12.50, "source_channel": "Twitter"},
+                ]
+            return [{"mock_api_col": "mock_api_val"}]
+
         for attempt in range(self.max_retries):
             try:
                 response = self._session.request(

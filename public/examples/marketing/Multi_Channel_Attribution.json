@@ -1,0 +1,80 @@
+{
+  "nodes": [
+    {
+      "id": "ad_spend",
+      "type": "input",
+      "position": { "x": 100, "y": 100 },
+      "data": {
+        "label": "Ad Spend (S3/Remote)",
+        "subtype": "remote_file",
+        "config": {
+          "url": "https://data-lake.internal/marketing/spend_2024.parquet",
+          "availableColumns": ["date", "channel", "spend", "campaign_id"]
+        }
+      }
+    },
+    {
+      "id": "conversions",
+      "type": "input",
+      "position": { "x": 100, "y": 400 },
+      "data": {
+        "label": "Conversions (API)",
+        "subtype": "rest_api",
+        "config": {
+          "url": "https://api.crm.internal/v1/conversions",
+          "availableColumns": ["timestamp", "user_id", "revenue", "source_channel"]
+        }
+      }
+    },
+    {
+      "id": "join_mkt",
+      "type": "default",
+      "position": { "x": 450, "y": 250 },
+      "data": {
+        "label": "Attribution Join",
+        "subtype": "combine",
+        "config": {
+          "joinType": "inner",
+          "leftColumn": "channel",
+          "rightColumn": "source_channel"
+        }
+      }
+    },
+    {
+      "id": "roas_calc",
+      "type": "default",
+      "position": { "x": 750, "y": 250 },
+      "data": {
+        "label": "Calculate ROAS",
+        "subtype": "computed",
+        "config": {
+          "expression": "revenue / NULLIF(spend, 0)",
+          "alias": "roas"
+        }
+      }
+    },
+    {
+      "id": "agg_channel",
+      "type": "default",
+      "position": { "x": 1050, "y": 250 },
+      "data": {
+        "label": "Channel Performance",
+        "subtype": "aggregate",
+        "config": {
+          "groupBy": "channel",
+          "aggregations": [
+            { "column": "revenue", "operation": "sum", "alias": "total_revenue" },
+            { "column": "spend", "operation": "sum", "alias": "total_spend" },
+            { "column": "roas", "operation": "avg", "alias": "avg_roas" }
+          ]
+        }
+      }
+    }
+  ],
+  "edges": [
+    { "id": "e1", "source": "ad_spend", "target": "join_mkt" },
+    { "id": "e2", "source": "conversions", "target": "join_mkt" },
+    { "id": "e3", "source": "join_mkt", "target": "roas_calc" },
+    { "id": "e4", "source": "roas_calc", "target": "agg_channel" }
+  ]
+}

@@ -2653,6 +2653,11 @@ async def generate_workflow_report(
     title = cfg.get("title", "Data Analysis Report")
     description = cfg.get("description", "")
     sections = cfg.get("sections", [])
+    if not sections:
+        sections = [
+            {"heading": "Data Summary", "type": "table"},
+            {"heading": "Key Statistics", "type": "stats"}
+        ]
     font_family = cfg.get("font", "NanumGothic")
     
     # Register font if needed

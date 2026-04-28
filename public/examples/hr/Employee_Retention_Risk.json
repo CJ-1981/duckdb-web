@@ -1,0 +1,80 @@
+{
+  "nodes": [
+    {
+      "id": "hr_employees",
+      "type": "input",
+      "position": { "x": 100, "y": 100 },
+      "data": {
+        "label": "Employees (Local CSV)",
+        "subtype": "csv",
+        "config": {
+          "file_path": "employees.csv",
+          "availableColumns": ["id", "name", "department", "salary", "join_date"]
+        }
+      }
+    },
+    {
+      "id": "hr_reviews",
+      "type": "input",
+      "position": { "x": 100, "y": 400 },
+      "data": {
+        "label": "Performance Reviews",
+        "subtype": "csv",
+        "config": {
+          "file_path": "reviews.csv",
+          "availableColumns": ["emp_id", "rating", "review_date"]
+        }
+      }
+    },
+    {
+      "id": "join_emp",
+      "type": "default",
+      "position": { "x": 450, "y": 250 },
+      "data": {
+        "label": "Join Records",
+        "subtype": "combine",
+        "config": {
+          "joinType": "inner",
+          "leftColumn": "id",
+          "rightColumn": "emp_id"
+        }
+      }
+    },
+    {
+      "id": "risk_calc",
+      "type": "default",
+      "position": { "x": 750, "y": 250 },
+      "data": {
+        "label": "Calculate Retention Risk",
+        "subtype": "case_when",
+        "config": {
+          "conditions": [
+            { "when": "rating < 3 AND salary < 50000", "then": "🔴 High Risk" },
+            { "when": "rating < 3", "then": "🟡 Medium Risk" }
+          ],
+          "elseValue": "🟢 Stable",
+          "alias": "retention_status"
+        }
+      }
+    },
+    {
+      "id": "sort_risk",
+      "type": "default",
+      "position": { "x": 1050, "y": 250 },
+      "data": {
+        "label": "Sort by Risk",
+        "subtype": "sort",
+        "config": {
+          "column": "retention_status",
+          "direction": "asc"
+        }
+      }
+    }
+  ],
+  "edges": [
+    { "id": "e1", "source": "hr_employees", "target": "join_emp" },
+    { "id": "e2", "source": "hr_reviews", "target": "join_emp" },
+    { "id": "e3", "source": "join_emp", "target": "risk_calc" },
+    { "id": "e4", "source": "risk_calc", "target": "sort_risk" }
+  ]
+}

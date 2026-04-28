@@ -402,12 +402,19 @@ function Dashboard() {
   };
 
   const SAMPLE_CATEGORIES = {
+    '👥 HR & People': [
+      { name: "Employee Retention Risk", file: "/examples/hr/Employee_Retention_Risk.json", description: "Join employees with reviews to identify high-risk retention cases" }
+    ],
     '🛡️ SQL Server': [
       { name: "SQL Server Sales Analysis", file: "/examples/sql-server/SQL_Server_Sales_Analysis.json", description: "Complete ETL from SQL Server to PDF report (AdventureWorks schema)" },
       { name: "Cross-DB Join (MSSQL + CSV)", file: "/examples/sql-server/Cross_DB_Join_Sample.json", description: "Join remote SQL Server data with a local CSV transaction log" }
     ],
     '🐬 MySQL': [
       { name: "MySQL E-commerce Sales", file: "/examples/mysql/MySQL_Ecommerce_Sales.json", description: "Join orders and products from MySQL for category sales analysis" }
+    ],
+    '📈 Finance': [
+      { name: "Portfolio Rolling Returns", file: "/examples/analytics/window_functions_pipeline.json", description: "Calculate 30-day rolling averages and volatility for stock portfolios" },
+      { name: "Fraud Pattern Detection", file: "/examples/comparison/cdc_diff_pipeline.json", description: "Identify suspicious transaction patterns using multi-source comparisons" }
     ],
     '📥 Data Ingestion': [
       { name: "CSV Auto-Detection Import", file: "/examples/ingestion/csv_auto_detect_pipeline.json", description: "Intelligent CSV import with schema detection and type inference" },
@@ -440,7 +447,7 @@ function Dashboard() {
       { name: "Large Dataset Parallel Processing", file: "/examples/batch/parallel_processing_pipeline.json", description: "Process large dataset in parallel chunks" }
     ],
     '🔗 API Integration': [
-      { name: "API Data Enrichment", file: "/examples/api-integration/API_Enrichment_Sample.json", description: "Enrich remote API profiles with local CSV feedback data" },
+      { name: "Multi-Channel Attribution", file: "/examples/marketing/Multi_Channel_Attribution.json", description: "Enrich ad spend with conversion data from REST APIs" },
       { name: "JSONPlaceholder - Complete User Data", file: "/examples/api-integration/jsonplaceholder_full_pipeline.json", description: "Fetch user profiles, posts, albums, todos, and comments from JSONPlaceholder API" },
       { name: "RandomUser - Profile Generation", file: "/examples/api-integration/random_user_profiles_pipeline.json", description: "Generate random user profiles with demographics and location data" },
       { name: "REST Countries - Regional Analysis", file: "/examples/api-integration/restcountries_regions_pipeline.json", description: "Fetch country data by region with field filtering capabilities" },
