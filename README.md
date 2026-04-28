@@ -15,7 +15,9 @@ The DuckDB Workflow Builder is a full-stack web application that enables users t
 - **Keyboard Shortcuts**: Power user commands for efficient workflow construction
 
 ### Multi-Source Data Integration
-- **Database Connectors**: Native support for DuckDB, PostgreSQL, MySQL, SQL Server
+- **Database Connectors**: 
+  - Native support for **DuckDB**, **PostgreSQL**, **MySQL**, and **SQL Server**.
+  - **Mock Data Mode**: Built-in mock data generators for all database types, allowing pipeline development without a live network connection.
 - **File Import**: 
   - CSV files with automatic encoding detection (UTF-8, UTF-8-sig, CP949, EUC-KR)
   - Excel files (.xlsx, .xls) with multiple sheet support
@@ -38,31 +40,34 @@ The DuckDB Workflow Builder is a full-stack web application that enables users t
 - **Streaming Support**: Process large datasets without loading entirely into memory
 - **Query Optimization**: Automatic SQL generation with parameterized queries
 
-### AI-Assisted SQL Generation
-- **Natural Language to SQL**: Convert plain English descriptions into SQL queries
-- **Multiple LLM Providers**: Support for OpenAI, Anthropic, Google, Groq, Cerebras
-- **Context-Aware**: AI understands data schema and suggests relevant queries
-- **Query Validation**: EXPLAIN-based validation to ensure query correctness
+### AI-Assisted Development
+- **AI Pipeline Builder**: Generate complete multi-node workflows from a single natural language prompt.
+- **Natural Language to SQL**: Convert plain English descriptions into SQL queries.
+- **Multiple LLM Providers**: Support for OpenAI, Anthropic, Google (Gemini), Groq, and Cerebras.
+- **Context-Aware**: AI understands your data schema and suggests relevant join keys and transformations.
 
 ### Workflow Persistence
 - **Save/Load Workflows**: Store workflow definitions for future use
 - **Export/Import**: Share workflows across teams and environments
 - **Auto-Save**: Prevent data loss with automatic saving (planned feature)
-51: 
-52: ## Sample Pipelines
-53: 
-54: We have included pre-built sample pipelines in the `data/workflows/` directory to help you get started quickly:
-55: 
-56: 1.  **[SQL Server Sales Analysis](file:///Users/chimin/Documents/script/duckdb-web/data/workflows/SQL_Server_Sales_Analysis.json)**: A complete flow connecting to a SQL Server database, filtering shipped orders, aggregating sales by customer, and generating a PDF report.
-57: 2.  **[Cross-DB Join Sample](file:///Users/chimin/Documents/script/duckdb-web/data/workflows/Cross_DB_Join_Sample.json)**: Demonstrates DuckDB's unique ability to join live SQL Server customer data with a local CSV transaction log.
-58: 
-59: To load these, use the **Open** folder icon in the toolbar and select the desired JSON file.
 
-### Live Data Preview
-- **Real-Time Results**: Preview output at any node in the workflow
-- **Pagination**: Handle large datasets efficiently with configurable page sizes
-- **Data Inspection**: Statistical analysis including column types, null counts, unique values
-- **Export Results**: Download processed data as CSV or other formats
+## Sample Pipelines
+
+The platform includes a rich collection of pre-built sample templates:
+
+1.  **👥 Employee Retention Risk**: Joins HR CSV data with performance reviews to identify at-risk staff using conditional logic.
+2.  **📈 Portfolio Rolling Returns**: Demonstrates advanced **Window Functions** for financial time-series analysis.
+3.  **🔗 Multi-Channel Attribution**: Joins **Remote Parquet** files with **REST API** conversion data to calculate marketing ROAS.
+4.  **🛡️ SQL Server Sales Analysis**: A complete flow from a SQL Server database to a generated PDF report.
+5.  **🐬 MySQL E-commerce Sales**: Joins orders and products from MySQL for category sales analysis.
+
+To load these, use the **Sample Pipelines** sidebar in the application.
+
+### Automated Reporting
+- **Report Builder**: Generate professional reports directly from your processed data.
+- **Multiple Formats**: Export as **PDF** (with multi-language/Korean support) or **GitHub-flavored Markdown**.
+- **Dynamic Sections**: Include data samples, descriptive statistics, and custom text sections automatically.
+- **Results Export**: Download processed data as CSV, JSON, or Parquet for downstream use.
 
 ## Tech Stack
 
