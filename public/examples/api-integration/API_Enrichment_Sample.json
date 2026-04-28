@@ -1,0 +1,66 @@
+{
+  "nodes": [
+    {
+      "id": "node_api_users",
+      "type": "input",
+      "position": { "x": 100, "y": 100 },
+      "data": {
+        "label": "API: User Directory",
+        "subtype": "api",
+        "config": {
+          "url": "https://jsonplaceholder.typicode.com/users",
+          "method": "GET",
+          "auth_type": "none"
+        }
+      }
+    },
+    {
+      "id": "node_csv_feedback",
+      "type": "input",
+      "position": { "x": 100, "y": 400 },
+      "data": {
+        "label": "CSV: User Feedback",
+        "subtype": "csv",
+        "config": {
+          "file_path": "data/uploads/user_feedback.csv",
+          "availableColumns": ["userId", "rating", "comment"]
+        }
+      }
+    },
+    {
+      "id": "node_join_feedback",
+      "type": "default",
+      "position": { "x": 450, "y": 250 },
+      "data": {
+        "label": "Join: Profile + Feedback",
+        "subtype": "combine",
+        "config": {
+          "joinType": "inner",
+          "leftColumn": "id",
+          "rightColumn": "userId"
+        }
+      }
+    },
+    {
+      "id": "node_agg_rating",
+      "type": "default",
+      "position": { "x": 750, "y": 250 },
+      "data": {
+        "label": "Aggregate: Avg Rating",
+        "subtype": "aggregate",
+        "config": {
+          "groupBy": "name",
+          "column": "rating",
+          "operation": "avg",
+          "alias": "avg_rating"
+        }
+      }
+    }
+  ],
+  "edges": [
+    { "id": "e1", "source": "node_api_users", "target": "node_join_feedback" },
+    { "id": "e2", "source": "node_csv_feedback", "target": "node_join_feedback" },
+    { "id": "e3", "source": "node_join_feedback", "target": "node_agg_rating" }
+  ],
+  "preview_limit": 50
+}

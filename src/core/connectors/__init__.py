@@ -8,6 +8,7 @@ from .base import BaseConnector
 from .csv import CSVConnector
 from .api import APIConnector, create_api_connector
 from .web import WebConnector
+from .mssql import MSSQLConnector
 
 __all__ = [
     'BaseConnector',
@@ -15,6 +16,7 @@ __all__ = [
     'APIConnector',
     'create_api_connector',
     'WebConnector',
+    'MSSQLConnector',
 ]
 
 
@@ -23,6 +25,7 @@ CONNECTOR_REGISTRY = {
     'csv': CSVConnector,
     'api': APIConnector,
     'web': WebConnector,
+    'mssql': MSSQLConnector,
 }
 
 

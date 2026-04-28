@@ -15,7 +15,7 @@ The DuckDB Workflow Builder is a full-stack web application that enables users t
 - **Keyboard Shortcuts**: Power user commands for efficient workflow construction
 
 ### Multi-Source Data Integration
-- **Database Connectors**: Native support for DuckDB, PostgreSQL, MySQL
+- **Database Connectors**: Native support for DuckDB, PostgreSQL, MySQL, SQL Server
 - **File Import**: 
   - CSV files with automatic encoding detection (UTF-8, UTF-8-sig, CP949, EUC-KR)
   - Excel files (.xlsx, .xls) with multiple sheet support
@@ -48,6 +48,15 @@ The DuckDB Workflow Builder is a full-stack web application that enables users t
 - **Save/Load Workflows**: Store workflow definitions for future use
 - **Export/Import**: Share workflows across teams and environments
 - **Auto-Save**: Prevent data loss with automatic saving (planned feature)
+51: 
+52: ## Sample Pipelines
+53: 
+54: We have included pre-built sample pipelines in the `data/workflows/` directory to help you get started quickly:
+55: 
+56: 1.  **[SQL Server Sales Analysis](file:///Users/chimin/Documents/script/duckdb-web/data/workflows/SQL_Server_Sales_Analysis.json)**: A complete flow connecting to a SQL Server database, filtering shipped orders, aggregating sales by customer, and generating a PDF report.
+57: 2.  **[Cross-DB Join Sample](file:///Users/chimin/Documents/script/duckdb-web/data/workflows/Cross_DB_Join_Sample.json)**: Demonstrates DuckDB's unique ability to join live SQL Server customer data with a local CSV transaction log.
+58: 
+59: To load these, use the **Open** folder icon in the toolbar and select the desired JSON file.
 
 ### Live Data Preview
 - **Real-Time Results**: Preview output at any node in the workflow
@@ -88,6 +97,7 @@ The DuckDB Workflow Builder is a full-stack web application that enables users t
 - **Node.js 18+** and **npm**
 - **Python 3.11+**
 - **Git**
+- **ODBC Driver** (for SQL Server support)
 
 ### Local Development
 

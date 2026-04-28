@@ -1,0 +1,79 @@
+{
+  "nodes": [
+    {
+      "id": "node_mysql_orders",
+      "type": "input",
+      "position": { "x": 100, "y": 100 },
+      "data": {
+        "label": "MySQL: Orders",
+        "subtype": "mysql",
+        "config": {
+          "connection_string": "mysql://readonly:Pass123@ecommerce-db.internal:3306/shop;mock=true;",
+          "query": "SELECT order_id, customer_id, product_id, amount, status FROM orders"
+        }
+      }
+    },
+    {
+      "id": "node_mysql_products",
+      "type": "input",
+      "position": { "x": 100, "y": 400 },
+      "data": {
+        "label": "MySQL: Products",
+        "subtype": "mysql",
+        "config": {
+          "connection_string": "mysql://readonly:Pass123@ecommerce-db.internal:3306/shop;mock=true;",
+          "query": "SELECT product_id, name, category, price FROM products"
+        }
+      }
+    },
+    {
+      "id": "node_join_orders",
+      "type": "default",
+      "position": { "x": 450, "y": 250 },
+      "data": {
+        "label": "Join: Orders + Products",
+        "subtype": "combine",
+        "config": {
+          "joinType": "inner",
+          "leftColumn": "product_id",
+          "rightColumn": "product_id"
+        }
+      }
+    },
+    {
+      "id": "node_agg_category",
+      "type": "default",
+      "position": { "x": 750, "y": 250 },
+      "data": {
+        "label": "Aggregate: Sales by Category",
+        "subtype": "aggregate",
+        "config": {
+          "groupBy": "category",
+          "column": "amount",
+          "operation": "sum",
+          "alias": "total_sales"
+        }
+      }
+    },
+    {
+      "id": "node_sort_sales",
+      "type": "default",
+      "position": { "x": 1050, "y": 250 },
+      "data": {
+        "label": "Sort: Top Categories",
+        "subtype": "sort",
+        "config": {
+          "column": "total_sales",
+          "direction": "desc"
+        }
+      }
+    }
+  ],
+  "edges": [
+    { "id": "e1", "source": "node_mysql_orders", "target": "node_join_orders" },
+    { "id": "e2", "source": "node_mysql_products", "target": "node_join_orders" },
+    { "id": "e3", "source": "node_join_orders", "target": "node_agg_category" },
+    { "id": "e4", "source": "node_agg_category", "target": "node_sort_sales" }
+  ],
+  "preview_limit": 50
+}

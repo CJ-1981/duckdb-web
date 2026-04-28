@@ -22,4 +22,7 @@ redis
 alembic
 asyncpg
 aiohttp>=3.13.5
+pyodbc
+pymysql
+psycopg2-binary
 

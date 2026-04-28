@@ -145,6 +145,8 @@ if exist requirements.txt (
     echo requirements.txt not found. Skipping...
 )
 
+echo Note: For SQL Server support, ensure you have the Microsoft ODBC Driver installed.
+
 if exist requirements-dev.txt (
     echo Installing dev dependencies...
     pip install -r requirements-dev.txt

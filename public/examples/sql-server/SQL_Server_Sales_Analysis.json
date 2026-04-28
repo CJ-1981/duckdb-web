@@ -1,0 +1,80 @@
+{
+  "nodes": [
+    {
+      "id": "node_input_mssql",
+      "type": "input",
+      "position": { "x": 100, "y": 100 },
+      "data": {
+        "label": "SQL Server: AdventureWorks",
+        "subtype": "sql_server",
+        "config": {
+          "connection_string": "DRIVER={ODBC Driver 17 for SQL Server};SERVER=sql-server-samples.database.windows.net;DATABASE=AdventureWorks;UID=readonly_user;PWD=AdventureWorks2024!;mock=true;",
+          "query": "SELECT SalesOrderID, OrderDate, CustomerID, TotalDue, Status FROM Sales.SalesOrderHeader",
+          "availableColumns": ["SalesOrderID", "OrderDate", "CustomerID", "TotalDue", "Status"]
+        }
+      }
+    },
+    {
+      "id": "node_filter_shipped",
+      "type": "default",
+      "position": { "x": 400, "y": 100 },
+      "data": {
+        "label": "Filter: Shipped Orders",
+        "subtype": "filter",
+        "config": {
+          "column": "Status",
+          "operator": "==",
+          "value": "5"
+        }
+      }
+    },
+    {
+      "id": "node_agg_sales",
+      "type": "default",
+      "position": { "x": 700, "y": 100 },
+      "data": {
+        "label": "Aggregate: Sales by Customer",
+        "subtype": "aggregate",
+        "config": {
+          "groupBy": "CustomerID",
+          "column": "TotalDue",
+          "operation": "sum",
+          "alias": "result"
+        }
+      }
+    },
+    {
+      "id": "node_sort_top",
+      "type": "default",
+      "position": { "x": 1000, "y": 100 },
+      "data": {
+        "label": "Sort: High Value Customers",
+        "subtype": "sort",
+        "config": {
+          "column": "result",
+          "direction": "desc"
+        }
+      }
+    },
+    {
+      "id": "node_report_pdf",
+      "type": "output",
+      "position": { "x": 1300, "y": 100 },
+      "data": {
+        "label": "Export: PDF Report",
+        "subtype": "report",
+        "config": {
+          "title": "SQL Server High Value Sales Report",
+          "format": "PDF"
+        }
+      }
+    }
+  ],
+  "edges": [
+    { "id": "e1-2", "source": "node_input_mssql", "target": "node_filter_shipped" },
+    { "id": "e2-3", "source": "node_filter_shipped", "target": "node_agg_sales" },
+    { "id": "e3-4", "source": "node_agg_sales", "target": "node_sort_top" },
+    { "id": "e4-5", "source": "node_sort_top", "target": "node_report_pdf" }
+  ],
+  "preview_limit": 50
+}

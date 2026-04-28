@@ -15,6 +15,7 @@ cleanup() {
 trap cleanup EXIT
 
 echo "🚀 Starting DuckDB Data Processor Services..."
+echo "💡 Note: For SQL Server support, ensure you have 'pyodbc' and the Microsoft ODBC Driver installed."
 
 # 1. Start Backend (FastAPI)
 echo "📦 Starting Backend (FastAPI)..."

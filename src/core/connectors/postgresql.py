@@ -113,6 +113,10 @@ class PostgreSQLConnector(DatabaseConnector):
         Raises:
             ConnectionError: If connection fails
         """
+        # Support mock mode for UI testing
+        if self.connection_string and ';mock=true' in self.connection_string.lower():
+            self._connected = True
+            return
         try:
             # Build connection parameters
             if self.connection_string:
@@ -179,6 +183,10 @@ class PostgreSQLConnector(DatabaseConnector):
         Returns:
             Query results or row count
         """
+        # Mock results for testing
+        if not self._connection and self.connection_string and ';mock=true' in self.connection_string.lower():
+            return [{"mock_pg_col": "mock_pg_val"}]
+
         with self._get_cursor() as cursor:
             cursor.execute(query, params)
 

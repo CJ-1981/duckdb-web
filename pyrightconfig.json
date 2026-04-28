@@ -1,9 +1,7 @@
 {
   "include": ["src"],
-  "executionEnvironments": [
-    {
-      "root": ".",
-      "extraPaths": ["."]
-    }
-  ]
+  "exclude": ["**/__pycache__", ".venv"],
+  "venvPath": ".",
+  "venv": ".venv",
+  "extraPaths": ["."]
 }

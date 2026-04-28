@@ -38,9 +38,9 @@ if USE_PANDAS_CSV:
         logger.warning(f">>> [CONFIG] Failed to import PandasCSVConnector: {e}")
         logger.warning(">>> [CONFIG] Falling back to CSVConnector")
         USE_PANDAS_CSV = False
-        from src.core.connectors.csv import CSVConnector
-else:
-    from src.core.connectors.csv import CSVConnector
+
+from src.core.connectors.csv import CSVConnector, clean_invisible_unicode
+if not USE_PANDAS_CSV:
     logger.info(">>> [CONFIG] Using CSVConnector (DictReader) for CSV parsing")
 
 # Pre-compiled regex patterns for SQL injection prevention
@@ -87,8 +87,6 @@ TABLE_NAME_PATTERN = re.compile(r'^[a-zA-Z_][a-zA-Z0-9_-]*(\.[a-zA-Z_][a-zA-Z0-9
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.core.connectors.csv import clean_invisible_unicode
-
 from src.api.auth.dependencies import get_current_user, get_db
 from src.api.auth.decorators import require_permission
 from src.api.models.user import User
@@ -100,10 +98,8 @@ from src.api.schemas.workflow import (
 )
 from src.api.services.workflow import WorkflowService
 from src.api.services.schema_analyzer import SchemaAnalyzerService
-from src.core.connectors.csv import CSVConnector
-import time
+
 _CSV_SCHEMA_CACHE = {}
-from src.core.connectors.csv import CSVConnector
 
 
 router = APIRouter(prefix="/api/v1/workflows", tags=["Workflows"])
@@ -1529,6 +1525,27 @@ async def execute_workflow_graph(
                         except Exception as e:
                             logger.error(f">>> [INPUT NODE] Failed to load sample data: {e}")
 
+                # Database (SQL Server, MySQL, PostgreSQL) input
+                if subtype in ["sql_server", "mysql", "postgresql"]:
+                    try:
+                        from src.core.processor import Processor
+                        processor = Processor()
+                        df = processor.load_database(
+                            connection_string=config.get("connection_string"),
+                            query=config.get("query"),
+                        )
+                        df = _sanitize_df_for_duckdb(df)
+                        conn.register(f'{table_name}_df', df)
+                        conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT * FROM {table_name}_df")
+                        node_to_table[node_id] = table_name
+                        logger.info(f">>> [INPUT NODE] Loaded {subtype.replace('_', ' ').title()}: {len(df)} rows")
+                    except Exception as e:
+                        logger.error(f">>> [INPUT NODE] Failed to load {subtype.replace('_', ' ').title()}: {e}")
+                        raise HTTPException(status_code=400, detail=f"{subtype.replace('_', ' ').title()} error: {str(e)}")
+                    # Finalize state before continue
+                    _finalize_node_state(conn, node, node_id, node_to_table, node_hash)
+                    continue
+
                 file_path = config.get("file_path")
                 logger.info(f">>> [INPUT NODE] Processing file: {file_path}")
                 if not file_path: continue
@@ -1927,7 +1944,7 @@ async def execute_workflow_graph(
                     # Detect if this is a mutation (even with WITH)
                     sql_stripped = processed_sql.strip()
                     first_word = sql_stripped.split()[0].upper() if sql_stripped else ""
-                    is_mutation = first_word in ["UPDATE", "INSERT", "DELETE", "MERGE", "DROP", "ALTER", "CREATE"]
+                    is_mutation = first_word in ["UPDATE", "INSERT", "DELETE", "MERGE", "DROP", "ALTER", "CREATE", "COPY", "EXPORT"]
                     if first_word == "WITH":
                          # Check for mutation keywords later in the query
                          if re.search(r'\b(UPDATE|INSERT|DELETE|MERGE)\b', sql_stripped.upper()):

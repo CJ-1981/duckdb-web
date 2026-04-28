@@ -429,15 +429,19 @@ class Processor:
             ConnectionError: If database connection fails
         """
         # Detect database type from connection string
-        if connection_string.startswith('postgresql://'):
+        conn_lower = connection_string.lower()
+        if conn_lower.startswith(('postgresql://', 'postgres://')):
             from ..connectors.postgresql import PostgreSQLConnector
             connector = PostgreSQLConnector(connection_string)
-        elif connection_string.startswith('mysql://'):
+        elif conn_lower.startswith('mysql://'):
             from ..connectors.mysql import MySQLConnector
             connector = MySQLConnector(connection_string)
+        elif conn_lower.startswith(('mssql://', 'mssql+pyodbc://', 'sqlserver://')) or 'driver=' in conn_lower:
+            from ..connectors.mssql import MSSQLConnector
+            connector = MSSQLConnector(connection_string)
         else:
             raise ValueError(
-                f"Unsupported database type. Supported: postgresql://, mysql://\n"
+                f"Unsupported database type. Supported: postgresql://, mysql://, mssql://\n"
                 f"Got: {connection_string[:20]}..."
             )
 
@@ -1328,7 +1332,7 @@ class Processor:
     def is_stream_paused(self) -> bool:
         """Check if stream is paused"""
         if self._stream_processor:
-            from .processor.streaming import StreamingState
+            from .streaming import StreamingState
             return self._stream_processor.state == StreamingState.PAUSED
         return False
 
@@ -1336,7 +1340,7 @@ class Processor:
     def is_stream_cancelled(self) -> bool:
         """Check if stream is cancelled"""
         if self._stream_processor:
-            from .processor.streaming import StreamingState
+            from .streaming import StreamingState
             return self._stream_processor.state == StreamingState.CANCELLED
         return False
 

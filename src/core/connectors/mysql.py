@@ -115,7 +115,6 @@ class MySQLConnector(DatabaseConnector):
         ssl_part = f"?ssl-mode={self._ssl_mode}" if self._ssl_mode else ""
 
         return f"mysql://{auth}{self._host}{port_part}/{self._database}{ssl_part}"
-
     def connect(self, **kwargs) -> None:
         """
         Establish connection to MySQL database.
@@ -123,6 +122,11 @@ class MySQLConnector(DatabaseConnector):
         Raises:
             ConnectionError: If connection fails
         """
+        # Support mock mode for UI testing
+        if self.connection_string and ';mock=true' in self.connection_string.lower():
+            self._connected = True
+            return
+
         try:
             # Build connection parameters
             if self.connection_string:
@@ -191,6 +195,25 @@ class MySQLConnector(DatabaseConnector):
         Returns:
             Query results or row count
         """
+        # Mock results for testing
+        if not self._connection and self.connection_string and ';mock=true' in self.connection_string.lower():
+            query_upper = query.upper()
+            if 'FROM ORDERS' in query_upper:
+                return [
+                    {"order_id": 1, "customer_id": 101, "product_id": 501, "amount": 150.50, "status": "completed"},
+                    {"order_id": 2, "customer_id": 102, "product_id": 502, "amount": 45.00, "status": "pending"},
+                    {"order_id": 3, "customer_id": 103, "product_id": 501, "amount": 89.99, "status": "completed"},
+                    {"order_id": 4, "customer_id": 101, "product_id": 503, "amount": 210.00, "status": "completed"},
+                    {"order_id": 5, "customer_id": 104, "product_id": 502, "amount": 12.50, "status": "cancelled"},
+                ]
+            if 'FROM PRODUCTS' in query_upper:
+                return [
+                    {"product_id": 501, "name": "Wireless Mouse", "category": "Electronics", "price": 25.99},
+                    {"product_id": 502, "name": "Coffee Mug", "category": "Home", "price": 12.00},
+                    {"product_id": 503, "name": "Mechanical Keyboard", "category": "Electronics", "price": 120.00},
+                ]
+            return [{"mock_col": "mock_val"}]
+
         with self._get_cursor() as cursor:
             cursor.execute(query, params)
 

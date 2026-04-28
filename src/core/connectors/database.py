@@ -168,6 +168,7 @@ class DatabaseConnector(BaseConnector):
             valid_schemes = {
                 'postgresql': ['postgresql', 'postgres'],
                 'mysql': ['mysql'],
+                'mssql': ['mssql', 'mssql+pyodbc', 'sqlserver'],
             }
 
             if db_type in valid_schemes:

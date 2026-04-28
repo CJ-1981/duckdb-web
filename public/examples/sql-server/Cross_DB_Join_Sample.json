@@ -1,0 +1,75 @@
+{
+  "nodes": [
+    {
+      "id": "node_mssql_customers",
+      "type": "input",
+      "position": { "x": 100, "y": 100 },
+      "data": {
+        "label": "MSSQL: Customers",
+        "subtype": "sql_server",
+        "config": {
+          "connection_string": "DRIVER={ODBC Driver 17 for SQL Server};SERVER=sql-server-samples.database.windows.net;DATABASE=AdventureWorks;UID=readonly_user;PWD=AdventureWorks2024!;mock=true;",
+          "query": "SELECT CustomerID, FirstName, LastName, EmailAddress FROM SalesLT.Customer"
+        }
+      }
+    },
+    {
+      "id": "node_csv_transactions",
+      "type": "input",
+      "position": { "x": 100, "y": 400 },
+      "data": {
+        "label": "CSV: Sales Transactions",
+        "config": {
+          "file_path": "data/uploads/transactions_may_2024.csv",
+          "availableColumns": ["CustomerID", "TransactionID", "Amount", "Timestamp"]
+        }
+      }
+    },
+    {
+      "id": "node_join_data",
+      "type": "default",
+      "position": { "x": 450, "y": 250 },
+      "data": {
+        "label": "Join: CRM + Sales",
+        "subtype": "combine",
+        "config": {
+          "joinType": "inner",
+          "leftColumn": "CustomerID",
+          "rightColumn": "CustomerID"
+        }
+      }
+    },
+    {
+      "id": "node_tax_calc",
+      "type": "default",
+      "position": { "x": 750, "y": 250 },
+      "data": {
+        "label": "Computed: Tax (10%)",
+        "subtype": "computed",
+        "config": {
+          "expression": "Amount * 0.10",
+          "alias": "TaxAmount"
+        }
+      }
+    },
+    {
+      "id": "node_export_parquet",
+      "type": "output",
+      "position": { "x": 1050, "y": 250 },
+      "data": {
+        "label": "Export: Final Data",
+        "subtype": "raw_sql",
+        "config": {
+          "sql": "COPY (SELECT * FROM {{input}}) TO 'output/unified_sales_data.parquet' (FORMAT PARQUET);"
+        }
+      }
+    }
+  ],
+  "edges": [
+    { "id": "e_mssql_join", "source": "node_mssql_customers", "target": "node_join_data" },
+    { "id": "e_csv_join", "source": "node_csv_transactions", "target": "node_join_data" },
+    { "id": "e_join_calc", "source": "node_join_data", "target": "node_tax_calc" },
+    { "id": "e_calc_export", "source": "node_tax_calc", "target": "node_export_parquet" }
+  ],
+  "preview_limit": 50
+}

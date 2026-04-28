@@ -5,6 +5,7 @@ setlocal enabledelayedexpansion
 cd /d "%~dp0"
 
 echo Starting DuckDB Data Processor Suite...
+echo Note: For SQL Server support, ensure you have 'pyodbc' and the Microsoft ODBC Driver installed.
 
 :: 0. Check for existing processes
 :: echo Checking for existing processes...
