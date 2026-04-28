@@ -261,7 +261,6 @@ server_log.txt
 sample.xml
 
 # Accidental Bloat
-C:\
 npm-cache/
 .npm-cache/
 .cache/
