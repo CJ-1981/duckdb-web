@@ -1,4 +1,6 @@
 {
+  "name": "Batch Request User Profiles",
+  "description": "Fetch user profiles from JSONPlaceholder API using batch requests",
   "nodes": [
     {
       "id": "1",
@@ -9,16 +11,13 @@
           "file_path": "examples/test_data.csv",
           "sample_data": [
             {
-              "id": 1,
-              "value": "sample_value_1"
+              "user_id": 1
             },
             {
-              "id": 2,
-              "value": "sample_value_2"
+              "user_id": 2
             },
             {
-              "id": 3,
-              "value": "sample_value_3"
+              "user_id": 3
             }
           ]
         },
@@ -27,27 +26,38 @@
     },
     {
       "id": "2",
-      "type": "transform",
+      "type": "default",
       "data": {
-        "subtype": "raw_sql",
+        "subtype": "batch_request",
         "label": "Fetch User Profiles",
         "config": {
           "url_template": "https://jsonplaceholder.typicode.com/users/{user_id}",
           "method": "GET",
           "concurrency": 10,
           "timeout": 30,
-          "extract_mode": "json",
-          "sql": "SELECT * FROM {{input}} LIMIT 100"
+          "extract_mode": "json"
         }
       }
     },
     {
       "id": "3",
+      "type": "default",
+      "data": {
+        "subtype": "raw_sql",
+        "label": "Extract User Fields",
+        "config": {
+          "sql": "SELECT user_id, response.data->>'id' as api_id, response.data->>'name' as name, response.data->>'email' as email, response.data->>'phone' as phone, response.data->'company'->>'name' as company FROM {{input}}"
+        }
+      }
+    },
+    {
+      "id": "4",
       "type": "output",
       "data": {
         "subtype": "db_write",
         "config": {
-          "tableName": "user_profiles_enriched"
+          "tableName": "user_profiles_enriched",
+          "filename": "user_profiles.csv"
         },
         "label": "Save to Database"
       }
@@ -55,12 +65,19 @@
   ],
   "edges": [
     {
+      "id": "e1",
       "source": "1",
       "target": "2"
     },
     {
+      "id": "e2",
       "source": "2",
       "target": "3"
+    },
+    {
+      "id": "e3",
+      "source": "3",
+      "target": "4"
     }
   ]
 }

@@ -16,16 +16,19 @@
           "file_path": "examples/users_legacy.csv",
           "sample_data": [
             {
-              "id": 1,
-              "value": "sample_value_1"
+              "id": "1",
+              "full_name": "John Doe",
+              "email_address": "john@example.com"
             },
             {
-              "id": 2,
-              "value": "sample_value_2"
+              "id": "2",
+              "full_name": "Jane Smith",
+              "email_address": "jane@test.com"
             },
             {
-              "id": 3,
-              "value": "sample_value_3"
+              "id": "3",
+              "full_name": "Bob Johnson",
+              "email_address": "bob@sample.org"
             }
           ]
         }

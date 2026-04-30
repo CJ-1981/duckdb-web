@@ -49,16 +49,19 @@
           "file_path": "examples/customer_updates.csv",
           "sample_data": [
             {
-              "id": 1,
-              "value": "sample_value_1"
+              "customer_id": 1,
+              "email": "new.email1@example.com",
+              "segment": "Enterprise"
             },
             {
-              "id": 2,
-              "value": "sample_value_2"
+              "customer_id": 2,
+              "email": "new.email2@example.com",
+              "segment": "Enterprise"
             },
             {
-              "id": 3,
-              "value": "sample_value_3"
+              "customer_id": 3,
+              "email": "new.customer3@example.com",
+              "segment": "Retail"
             }
           ]
         }

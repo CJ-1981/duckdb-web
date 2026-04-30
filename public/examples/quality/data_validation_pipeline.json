@@ -16,16 +16,22 @@
           "file_path": "examples/new_customers.csv",
           "sample_data": [
             {
-              "id": 1,
-              "value": "sample_value_1"
+              "customer_id": "CUST-001",
+              "email": "john@example.com",
+              "phone": "555-123-4567",
+              "age": 25
             },
             {
-              "id": 2,
-              "value": "sample_value_2"
+              "customer_id": "CUST-002",
+              "email": "invalid-email",
+              "phone": "555-987-6543",
+              "age": 15
             },
             {
-              "id": 3,
-              "value": "sample_value_3"
+              "customer_id": "CUST-003",
+              "email": "jane@test.com",
+              "phone": null,
+              "age": 30
             }
           ]
         }

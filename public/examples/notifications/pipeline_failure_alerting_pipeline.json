@@ -16,16 +16,25 @@
           "file_path": "examples/pipeline_executions.csv",
           "sample_data": [
             {
-              "id": 1,
-              "value": "sample_value_1"
+              "pipeline_name": "etl_daily",
+              "status": "failed",
+              "error_message": "Connection timeout to database",
+              "started_at": "2024-01-15T10:30:00",
+              "retry_count": 1
             },
             {
-              "id": 2,
-              "value": "sample_value_2"
+              "pipeline_name": "data_sync",
+              "status": "success",
+              "error_message": null,
+              "started_at": "2024-01-15T11:00:00",
+              "retry_count": 0
             },
             {
-              "id": 3,
-              "value": "sample_value_3"
+              "pipeline_name": "analytics_job",
+              "status": "failed",
+              "error_message": "Out of memory error",
+              "started_at": "2024-01-15T12:15:00",
+              "retry_count": 2
             }
           ]
         }

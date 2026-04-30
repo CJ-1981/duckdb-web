@@ -73,7 +73,7 @@
         "label": "Extract User Fields",
         "subtype": "raw_sql",
         "config": {
-          "sql": "SELECT * FROM {{input}}"
+          "sql": "SELECT user_id, response.data->>'id' as api_id, response.data->>'name' as name, response.data->>'email' as email, response.data->>'phone' as phone, response.data->>'website' as website, response.data->'company'->>'name' as company FROM {{input}}"
         }
       }
     },
