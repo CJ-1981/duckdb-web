@@ -532,8 +532,6 @@ def fix_replace_for_numeric_columns(sql: str, schema: Dict[str, str]) -> str:
     Returns:
         SQL with REPLACE calls fixed for numeric columns
     """
-    import re
-
     # Pattern to match REPLACE function calls with column names
     # Matches: REPLACE(column_name, search, replace) or REPLACE("column name", search, replace)
     # We need to find the first argument (column name) and check if it's numeric
@@ -575,7 +573,6 @@ def map_duckdb_error_to_user_message(error: Exception) -> str:
     Returns:
         A user-friendly error message
     """
-    import re
     error_str = str(error).lower()
     error_original = str(error)
 
@@ -1119,8 +1116,6 @@ async def validate_sql(
     request: SqlValidationRequest
 ):
     """Validate a DuckDB SQL query using EXPLAIN with multi-input support."""
-    import re
-
     sql = request.sql
     input_tables = request.input_tables
     input_table = request.input_table  # Backward compatibility
@@ -2271,9 +2266,8 @@ async def execute_workflow_graph(
                 if window_config:
                     w_duration = str(window_config.get("duration", "1 minute")).lower()
                     ts_col = window_config.get("timestamp_column", "timestamp")
-                    
+
                     # Determine truncation unit or epoch floor
-                    import re
                     match = re.search(r'(\d+)\s*(\w+)', w_duration)
                     if match:
                         num = int(match.group(1))
@@ -2305,7 +2299,6 @@ async def execute_workflow_graph(
                     group_parts = []
                     for c in group_by:
                         # Detect alias in expression
-                        import re
                         match = re.search(r'\s+as\s+', c, re.IGNORECASE)
                         if match:
                             expr = c[:match.start()].strip()
