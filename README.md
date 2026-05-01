@@ -51,6 +51,13 @@ The DuckDB Workflow Builder is a full-stack web application that enables users t
 - **Export/Import**: Share workflows across teams and environments
 - **Auto-Save**: Prevent data loss with automatic saving (planned feature)
 
+### Production-Ready Monitoring
+- **Structured Logging**: JSON-formatted logs with correlation IDs for distributed tracing
+- **Health Checks**: Kubernetes-style probes (liveness, readiness, startup)
+- **Prometheus Metrics**: Request count, latency, error rate, and business metrics
+- **Performance Tracking**: Request timing and slow query detection
+- **Observability**: Ready for integration with Grafana, Loki, ELK, or CloudWatch
+
 ## Sample Pipelines
 
 The platform includes a rich collection of pre-built sample templates:
@@ -103,6 +110,10 @@ To load these, use the **Sample Pipelines** sidebar in the application.
 - **Python 3.11+**
 - **Git**
 - **ODBC Driver** (for SQL Server support)
+
+**Monitoring Dependencies** (automatically installed):
+- `structlog` - Structured JSON logging
+- `prometheus-client` - Prometheus metrics collection
 
 ### Local Development
 
@@ -208,6 +219,84 @@ For detailed setup instructions, see [docs/LOCAL_BACKEND_SETUP.md](docs/LOCAL_BA
 - **Vercel**: Free tier available
 - **Netlify**: Free tier available
 
+## Monitoring & Observability
+
+The application includes production-ready monitoring and logging capabilities.
+
+### Health Check Endpoints
+
+Kubernetes-style health probes for deployment orchestration:
+
+```bash
+# Liveness probe - app is running
+curl http://localhost:8000/health/live
+
+# Readiness probe - can serve traffic
+curl http://localhost:8000/health/ready
+
+# Startup probe - initialization complete
+curl http://localhost:8000/health/startup
+```
+
+### Prometheus Metrics
+
+Application metrics exposed in Prometheus format:
+
+```bash
+# Enable metrics (set PROMETHEUS_ENABLED=true in .env)
+curl http://localhost:8000/metrics
+```
+
+**Available Metrics:**
+- HTTP request count, latency, and error rate by endpoint
+- Database query timing and connection pool usage
+- Business metrics: file uploads, SQL queries executed
+- System metrics: memory, CPU usage
+
+### Structured Logging
+
+JSON-formatted logs with correlation IDs for distributed tracing:
+
+```json
+{
+  "timestamp": "2026-05-01T19:18:21.458582Z",
+  "level": "info",
+  "message": "Request completed",
+  "correlation_id": "abc123",
+  "method": "POST",
+  "path": "/api/workflow/execute",
+  "status_code": 200,
+  "duration_ms": 123
+}
+```
+
+### Configuration
+
+Add to your `.env` file:
+
+```bash
+# Application Environment
+ENV=production
+
+# Logging Configuration
+LOG_LEVEL=INFO
+LOG_FORMAT=json
+
+# Performance Monitoring
+SLOW_REQUEST_THRESHOLD_MS=1000
+
+# Prometheus Metrics
+PROMETHEUS_ENABLED=true
+```
+
+### Log Aggregation
+
+Compatible with:
+- **Grafana Loki** (Recommended) - Lightweight, Prometheus integration
+- **ELK Stack** - Enterprise log analytics
+- **AWS CloudWatch** - Native AWS integration
+- **Grafana Cloud** - Managed observability platform
+
 ## Development
 
 ### Project Structure
@@ -217,6 +306,7 @@ duckdb-web/
 ├── src/
 │   ├── api/           # FastAPI backend
 │   │   ├── routers/   # API endpoints
+│   │   ├── monitoring/ # Monitoring & logging system
 │   │   └── main.py    # Application entry point
 │   ├── components/    # React components
 │   │   ├── canvas/    # Workflow canvas
@@ -292,6 +382,21 @@ pytest --cov=src tests/unit/
 **TypeScript:**
 ```bash
 npm test
+```
+
+### Monitoring Tests
+
+```bash
+# Test monitoring endpoints
+pytest tests/test_monitoring.py -v
+
+# Test health checks
+curl http://localhost:8000/health/live
+curl http://localhost:8000/health/ready
+curl http://localhost:8000/health/startup
+
+# Test metrics (when PROMETHEUS_ENABLED=true)
+curl http://localhost:8000/metrics
 ```
 
 ## Contributing

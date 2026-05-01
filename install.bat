@@ -147,11 +147,16 @@ if exist requirements.txt (
 
 echo Note: For SQL Server support, ensure you have the Microsoft ODBC Driver installed.
 
+if exist requirements.txt (
+    echo Installing monitoring dependencies ^(structlog, prometheus-client^)...
+)
+
 if exist requirements-dev.txt (
     echo Installing dev dependencies...
     pip install -r requirements-dev.txt
 )
 
+echo Monitoring dependencies installed successfully.
 echo Backend dependencies installed successfully.
 
 :: 5. Install Frontend Dependencies

@@ -1,28 +1,45 @@
+# Core Framework
 fastapi
 uvicorn
+
+# Database
 sqlalchemy
-pydantic
-pydantic-settings
+alembic
+asyncpg
+psycopg2-binary
+pyodbc
+pymysql
+duckdb
+
+# Data Processing
+pandas
+openpyxl
+tabulate
+
+# Authentication & Security
 python-jose[cryptography]
 passlib[bcrypt]
-duckdb
-reportlab
-tabulate
-openpyxl
-pandas
-pyyaml
-beautifulsoup4
-lxml
+
+# API & HTTP
+aiohttp>=3.13.5
 requests
+pydantic
+pydantic-settings
+
+# Task Queue
+rq
+redis
+
+# Utilities
 psutil
 aiofiles
 chardet
-rq
-redis
-alembic
-asyncpg
-aiohttp>=3.13.5
-pyodbc
-pymysql
-psycopg2-binary
+pyyaml
+beautifulsoup4
+lxml
+reportlab
+
+# Monitoring & Logging (Production)
+structlog>=24.1.0
+prometheus-client>=0.20.0
 

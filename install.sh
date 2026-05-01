@@ -48,6 +48,8 @@ if [ -f "requirements-dev.txt" ]; then
 fi
 
 echo "Note: For SQL Server support, ensure you have the Microsoft ODBC Driver installed."
+echo ""
+echo "Monitoring dependencies installed (structlog, prometheus-client)."
 echo "Backend dependencies installed successfully."
 
 # 5. Install Frontend Dependencies

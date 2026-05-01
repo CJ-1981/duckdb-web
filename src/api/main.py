@@ -25,7 +25,17 @@ from src.api.middleware import (
     LoggingMiddleware,
     ErrorHandlerMiddleware
 )
-from src.api.routes.system import router as health_router
+
+# Import monitoring components
+# @MX:NOTE: Structured logging and metrics for production observability
+from src.api.monitoring import (
+    MonitoringMiddleware,
+    RequestContextMiddleware,
+    health_router,
+)
+from src.api.monitoring.endpoints import router as metrics_router
+
+from src.api.routes.system import router as system_router
 from src.api.routes.users import router as users_router
 from src.api.routes.data import router as data_router
 from src.api.routes.workflows import router as workflows_router
@@ -106,15 +116,19 @@ def create_app() -> FastAPI:
     # 1. CORS (first) - already added above
     # 2. Request ID
     app.add_middleware(RequestIDMiddleware)
-    # 3. Logging
-    app.add_middleware(LoggingMiddleware)
-    # 4. Error Handler
+    # 3. RequestContext (binds correlation_id to structlog context)
+    app.add_middleware(RequestContextMiddleware)
+    # 4. Monitoring (structured logging and performance tracking)
+    app.add_middleware(MonitoringMiddleware)
+    # 5. Error Handler
     app.add_middleware(ErrorHandlerMiddleware)
-    # 5. Authentication (will be added in later task)
+    # 6. Authentication (will be added in later task)
 
     # Register routers
     # Note: Additional routers will be added in later tasks (auth, jobs, etc.)
-    app.include_router(health_router)    # System configuration endpoints
+    app.include_router(health_router)    # Kubernetes-style health checks (/health/live, /health/ready, /health/startup)
+    app.include_router(metrics_router)   # Prometheus metrics endpoint (/metrics)
+    app.include_router(system_router)    # System configuration endpoints
     app.include_router(users_router)     # User management endpoints
     app.include_router(data_router)      # Data processing endpoints
     app.include_router(workflows_router) # Workflow management endpoints
