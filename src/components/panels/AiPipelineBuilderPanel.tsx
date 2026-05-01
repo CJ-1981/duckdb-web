@@ -1,42 +1,9 @@
 'use client';
-import React, { useState, useEffect } from 'react';
-import { Wand2, Copy, CheckCheck, AlertCircle, Plus, ChevronDown, CheckCircle2, RefreshCw } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Wand2, AlertCircle, Plus, ChevronDown, RefreshCw, CheckCheck } from 'lucide-react';
 import { Node, Edge } from '@xyflow/react';
 import type { ColumnTypeDef } from './DataInspectionPanel';
-
-interface Provider {
-  id: string; name: string; baseUrl: string;
-  type: 'openai' | 'anthropic' | 'google';
-  apiKeyUrl: string;
-  extraHeaders?: Record<string, string>;
-  models: { id: string; name: string }[];
-}
-
-const PROVIDERS: Provider[] = [
-  {
-    id: 'google', name: 'Google (Gemini)', baseUrl: 'https://generativelanguage.googleapis.com/v1beta/models', type: 'google',
-    apiKeyUrl: 'https://aistudio.google.com/app/apikey',
-    models: [
-      { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash' },
-      { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro' },
-    ],
-  },
-  {
-    id: 'openai', name: 'OpenAI', baseUrl: 'https://api.openai.com/v1/chat/completions', type: 'openai',
-    apiKeyUrl: 'https://platform.openai.com/api-keys',
-    models: [
-      { id: 'gpt-4o', name: 'GPT-4o' },
-      { id: 'gpt-4o-mini', name: 'GPT-4o mini' },
-    ],
-  },
-  {
-    id: 'anthropic', name: 'Anthropic', baseUrl: 'https://api.anthropic.com/v1/messages', type: 'anthropic',
-    apiKeyUrl: 'https://console.anthropic.com/settings/keys',
-    models: [
-      { id: 'claude-3-5-sonnet-20241022', name: 'Claude 3.5 Sonnet' },
-    ],
-  }
-];
+import { PROVIDERS, CUSTOM_MODEL_OPTION, type Provider } from '../../config/ai-providers';
 
 function buildSystemPrompt(sourceSchemas: { nodeId: string, label: string, schema: ColumnTypeDef[] }[]): string {
   const schemasText = sourceSchemas.map(s => {
@@ -161,6 +128,7 @@ interface Props {
 export default function AiPipelineBuilderPanel({ sourceSchemas, onApplyPipeline, onClose }: Props) {
   const [providerId, setProviderId] = useState(PROVIDERS[0].id);
   const [modelId, setModelId] = useState(PROVIDERS[0].models[0].id);
+  const [customModelId, setCustomModelId] = useState('');
   const [apiKey, setApiKey] = useState('');
   const [prompt, setPrompt] = useState('');
   const [generatedJson, setGeneratedJson] = useState('');
@@ -169,12 +137,15 @@ export default function AiPipelineBuilderPanel({ sourceSchemas, onApplyPipeline,
   const [applied, setApplied] = useState(false);
 
   const provider = PROVIDERS.find(p => p.id === providerId)!;
+  const isCustomModel = modelId === CUSTOM_MODEL_OPTION.id;
+  const effectiveModelId = isCustomModel ? customModelId : modelId;
 
   useEffect(() => {
     const stored = localStorage.getItem('ai_pipeline_key_' + providerId);
     setApiKey(stored || '');
-    const firstModel = provider.models[0].id;
+    const firstModel = PROVIDERS.find(p => p.id === providerId)!.models[0].id;
     setModelId(firstModel);
+    setCustomModelId('');
   }, [providerId]);
 
   const handleSaveKey = () => {
@@ -184,9 +155,10 @@ export default function AiPipelineBuilderPanel({ sourceSchemas, onApplyPipeline,
   const handleGenerate = async () => {
     if (!prompt.trim()) return;
     if (!apiKey.trim()) { setError('Please enter your API key.'); return; }
+    if (isCustomModel && !customModelId.trim()) { setError('Please enter a custom model ID.'); return; }
     setIsGenerating(true); setError(null); setGeneratedJson('');
     try {
-      const rawJson = await callLLM(provider, modelId, apiKey, prompt, sourceSchemas);
+      const rawJson = await callLLM(provider, effectiveModelId, apiKey, prompt, sourceSchemas);
       // Clean up potential markdown
       const cleaned = rawJson.replace(/^\`\`\`(?:json)?\n/, '').replace(/\n\`\`\`$/, '').trim();
       // Validate JSON
@@ -250,11 +222,27 @@ export default function AiPipelineBuilderPanel({ sourceSchemas, onApplyPipeline,
                 className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-sm text-[#171717] focus:ring-1 focus:ring-[#0052CC] focus:border-[#0052CC] appearance-none bg-white pr-8"
               >
                 {provider.models.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                <option value={CUSTOM_MODEL_OPTION.id}>{CUSTOM_MODEL_OPTION.name}</option>
               </select>
               <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#6B778C] pointer-events-none" />
             </div>
           </div>
         </div>
+
+        {/* Custom Model Input */}
+        {isCustomModel && (
+          <div>
+            <label className="block text-[10px] font-bold text-[#6B778C] uppercase tracking-wider mb-1.5">Custom Model ID</label>
+            <input
+              type="text"
+              placeholder="e.g. gemini-2.0-flash-thinking-exp-01-21, gpt-4-turbo-2024-04-09..."
+              value={customModelId}
+              onChange={e => setCustomModelId(e.target.value)}
+              className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-sm font-mono focus:ring-1 focus:ring-[#0052CC] focus:border-[#0052CC] outline-none"
+            />
+            <p className="text-[10px] text-[#6B778C] mt-1">Enter any model ID supported by {provider.name}. Check the provider&apos;s documentation for available models.</p>
+          </div>
+        )}
 
         <div>
           <label className="block text-[10px] font-bold text-[#6B778C] uppercase tracking-wider mb-1.5">API Key</label>

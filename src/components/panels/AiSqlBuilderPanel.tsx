@@ -1,160 +1,10 @@
 'use client';
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Wand2, Copy, CheckCheck, AlertCircle, Plus, RefreshCw, ChevronDown, ExternalLink, Play, Search, SlidersHorizontal, CheckCircle2 } from 'lucide-react';
 import { Node, Edge } from '@xyflow/react';
 import type { ColumnTypeDef } from './DataInspectionPanel';
 import { validateSql } from '../../lib/api';
-
-interface Provider {
-  id: string; name: string; baseUrl: string;
-  type: 'openai' | 'anthropic' | 'google';
-  apiKeyUrl: string;
-  extraHeaders?: Record<string, string>;
-  models: { id: string; name: string }[];
-}
-
-const PROVIDERS: Provider[] = [
-  {
-    id: 'google', name: 'Google (Gemini)', baseUrl: 'https://generativelanguage.googleapis.com/v1beta/models', type: 'google',
-    apiKeyUrl: 'https://aistudio.google.com/app/apikey',
-    models: [
-      // Gemini 2.5 Series (Latest Stable)
-      { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash' },
-      { id: 'gemini-2.5-flash-lite', name: 'Gemini 2.5 Flash Lite' },
-      { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro' },
-      { id: 'gemini-2.5-flash-exp', name: 'Gemini 2.5 Flash (Experimental)' },
-      { id: 'gemini-2.5-pro-exp', name: 'Gemini 2.5 Pro (Experimental)' },
-      // Gemini 2.0 Series
-      { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash' },
-      { id: 'gemini-2.0-flash-exp', name: 'Gemini 2.0 Flash (Experimental)' },
-      { id: 'gemini-2.0-flash-thinking', name: 'Gemini 2.0 Flash Thinking' },
-      { id: 'gemini-2.0-flash-thinking-exp', name: 'Gemini 2.0 Flash Thinking (Experimental)' },
-      { id: 'gemini-2.0-pro', name: 'Gemini 2.0 Pro' },
-      { id: 'gemini-2.0-pro-exp', name: 'Gemini 2.0 Pro (Experimental)' },
-      // Gemini 1.5 Series
-      { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash' },
-      { id: 'gemini-1.5-flash-8b', name: 'Gemini 1.5 Flash (8B)' },
-      { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro' },
-      { id: 'gemini-1.5-pro-8b', name: 'Gemini 1.5 Pro (8B)' },
-      // Gemini 1.0 Series (Legacy)
-      { id: 'gemini-1.0-pro', name: 'Gemini 1.0 Pro' },
-      { id: 'gemini-1.0-pro-001', name: 'Gemini 1.0 Pro (001)' },
-      // Gemini 3.0 Preview (Cutting Edge)
-      { id: 'gemini-3-flash-preview', name: 'Gemini 3.0 Flash (Preview)' },
-      { id: 'gemini-3-flash-preview-exp', name: 'Gemini 3.0 Flash (Experimental)' },
-      { id: 'gemini-3.1-flash-lite-preview', name: 'Gemini 3.1 Flash Lite (Preview)' },
-      { id: 'gemini-exp-1206', name: 'Gemini Experimental (1206)' },
-    ],
-  },
-  {
-    id: 'groq', name: 'Groq', baseUrl: 'https://api.groq.com/openai/v1/chat/completions', type: 'openai',
-    apiKeyUrl: 'https://console.groq.com/keys',
-    models: [
-      // Llama 3.3 Series
-      { id: 'llama-3.3-70b-versatile', name: 'Llama 3.3 70B Versatile' },
-      // Llama 3.1 Series
-      { id: 'llama-3.1-8b-instant', name: 'Llama 3.1 8B Instant' },
-      { id: 'llama-3.1-70b-versatile', name: 'Llama 3.1 70B Versatile' },
-      // Mixtral
-      { id: 'mixtral-8x7b-32768', name: 'Mixtral 8x7B 32K' },
-      // Gemma
-      { id: 'gemma2-9b-it', name: 'Gemma 2 9B' },
-      { id: 'gemma-7b-it', name: 'Gemma 7B' },
-      // Qwen
-      { id: 'qwen-2.5-72b-instruct', name: 'Qwen 2.5 72B' },
-    ],
-  },
-  {
-    id: 'cerebras', name: 'Cerebras', baseUrl: 'https://api.cerebras.ai/v1/chat/completions', type: 'openai',
-    apiKeyUrl: 'https://cloud.cerebras.ai/',
-    models: [
-      // Llama 3.3 Series
-      { id: 'llama-3.3-70b', name: 'Llama 3.3 70B' },
-      // Llama 3.1 Series
-      { id: 'llama3.1-8b', name: 'Llama 3.1 8B' },
-      { id: 'llama-3.1-70b', name: 'Llama 3.1 70B' },
-      // Llama 3 Series
-      { id: 'llama-3-8b', name: 'Llama 3 8B' },
-      { id: 'llama-3-70b', name: 'Llama 3 70B' },
-      // Mixtral
-      { id: 'mixtral-8x7b', name: 'Mixtral 8x7B' },
-    ],
-  },
-  {
-    id: 'openrouter', name: 'OpenRouter', baseUrl: 'https://openrouter.ai/api/v1/chat/completions', type: 'openai',
-    apiKeyUrl: 'https://openrouter.ai/keys',
-    extraHeaders: { 'HTTP-Referer': 'https://duckdb-platform.local', 'X-Title': 'DuckDB AI SQL Builder' },
-    models: [
-      // Anthropic
-      { id: 'anthropic/claude-3.5-sonnet', name: 'Claude 3.5 Sonnet' },
-      { id: 'anthropic/claude-3.5-haiku', name: 'Claude 3.5 Haiku' },
-      { id: 'anthropic/claude-3-opus', name: 'Claude 3 Opus' },
-      // OpenAI
-      { id: 'openai/gpt-4o', name: 'GPT-4o' },
-      { id: 'openai/gpt-4o-mini', name: 'GPT-4o mini' },
-      { id: 'openai/o1-mini', name: 'o1-mini' },
-      { id: 'openai/o1-preview', name: 'o1-preview' },
-      // Meta
-      { id: 'meta-llama/llama-3.3-70b-instruct', name: 'Llama 3.3 70B' },
-      { id: 'meta-llama/llama-3.1-405b-instruct', name: 'Llama 3.1 405B' },
-      { id: 'meta-llama/llama-3.1-70b-instruct', name: 'Llama 3.1 70B' },
-      { id: 'meta-llama/llama-3.1-8b-instruct', name: 'Llama 3.1 8B' },
-      // Google Gemini (Latest)
-      { id: 'google/gemini-2.5-flash', name: 'Gemini 2.5 Flash' },
-      { id: 'google/gemini-2.5-flash-lite', name: 'Gemini 2.5 Flash Lite' },
-      { id: 'google/gemini-2.5-pro', name: 'Gemini 2.5 Pro' },
-      { id: 'google/gemini-2.0-flash', name: 'Gemini 2.0 Flash' },
-      { id: 'google/gemini-2.0-flash-thinking', name: 'Gemini 2.0 Flash Thinking' },
-      { id: 'google/gemini-2.0-pro', name: 'Gemini 2.0 Pro' },
-      { id: 'google/gemini-1.5-flash', name: 'Gemini 1.5 Flash' },
-      { id: 'google/gemini-1.5-pro', name: 'Gemini 1.5 Pro' },
-      { id: 'google/gemini-flash-1.5', name: 'Gemini 1.5 Flash (Legacy)' },
-      { id: 'google/gemini-pro-1.5', name: 'Gemini 1.5 Pro (Legacy)' },
-      { id: 'google/gemini-3-flash-preview', name: 'Gemini 3.0 Flash (Preview)' },
-      { id: 'google/gemini-3.1-flash-lite-preview', name: 'Gemini 3.1 Flash Lite (Preview)' },
-      // DeepSeek
-      { id: 'deepseek/deepseek-chat', name: 'DeepSeek Chat' },
-      { id: 'deepseek/deepseek-chat:latest', name: 'DeepSeek Chat (Latest)' },
-      { id: 'deepseek/deepseek-r1', name: 'DeepSeek R1' },
-      // Mistral
-      { id: 'mistralai/mistral-large', name: 'Mistral Large' },
-      { id: 'mistralai/mistral-small', name: 'Mistral Small' },
-      { id: 'mistralai/ministral-3b', name: 'Ministral 3B' },
-      // Qwen
-      { id: 'qwen/qwen-2.5-72b-instruct', name: 'Qwen 2.5 72B' },
-      { id: 'qwen/qwen-2-72b-instruct', name: 'Qwen 2 72B' },
-      { id: 'qwen/qwen-2.5-coder-32b-instruct', name: 'Qwen 2.5 Coder 32B' },
-    ],
-  },
-  {
-    id: 'openai', name: 'OpenAI', baseUrl: 'https://api.openai.com/v1/chat/completions', type: 'openai',
-    apiKeyUrl: 'https://platform.openai.com/api-keys',
-    models: [
-      // GPT-4o Series
-      { id: 'gpt-4o', name: 'GPT-4o' },
-      { id: 'gpt-4o-mini', name: 'GPT-4o mini' },
-      // O1 Series (Reasoning Models)
-      { id: 'o1-mini', name: 'o1-mini' },
-      { id: 'o1-preview', name: 'o1-preview' },
-      // GPT-4 Turbo (Legacy)
-      { id: 'gpt-4-turbo', name: 'GPT-4 Turbo' },
-      { id: 'gpt-4-turbo-preview', name: 'GPT-4 Turbo Preview' },
-    ],
-  },
-  {
-    id: 'anthropic', name: 'Anthropic', baseUrl: 'https://api.anthropic.com/v1/messages', type: 'anthropic',
-    apiKeyUrl: 'https://console.anthropic.com/settings/keys',
-    models: [
-      // Claude 3.5 Series (Latest)
-      { id: 'claude-3-5-sonnet-20241022', name: 'Claude 3.5 Sonnet' },
-      { id: 'claude-3-5-haiku-20241022', name: 'Claude 3.5 Haiku' },
-      // Claude 3 Series (Previous)
-      { id: 'claude-3-opus-20240229', name: 'Claude 3 Opus' },
-      { id: 'claude-3-sonnet-20240229', name: 'Claude 3 Sonnet' },
-      { id: 'claude-3-haiku-20240307', name: 'Claude 3 Haiku' },
-    ],
-  },
-];
+import { PROVIDERS, CUSTOM_MODEL_OPTION, type Provider } from '../../config/ai-providers';
 
 /**
  * Build system prompt for LLM-based SQL generation.
@@ -328,6 +178,7 @@ interface Props {
 export default function AiSqlBuilderPanel({ schema, onInsertSql, initialPrompt, nodes, edges, nodeId, onPreviewSql }: Props) {
   const [providerId, setProviderId] = useState(PROVIDERS[0].id);
   const [modelId, setModelId] = useState(PROVIDERS[0].models[0].id);
+  const [customModelId, setCustomModelId] = useState('');
   const [apiKey, setApiKey] = useState('');
   const [prompt, setPrompt] = useState('');
   const [generatedSql, setGeneratedSql] = useState('');
@@ -344,6 +195,8 @@ export default function AiSqlBuilderPanel({ schema, onInsertSql, initialPrompt, 
   const visibleSchema = isSchemaExpanded ? schema : schema.slice(0, 8);
 
   const provider = PROVIDERS.find(p => p.id === providerId)!;
+  const isCustomModel = modelId === CUSTOM_MODEL_OPTION.id;
+  const effectiveModelId = isCustomModel ? customModelId : modelId;
 
   // Sync with initialPrompt if provided
   useEffect(() => {
@@ -356,8 +209,9 @@ export default function AiSqlBuilderPanel({ schema, onInsertSql, initialPrompt, 
   useEffect(() => {
     const stored = localStorage.getItem(`ai_sql_key_${providerId}`);
     setApiKey(stored || '');
-    const firstModel = provider.models[0].id;
+    const firstModel = PROVIDERS.find(p => p.id === providerId)!.models[0].id;
     setModelId(firstModel);
+    setCustomModelId('');
   }, [providerId]);
 
   const handleSaveKey = () => {
@@ -367,9 +221,10 @@ export default function AiSqlBuilderPanel({ schema, onInsertSql, initialPrompt, 
   const handleGenerate = async () => {
     if (!prompt.trim()) return;
     if (!apiKey.trim()) { setError('Please enter your API key.'); return; }
+    if (isCustomModel && !customModelId.trim()) { setError('Please enter a custom model ID.'); return; }
     setIsGenerating(true); setError(null); setGeneratedSql(''); setPreviewResult(null);
     try {
-      const sql = await callLLM(provider, modelId, apiKey, prompt, schema);
+      const sql = await callLLM(provider, effectiveModelId, apiKey, prompt, schema);
       setGeneratedSql(sql.trim());
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -479,11 +334,27 @@ export default function AiSqlBuilderPanel({ schema, onInsertSql, initialPrompt, 
                 className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-sm text-[#171717] focus:ring-1 focus:ring-[#0052CC] focus:border-[#0052CC] appearance-none bg-white pr-8"
               >
                 {provider.models.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                <option value={CUSTOM_MODEL_OPTION.id}>{CUSTOM_MODEL_OPTION.name}</option>
               </select>
               <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#6B778C] pointer-events-none" />
             </div>
           </div>
         </div>
+
+        {/* Custom Model Input */}
+        {isCustomModel && (
+          <div>
+            <label className="block text-[10px] font-bold text-[#6B778C] uppercase tracking-wider mb-1.5">Custom Model ID</label>
+            <input
+              type="text"
+              placeholder="e.g. gemini-2.0-flash-thinking-exp-01-21, gpt-4-turbo-2024-04-09..."
+              value={customModelId}
+              onChange={e => setCustomModelId(e.target.value)}
+              className="w-full border border-[#DFE1E6] rounded-md px-3 py-2 text-sm font-mono focus:ring-1 focus:ring-[#0052CC] focus:border-[#0052CC] outline-none"
+            />
+            <p className="text-[10px] text-[#6B778C] mt-1">Enter any model ID supported by {provider.name}. Check the provider&apos;s documentation for available models.</p>
+          </div>
+        )}
 
         {/* API Key */}
         <div>
