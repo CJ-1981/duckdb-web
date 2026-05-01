@@ -132,10 +132,13 @@ def _finalize_node_state(conn, node, node_id, node_to_table, node_hash):
     @MX:REASON: Centralizes aliasing + _NODE_CACHE write so the schema/timestamp invariants stay in sync.
     """
     _apply_node_aliasing(conn, node, node_id, node_to_table)
-    
+
     final_table = node_to_table.get(node_id)
     if final_table:
         import time
+        # Debug: log what's being cached for transform-1
+        if node_id == "transform-1":
+            logger.info(f">>> [FINALIZE] Caching transform-1 -> {final_table}")
         # Preserve existing schema information if present
         existing_cache = _NODE_CACHE.get(node_id, {})
         cache_entry = {
@@ -1319,6 +1322,11 @@ async def execute_workflow_graph(
     # This ensures stale results are not used if data has changed
     _invalidate_sql_cache_for_table("workflow_execution")
 
+    # FIX: Clear _NODE_CACHE to prevent stale cached tables from previous executions
+    # This fixes the issue where incorrect table schemas are reused
+    _NODE_CACHE.clear()
+    logger.info(f">>> [CACHE] Cleared _NODE_CACHE for fresh execution")
+    print(f">>> [CACHE] Cleared _NODE_CACHE, size before: {_NODE_CACHE}")
     # Locate nodes by subtype or label
     output_node = next((n for n in request.nodes if n["type"] == "output"), None)
 
@@ -1376,6 +1384,11 @@ async def execute_workflow_graph(
             label = node_data.get("label", "")
             config = node_data.get("config", {})
 
+            # Debug: log node processing for CDC pipeline
+            if node_id in ["transform-1", "filter-1"]:
+                print(f">>> [NODE PROCESS] node_id={node_id}, type={node['type']}, subtype={subtype}, label={label}")
+                logger.info(f">>> [NODE PROCESS] node_id={node_id}, type={node['type']}, subtype={subtype}, label={label}")
+
             preds = predecessors.get(node_id, [])
             prev_table = node_to_table.get(preds[0]) if preds else None
             
@@ -1402,10 +1415,17 @@ async def execute_workflow_graph(
                     conn.execute(f"SELECT 1 FROM {cached['table_name']} LIMIT 0")
                     logger.info(f"Node {label} (ID: {node_id}) recovered from cache.")
                     node_to_table[node_id] = cached["table_name"]
+                    # Debug: check the schema of cached table for transform-1
+                    if node_id == "transform-1":
+                        try:
+                            desc = conn.execute(f"DESCRIBE {cached['table_name']}").fetchdf()
+                            logger.info(f">>> [CACHE HIT] transform-1 has columns: {desc['column_name'].tolist()}")
+                        except Exception as e:
+                            logger.error(f">>> [CACHE HIT] Failed to describe transform-1: {e}")
                     continue
                 except:
                     logger.info(f"Cache hit but table {cached['table_name']} missing. Re-executing...")
-            
+
             # If not cached, execute and update cache
             logger.info(f"Processing node {i+1}/{len(sorted_nodes)}: {label}")
             
@@ -1809,8 +1829,18 @@ async def execute_workflow_graph(
                             logger.info(f">>> [INPUT NODE] Aliased {table_name} as {custom_table_name}")
                 
             elif subtype == "filter" or "Filter" in label:
+                print(f">>> [FILTER ENTRY] Processing filter node {node_id} ({label})")
                 if not prev_table: continue
-                
+
+                # Debug: Check the schema of prev_table before filtering
+                try:
+                    desc = conn.execute(f"DESCRIBE {prev_table}").fetchdf()
+                    print(f">>> [FILTER] Before filtering {node_id}, prev_table={prev_table} has columns: {desc['column_name'].tolist()}")
+                    logger.info(f">>> [FILTER] Before filtering {node_id}, prev_table={prev_table} has columns: {desc['column_name'].tolist()}")
+                except Exception as desc_err:
+                    print(f">>> [FILTER] Failed to describe {prev_table}: {desc_err}")
+                    logger.error(f">>> [FILTER] Failed to describe {prev_table}: {desc_err}")
+
                 is_adv = config.get("isAdvanced", False)
                 where = ""
                 
@@ -1896,11 +1926,14 @@ async def execute_workflow_graph(
                     node_to_table[node_id] = prev_table
 
             elif subtype == "raw_sql":
+                print(f">>> [RAW SQL ENTRY] Processing raw_sql node {node_id} ({label}), SQL length: {len(config.get('sql', ''))}")
+                logger.info(f">>> [RAW SQL ENTRY] Processing raw_sql node {node_id} ({label}), SQL length: {len(config.get('sql', ''))}")
                 raw_sql = config.get("sql", "")
                 if raw_sql:
                     # Support multi-input placeholders: {{input1}}, {{input2}}, etc.
                     all_preds = predecessors.get(node_id, [])
                     processed_sql = raw_sql
+                    print(f">>> [RAW SQL] all_preds={all_preds}")
 
                     # Replace indexed placeholders
                     for idx, pred_id in enumerate(all_preds, start=1):
@@ -1909,6 +1942,7 @@ async def execute_workflow_graph(
                         if tname:
                             table_ref = f'"{tname.replace('"', '""')}"'
                             processed_sql = processed_sql.replace(f"{{{{input{idx}}}}}", table_ref)
+                            print(f">>> [RAW SQL] Replaced {{input{idx}}} with {table_ref}")
 
                     # Backward compatible: {{input}} → first predecessor
                     if "{{input}}" in processed_sql and all_preds:
@@ -1935,30 +1969,59 @@ async def execute_workflow_graph(
 
                     # Auto-convert backticks to double quotes for standard DuckDB support
                     processed_sql = processed_sql.replace("`", "\"")
-                    
+
                     # Detect if this is a mutation (even with WITH)
                     sql_stripped = processed_sql.strip()
                     first_word = sql_stripped.split()[0].upper() if sql_stripped else ""
-                    is_mutation = first_word in ["UPDATE", "INSERT", "DELETE", "MERGE", "DROP", "ALTER", "CREATE", "COPY", "EXPORT"]
+                    # FIX: Don't treat CREATE as a mutation when it's part of "CREATE TABLE AS SELECT" (CTE/CTAS)
+                    # CREATE TABLE AS SELECT with a WITH clause is a SELECT, not a mutation
+                    # Also, don't match string literals like 'insert'/'delete'/'update' in CASE expressions
+                    is_mutation = first_word in ["UPDATE", "INSERT", "DELETE", "MERGE", "DROP", "ALTER", "COPY", "EXPORT"]
                     if first_word == "WITH":
-                         # Check for mutation keywords later in the query
-                         if re.search(r'\b(UPDATE|INSERT|DELETE|MERGE)\b', sql_stripped.upper()):
-                             is_mutation = True
-                    
+                        # Check for mutation keywords later in the query
+                        # Use word boundary that excludes string literals (look for keywords at start of line or after semicolon/paren)
+                        if re.search(r'(\A|^|;|\s)(UPDATE|INSERT|DELETE|MERGE)\b', sql_stripped.upper(), re.MULTILINE):
+                            is_mutation = True
+                    # Only treat CREATE as a mutation if it's NOT "CREATE TABLE AS ... (WITH ...)"
+                    # i.e., CREATE without a WITH clause is a mutation (CREATE TABLE, CREATE VIEW, etc.)
+                    elif first_word == "CREATE":
+                        # If there's no WITH clause after CREATE, it's a mutation
+                        # If there's a WITH clause, it's a CTAS which should be handled as SELECT
+                        if "WITH" not in sql_stripped.upper() or sql_stripped.upper().index("CREATE") < sql_stripped.upper().index("WITH"):
+                            # CREATE comes before WITH, or there's no WITH - this is a mutation
+                            is_mutation = True
+                        else:
+                            # CREATE TABLE AS (WITH ...) - this is a SELECT query with CTE
+                            is_mutation = False
+
+                    print(f">>> [RAW SQL] is_mutation={is_mutation}, first_word={first_word}")
                     if is_mutation:
                         # Prevent mutation leakage: copy prev_table to table_name first if exists
+                        print(f">>> [RAW SQL] Mutation branch: prev_table={prev_table}, table_name={table_name}")
                         if prev_table:
+                            print(f">>> [RAW SQL] Copying {prev_table} to {table_name}...")
                             conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT * FROM {prev_table}")
                             # Execute mutation on the NEW table
                             # We replace prev_table ref in SQL with our new table name
                             mut_sql = processed_sql.replace(f'"{prev_table}"', f'"{table_name}"')
+                            print(f">>> [RAW SQL] Executing mutation: {mut_sql[:200]}...")
                             conn.execute(mut_sql)
                             node_to_table[node_id] = table_name
                         else:
+                            print(f">>> [RAW SQL] No prev_table, executing raw mutation...")
                             conn.execute(processed_sql)
                             node_to_table[node_id] = table_name
                     else:
+                        print(f">>> [RAW SQL] Executing: CREATE OR REPLACE TEMP TABLE {table_name} AS {processed_sql[:200]}...")
                         conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS {processed_sql}")
+                        # Debug: Check the schema of the created table
+                        try:
+                            desc = conn.execute(f"DESCRIBE {table_name}").fetchdf()
+                            print(f">>> [RAW SQL] Created table {table_name} with columns: {desc['column_name'].tolist()}")
+                            logger.info(f">>> [RAW SQL] Created table {table_name} with columns: {desc['column_name'].tolist()}")
+                        except Exception as desc_err:
+                            print(f">>> [RAW SQL] Failed to describe {table_name}: {desc_err}")
+                            logger.error(f">>> [RAW SQL] Failed to describe {table_name}: {desc_err}")
                         node_to_table[node_id] = table_name
                 else:
                     node_to_table[node_id] = prev_table

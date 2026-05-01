@@ -21,7 +21,7 @@ class TimeoutError(Exception):
     pass
 
 
-def _timeout_handler(signum, frame):
+def _timeout_handler(_signum, _frame):
     """Signal handler for timeout."""
     raise TimeoutError("Encoding detection exceeded 5 second timeout")
 
