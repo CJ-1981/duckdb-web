@@ -13,6 +13,11 @@ The DuckDB Workflow Builder is a full-stack web application that enables users t
 - **Node-Based Architecture**: Modular components for data sources, transformations, and outputs
 - **Real-Time Validation**: Immediate feedback on workflow structure and connections
 - **Keyboard Shortcuts**: Power user commands for efficient workflow construction
+- **Mobile Support**: Touch-optimized interface with bottom panel navigation and scrollable content
+  - Mobile workflow viewer with zoom controls and pan gestures
+  - Bottom sheet panels for node details and execution results
+  - Preview Data functionality for inspecting node samples on mobile
+  - Responsive design adapts to phone, tablet, and desktop viewports
 
 ### Multi-Source Data Integration
 - **Database Connectors**: 
