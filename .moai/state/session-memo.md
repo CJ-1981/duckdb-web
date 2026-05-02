@@ -2,7 +2,7 @@
 
 ## P1: Session Context
 
-session_id: 3eb120c5-33a2-4100-9903-b84e61beb008
+session_id: d2b9b969-f144-4f3b-9cc7-3b4b8a4c8fee
 cwd: /Users/chimin/Documents/script/duckdb-web
 event: PreCompact
 

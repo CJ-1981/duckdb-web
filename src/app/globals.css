@@ -58,3 +58,146 @@ body.resizing, body.resizing * {
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 255, 255, 0.3);
 }
+
+/* Mobile Optimizations */
+@media (max-width: 767px) {
+  /* Safe Area Support for iPhone X+ */
+  .safe-area-inset-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .safe-area-inset-top {
+    padding-top: env(safe-area-inset-top);
+  }
+
+  /* Prevent bounce scrolling */
+  .no-bounce {
+    overscroll-behavior: none;
+  }
+
+  /* Optimize touch scrolling */
+  * {
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Hide scrollbars but maintain functionality */
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  /* Touch-friendly tap targets */
+  button,
+  a,
+  [role="button"] {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  /* Disable text selection during touch interactions */
+  .touch-manipulation {
+    touch-action: manipulation;
+    user-select: none;
+  }
+
+  /* Mobile-specific text sizing */
+  h1 { font-size: 1.5rem; }
+  h2 { font-size: 1.25rem; }
+  h3 { font-size: 1.125rem; }
+  body {
+    font-size: 14px;
+  }
+
+  /* Optimize images for mobile */
+  img {
+    max-width: 100%;
+    height: auto;
+  }
+
+  /* Reduce animations on mobile for performance */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+/* Tablet specific adjustments */
+@media (min-width: 768px) and (max-width: 1023px) {
+  /* Adjust font sizes for tablets */
+  body {
+    font-size: 15px;
+  }
+
+  /* Optimize for touch but maintain desktop-like interactions */
+  .tablet-optimized {
+    touch-action: pan-x pan-y;
+  }
+}
+
+/* Desktop optimizations */
+@media (min-width: 1024px) {
+  /* Enhance hover states for mouse users */
+  button:hover,
+  a:hover,
+  [role="button"]:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  }
+
+  /* Smooth transitions for desktop */
+  .desktop-transition {
+    transition: all 0.2s ease-in-out;
+  }
+}
+
+/* High DPI displays */
+@media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 192dpi) {
+  /* Sharper rendering for retina displays */
+  canvas,
+  img {
+    image-rendering: -webkit-optimize-contrast;
+    image-rendering: crisp-edges;
+  }
+}
+
+/* Landscape mobile optimizations */
+@media (max-width: 767px) and (orientation: landscape) {
+  /* Reduce vertical spacing in landscape */
+  .landscape-compact {
+    padding-top: 0.5rem;
+    padding-bottom: 0.5rem;
+  }
+
+  /* Hide non-essential elements */
+  .hide-in-landscape {
+    display: none !important;
+  }
+}
+
+/* Print styles */
+@media print {
+  /* Hide interactive elements */
+  .no-print {
+    display: none !important;
+  }
+
+  /* Ensure content is readable */
+  body {
+    font-size: 12pt;
+    line-height: 1.5;
+  }
+
+  /* Avoid page breaks */
+  .avoid-page-break {
+    page-break-inside: avoid;
+  }
+}

@@ -1,0 +1,14 @@
+# Production Monitoring Dependencies
+# Add these to your main requirements.txt or install separately
+
+# Structured logging
+structlog>=24.1.0
+
+# Prometheus metrics (optional - only if using Prometheus)
+prometheus-client>=0.20.0
+
+# Existing dependencies (for reference)
+# fastapi
+# uvicorn
+# pydantic
+# ... (other existing dependencies)

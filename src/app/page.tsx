@@ -1,19 +1,25 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import WorkspaceCanvas from '@/components/workflow/canvas';
-import { SqlPreview } from '@/components/workflow/SqlPreview';
-import { buildSql, getConditionSql } from '@/components/workflow/SqlHelpers';
 import { WorkflowToolbar } from '@/components/workflow/WorkflowToolbar';
-import { Database, Filter, ArrowRightLeft, Table, Settings, Play, Search, LayoutDashboard, SlidersHorizontal, FileText, FileDown, Save, FolderOpen, Sigma, Eye, ChevronRight, SortAsc, ListOrdered, Calculator, Code, Fingerprint, PenLine, GitBranch, BarChart3, Plus, Trash2, Wand2, Microscope, PanelLeftClose, PanelLeftOpen, PanelBottomClose, Copy, X, CheckCheck, AlertCircle, RefreshCw, Globe, Repeat, Dices, Braces, DatabaseBackup, MessageSquare } from 'lucide-react';
-import { Node, Edge, useReactFlow, ReactFlowProvider, useNodesState, useEdgesState, Panel } from '@xyflow/react';
+import { Play, SlidersHorizontal, FileText, FileDown, Save, Eye, ChevronRight, Code, PenLine, Plus, Trash2, Microscope, PanelBottomClose, Copy, X, CheckCheck, AlertCircle, Menu } from 'lucide-react';
+import { Node, Edge, ReactFlowProvider, Panel } from '@xyflow/react';
 import { useWorkflowState } from '@/hooks/useWorkflowState';
-import { executeWorkflow, uploadFile, saveWorkflow, listSavedWorkflows, loadWorkflowGraph, generateReport, inspectNode, renameWorkflow, deleteWorkflow, validateSql, previewSql, getBackendUrl } from '@/lib/api-unified';
+import { executeWorkflow, saveWorkflow, listSavedWorkflows, loadWorkflowGraph, inspectNode, renameWorkflow, deleteWorkflow, previewSql } from '@/lib/api-unified';
 import { NodePalette, PropertiesPanel, SamplePipelines } from '@/components/workflow';
 import DataInspectionPanel, { type ColumnTypeDef, type FullStats } from '@/components/panels/DataInspectionPanel';
 import AiSqlBuilderPanel from '@/components/panels/AiSqlBuilderPanel';
 import AiPipelineBuilderPanel from '@/components/panels/AiPipelineBuilderPanel';
 import SettingsPanel from '@/components/panels/SettingsPanel';
+
+// Mobile-specific components
+import { MobileNavigation, MobileMenu } from '@/components/mobile/MobileNavigation';
+import { MobileWorkflowViewer } from '@/components/mobile/MobileWorkflowViewer';
+import { ExecutionStatusCard, MobileResultsCard } from '@/components/mobile/MobileResultsCard';
+
+// Responsive utilities
+import { useIsMobile, useIsTablet, useBreakpoint } from '@/lib/responsive';
 
 interface WorkflowTab {
   id: string;
@@ -26,11 +32,40 @@ interface WorkflowTab {
 
 // ─── SQL Preview helpers ──────────────────────────────────────────────────────
 
+interface MobileDataInspectionSectionProps {
+  selectedNode: Node | null;
+  nodeSamples: Record<string, any[]>;
+  nodeTypes: Record<string, ColumnTypeDef[]>;
+}
+
+function MobileDataInspectionSection({ selectedNode, nodeSamples, nodeTypes }: MobileDataInspectionSectionProps): React.ReactElement | null {
+  if (!selectedNode || nodeSamples[selectedNode.id] === undefined) {
+    return null;
+  }
+
+  return (
+    <MobileResultsCard
+      title={`Data: ${selectedNode.data.label ? String(selectedNode.data.label) : 'Unknown'}`}
+      data={nodeSamples[selectedNode.id] ?? []}
+      columns={nodeTypes[selectedNode.id] ?? []}
+      rowCount={selectedNode.data.rowCount as number | undefined}
+      maxHeight="calc(100vh - 300px)"
+    />
+  );
+}
+
 
 function Dashboard() {
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
   const { nodes, setNodes, onNodesChange, edges, setEdges, onEdgesChange, history, pushToHistory, undo, redo, getNodes, getEdges } = useWorkflowState([], []);
   const [layoutCounter, setLayoutCounter] = useState(0);
+
+  // Mobile detection and state
+  const isMobile = useIsMobile();
+  const isTablet = useIsTablet();
+  const breakpoint = useBreakpoint();
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [mobileResultsVisible, setMobileResultsVisible] = useState(false);
 
   const [isSaveModalOpen, setIsSaveModalOpen] = useState(false);
   const [isLoadModalOpen, setIsLoadModalOpen] = useState(false);
@@ -57,6 +92,7 @@ function Dashboard() {
   const [previewHeight, setPreviewHeight] = useState(280);
   const [previewLimit, setPreviewLimit] = useState(50);
   const [nodeSamples, setNodeSamples] = useState<Record<string, any[]>>({});
+  const [nodeColumns, setNodeColumns] = useState<Record<string, string[]>>({});
   const [nodeTypes, setNodeTypes] = useState<Record<string, ColumnTypeDef[]>>({});
   const [activeBottomTab, setActiveBottomTab] = useState(0);
   const [sidebarTab, setSidebarTab] = useState<'nodes' | 'samples'>('nodes');
@@ -785,6 +821,9 @@ function Dashboard() {
       if (result.node_samples) {
         setNodeSamples(result.node_samples);
       }
+      if (result.node_columns) {
+        setNodeColumns(result.node_columns);
+      }
       if (result.node_types) {
         setNodeTypes(result.node_types);
       }
@@ -972,24 +1011,46 @@ function Dashboard() {
 
   return (
     <div className="flex flex-col h-screen bg-[#FAFBFC] overflow-hidden text-[#171717]">
-      <WorkflowToolbar
-        workflowName={currentPipelineName || ''}
-        onOpenLoadModal={openLoadModal}
-        onOpenSaveModal={() => { setWorkflowName(currentPipelineName || ''); setIsSaveModalOpen(true); }}
-        onOpenSettings={() => setIsSettingsOpen(true)}
-        onExecute={handleExecute}
-        isExecuting={isExecuting}
-        onRenameClick={() => { setNewName(currentPipelineName || ''); setIsRenameModalOpen(true); }}
-        isSidebarCollapsed={isSidebarCollapsed}
-        setIsSidebarCollapsed={setIsSidebarCollapsed}
-        showHeaderTooltip={showHeaderTooltip}
-        hideTooltip={hideTooltip}
-        isMac={isMac}
-        setIsAiPipelinePanelOpen={setIsAiPipelinePanelOpen}
-        handleBeautify={handleBeautify}
-        mod={mod}
-      />
+      {/* Desktop Header - Hide on Mobile */}
+      <div className="hidden md:block">
+        <WorkflowToolbar
+          workflowName={currentPipelineName || ''}
+          onOpenLoadModal={openLoadModal}
+          onOpenSaveModal={() => { setWorkflowName(currentPipelineName || ''); setIsSaveModalOpen(true); }}
+          onOpenSettings={() => setIsSettingsOpen(true)}
+          onExecute={handleExecute}
+          isExecuting={isExecuting}
+          onRenameClick={() => { setNewName(currentPipelineName || ''); setIsRenameModalOpen(true); }}
+          isSidebarCollapsed={isSidebarCollapsed}
+          setIsSidebarCollapsed={setIsSidebarCollapsed}
+          showHeaderTooltip={showHeaderTooltip}
+          hideTooltip={hideTooltip}
+          isMac={isMac}
+          setIsAiPipelinePanelOpen={setIsAiPipelinePanelOpen}
+          handleBeautify={handleBeautify}
+          mod={mod}
+        />
+      </div>
 
+      {/* Mobile Header */}
+      <div className="md:hidden flex items-center justify-between px-4 py-3 bg-white border-b border-[#DFE1E6]">
+        <div className="flex items-center space-x-2">
+          <button
+            onClick={() => setIsMobileMenuOpen(true)}
+            className="p-2 hover:bg-[#F4F5F7] rounded-lg"
+          >
+            <Menu size={20} className="text-[#0052CC]" />
+          </button>
+          <div>
+            <h1 className="text-sm font-bold text-[#172B4D]">
+              {currentPipelineName || 'New Pipeline'}
+            </h1>
+            <p className="text-[10px] text-[#6B778C]">{nodes.length} nodes</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Tab Bar - Responsive */}
       <div className="flex items-center px-2 bg-[#F4F5F7] border-b border-[#DFE1E6] h-9 shrink-0 overflow-x-auto no-scrollbar">
         {tabs.map((tab) => {
           const isActive = activeTabId === tab.id;
@@ -1025,14 +1086,15 @@ function Dashboard() {
       </div>
 
       <div className="flex flex-1 overflow-hidden">
-        <aside className={`flex flex-col bg-white border-r border-[#DFE1E6] transition-all duration-300 ${isSidebarCollapsed ? 'w-0 opacity-0 overflow-hidden' : 'w-64'}`}>
+        {/* Left Sidebar - Responsive */}
+        <aside className={`hidden md:flex flex-col bg-white border-r border-[#DFE1E6] transition-all duration-300 ${isSidebarCollapsed ? 'w-0 opacity-0 overflow-hidden' : 'w-64'}`}>
           {/* Tab Switcher */}
           <div className="flex border-b border-[#DFE1E6]">
             <button
               onClick={() => setSidebarTab('nodes')}
               className={`flex-1 py-3 text-[10px] font-bold uppercase tracking-wider transition-all border-b-2 ${
-                sidebarTab === 'nodes' 
-                  ? 'border-[#0052CC] text-[#0052CC] bg-blue-50/30' 
+                sidebarTab === 'nodes'
+                  ? 'border-[#0052CC] text-[#0052CC] bg-blue-50/30'
                   : 'border-transparent text-[#6B778C] hover:bg-gray-50'
               }`}
             >
@@ -1041,8 +1103,8 @@ function Dashboard() {
             <button
               onClick={() => setSidebarTab('samples')}
               className={`flex-1 py-3 text-[10px] font-bold uppercase tracking-wider transition-all border-b-2 ${
-                sidebarTab === 'samples' 
-                  ? 'border-[#0052CC] text-[#0052CC] bg-blue-50/30' 
+                sidebarTab === 'samples'
+                  ? 'border-[#0052CC] text-[#0052CC] bg-blue-50/30'
                   : 'border-transparent text-[#6B778C] hover:bg-gray-50'
               }`}
             >
@@ -1069,7 +1131,7 @@ function Dashboard() {
           </div>
         </aside>
 
-        <main className="flex-1 relative flex flex-col h-[calc(100vh-4rem)]">
+        <main className="flex-1 relative flex flex-col h-[calc(100vh-4rem)] md:h-[calc(100vh-4rem)]">
           {isAiPipelinePanelOpen && (
             <div className="absolute right-0 top-0 bottom-0 z-50">
               <AiPipelineBuilderPanel
@@ -1236,8 +1298,9 @@ function Dashboard() {
           </WorkspaceCanvas>
         </main>
 
-        {/* Right Sidebar - Properties Panel */}
-        <PropertiesPanel
+        {/* Right Sidebar - Properties Panel - Hide on Mobile */}
+        <div className="hidden lg:block">
+          <PropertiesPanel
           selectedNode={selectedNode}
           setSelectedNode={setSelectedNode}
           nodes={nodes}
@@ -1252,6 +1315,7 @@ function Dashboard() {
           previewLimit={previewLimit}
           getUpstreamColumns={getUpstreamColumns}
         />
+        </div>
 
       </div>
 
@@ -1570,6 +1634,141 @@ function Dashboard() {
             )}
           </div>
         </div>
+      )}
+
+      {/* Mobile-Specific Components */}
+      {isMobile && (
+        <>
+          {/* Mobile Bottom Navigation */}
+          <MobileNavigation
+            onExecute={handleExecute}
+            onLoad={openLoadModal}
+            currentWorkflowName={currentPipelineName || undefined}
+          />
+
+          {/* Mobile Menu */}
+          <MobileMenu
+            isOpen={isMobileMenuOpen}
+            onClose={() => setIsMobileMenuOpen(false)}
+            onNewWorkflow={handleNewWorkflow}
+            onLoad={openLoadModal}
+          />
+
+          {/* Mobile Workflow Viewer (Read-Only Mode) */}
+          {isMobile && (
+            <div className="fixed inset-0 z-40 md:hidden">
+              <MobileWorkflowViewer
+                nodes={nodes}
+                edges={edges}
+                executionResult={executionResult}
+                onNodeClick={(node) => {
+                  setSelectedNode(node);
+                  setMobileResultsVisible(true);
+                }}
+                onBeautify={handleBeautify}
+                nodeSamples={nodeSamples}
+                nodeColumns={nodeColumns}
+              />
+            </div>
+          )}
+
+          {/* Mobile Results Display */}
+          {mobileResultsVisible && selectedNode && (
+            <div className="fixed inset-0 z-50 md:hidden">
+              <div className="h-full overflow-y-auto bg-[#FAFBFC] p-4 safe-area-inset-bottom">
+                <div className="mb-4">
+                  <button
+                    onClick={() => setMobileResultsVisible(false)}
+                    className="flex items-center space-x-2 text-[#0052CC] mb-4"
+                  >
+                    <ChevronRight size={16} className="-rotate-180" />
+                    <span className="text-sm font-bold">Back to Workflow</span>
+                  </button>
+
+                  {isExecuting ? (
+                    <div className="mb-4 bg-white rounded-lg shadow-md border border-[#DFE1E6] p-4 animate-pulse">
+                      <div className="flex items-center space-x-3">
+                        <div className="w-8 h-8 border-2 border-[#0052CC] border-t-transparent rounded-full animate-spin" />
+                        <div>
+                          <p className="text-sm font-bold text-[#172B4D]">Executing Workflow...</p>
+                          <p className="text-xs text-[#6B778C]">Please wait</p>
+                        </div>
+                      </div>
+                    </div>
+                  ) : executionResult?.error ? (
+                    <div className="mb-4 bg-white rounded-lg shadow-md border border-[#FF5630] p-4">
+                      <div className="flex items-start space-x-3">
+                        <div className="w-8 h-8 bg-[#FFEBE6] rounded-full flex items-center justify-center flex-shrink-0">
+                          <AlertCircle size={16} className="text-[#FF5630]" />
+                        </div>
+                        <div className="flex-1">
+                          <p className="text-sm font-bold text-[#172B4D] mb-1">Execution Failed</p>
+                          <p className="text-xs text-[#6B778C] mb-3">{executionMessage?.detail || 'An error occurred'}</p>
+                          <button
+                            onClick={handleExecute}
+                            className="w-full py-2 bg-[#0052CC] text-white text-xs font-bold rounded-md active:scale-95 transition-transform"
+                          >
+                            Retry
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ) : executionResult ? (
+                    <div className="mb-4 bg-white rounded-lg shadow-md border border-[#36B37E] p-4">
+                      <div className="flex items-start space-x-3">
+                        <div className="w-8 h-8 bg-[#E3FCEF] rounded-full flex items-center justify-center flex-shrink-0">
+                          <CheckCheck size={16} className="text-[#36B37E]" />
+                        </div>
+                        <div className="flex-1">
+                          <p className="text-sm font-bold text-[#172B4D] mb-1">Execution Successful</p>
+                          <div className="space-y-1 mb-3">
+                            {executionResult.row_count && (
+                              <p className="text-xs text-[#6B778C]">
+                                Processed <span className="font-bold text-[#0052CC]">{executionResult.row_count.toLocaleString()}</span> rows
+                              </p>
+                            )}
+                            {executionResult.execution_time && (
+                              <p className="text-xs text-[#6B778C]">
+                                Completed in <span className="font-bold text-[#172B4D]">{(executionResult.execution_time / 1000).toFixed(2)}s</span>
+                              </p>
+                            )}
+                          </div>
+                          <div className="flex space-x-2">
+                            <button
+                              onClick={() => setMobileResultsVisible(false)}
+                              className="flex-1 py-2 bg-[#0052CC] text-white text-xs font-bold rounded-md active:scale-95 transition-transform"
+                            >
+                              View Results
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ) : null}
+
+
+                  {selectedNode && selectedNode.data.config && (
+                    <div className="mt-4 bg-white rounded-lg shadow-md border border-[#DFE1E6] p-4">
+                      <h3 className="text-sm font-bold text-[#172B4D] mb-3">Configuration</h3>
+                      <div className="space-y-2">
+                        {Object.entries(selectedNode.data.config).map(([key, value]) => (
+                          <div key={key} className="flex items-center justify-between">
+                            <span className="text-[10px] font-medium text-[#6B778C] uppercase tracking-wide">
+                              {key}
+                            </span>
+                            <span className="text-xs font-semibold text-[#172B4D]">
+                              {typeof value === 'object' ? JSON.stringify(value) : String(value)}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+        </>
       )}
     </div>
   );
